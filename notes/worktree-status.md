@@ -5,7 +5,7 @@
 | 目录 | 分支 | HEAD | tracked 状态 | remote |
 |---|---|---|---|---|
 | `<repo>/..`（root-runtime） | `root-runtime` | `c8fbe40539d32bac413af6fa33cce64399a2663c` | 保留 `GuestAgentsModeTest.kt` 的 mtime 幂等新增块与顾问 `root-runtime.md` 草稿；旧稿已按 blob 比对收敛 | `origin/root-runtime` 一致 |
-| `<repo-worktrees>/root-launch` | `feat/root-launch` | `bc35f408840a4aae30fef48dea6212d320b1f9d9` | tracked 干净；B 的 assets、supervisor 测试脚本、`tooling/dbg.sh`、`tooling/lab/`、notes 未跟踪 | `origin/feat/root-launch` 一致 |
+| `<repo-worktrees>/root-launch` | `feat/root-launch` | `0dfd7d75ee1faeb356a916e92a71bce344fdf37e` | tracked 干净；B 的 assets、supervisor 测试脚本、`tooling/dbg.sh`、`tooling/lab/`、notes 未跟踪 | `origin/feat/root-launch` 一致 |
 | `<repo-worktrees>/root-compat` | `feat/root-permission-ux` | `21f3eb990bcac9557f71a8f979a241da4bd97709` | tracked 干净；root-compat 测试结果 notes 不入库 | `origin/feat/root-permission-ux` 一致 |
 | `<repo-worktrees>/root-frameworks` | `test/root-frameworks` | `8a14324b2fbe10afb538c710cf23e0c9778be1d3` | tracked 干净；SukiSU/APatch notes、探针脚本、logs、`runtime/out` 未跟踪 | `origin/test/root-frameworks` 一致 |
 

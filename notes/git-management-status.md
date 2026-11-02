@@ -1,5 +1,11 @@
 # Git 阶段管理状态（2026-11-03）
 
+## 2026-11-03 07:47 · 权限合并核实与 release/policy 合入 root-launch
+
+祖先关系实测：`27286dda9c4aa09eeb042f66635dc2dc6899e441` 与 `94579b4bd21acb747d6474cd344fdff36838a6a5` 都是 `5651f275eaef92772092b7da14eea59d302399c9` 的祖先，`git merge-base --is-ancestor` 退出码均为 0；`c3dd8f2bc7cea7c1911237a0d24c6c1ea6e7170c` 第二父就是 `94579b4`。此前“945 留分支”的说法与实际提交图不符，未做过 unmerge 或改历史。
+
+上游补丁集约定提交 full SHA 是 `3141593b23df9b0344db9c084efd4f3552b061d3`；release 修复提交 full SHA 是 `d0655105c4250b4eb11a47fe0a75570b6d4d748f`。root-launch 合入 d065 后为 `0dfd7d75ee1faeb356a916e92a71bce344fdf37e` 并已推送；tracked 差分为空，B writer 的 assets、notes、supervisor 测试脚本保持未跟踪。
+
 ## 2026-11-03 06:44 · root-runtime 旧稿收敛
 
 主区曾被混入旧稿：`PhoneStorage.kt`、`RuntimeController.kt` 和 untracked `RuntimeMountGuardTest.kt` 与 compat 加强版 blob 相同；`RuntimeInstaller.kt` 缺 `activateRootfs(rootRuntime)` 与 Direct alias 处理，不能覆盖 compat；`GuestSetup.kt` 仅重构等价。已恢复四个 tracked 旧稿到 HEAD，删除两个重复 untracked 测试；`GuestAgentsModeTest.kt` 的 mtime 幂等新增块与顾问 `docs/design/root-runtime.md` 保留。收敛前完整差异备份在 `notes/backups/root-runtime-dirty-20261103-0641{,-untracked}.patch`，SHA256 分别为 `a7cf8169c8ef45ab79feaf8de525559e264d9f5ea2e42a02592c43d61e7d3fd7`、`3a7bca48f280b81d54524eb021eb263025bb1c0b18fe9d83ff395eaddc20f231`。
