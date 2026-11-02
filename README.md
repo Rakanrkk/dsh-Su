@@ -1,5 +1,5 @@
 <p align="center">
-  <b>简体中文</b> · <a href="README.en.md">English</a>
+  <b>简体中文</b> · <a href="README.en.md">English</a> · <a href="docs/dsh-su.md">dsh-Su 架构与状态</a> · <a href="docs/guide/README.md">使用指南</a>
 </p>
 
 <p align="center">
@@ -14,11 +14,33 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="docs/dsh-su.md"><img alt="dsh-Su Root Runtime WIP" src="https://img.shields.io/badge/dsh--Su-Root%20Runtime%20(WIP)-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="许可证 AGPL-3.0" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="论坛" src="https://img.shields.io/badge/%E8%AE%BA%E5%9D%9B-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ 群 1132118290" src="https://img.shields.io/badge/QQ%20%E7%BE%A4-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
 </p>
+
+## 关于 dsh-Su（Root 分支说明）
+
+本仓库是 **`dsh-Su`**（[`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)），面向极客、玩机者与开发者，与上游 [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) 长期并行开发，完整保留原版功能、协议、版权与 [AGPL-3.0](LICENSE) 许可证归属。详细架构与进展见 [docs/dsh-su.md](docs/dsh-su.md)。
+
+```mermaid
+flowchart LR
+  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] --> Su["su (UID 0)<br/>KernelSU / SukiSU / Magisk / APatch"]
+  Su --> NS["独立 Mount Namespace<br/>+ chroot Ubuntu 24.04"]
+  NS --> Engine["Node.js + DSH 引擎<br/>127.0.0.1:3080"]
+  UI -->|SSH / DSH Remote| Remote["电脑 / 服务器 DSH"]
+```
+
+- **定位与架构**：不新增独立 `shell` 工具或权限分档，直接复用原版 Ubuntu rootfs、Node.js、DSH 引擎与 Flutter 界面，将本地运行环境从 PRoot 切换为真实 UID 0 `chroot`。
+- **已就绪部分**：
+  - Root 构建入口 `tooling/build-root-apk.sh`、独立包名 `io.github.rakanrkk.dsh_su`、桌面名称 `DSH SU` 与 `BuildConfig.ROOT_RUNTIME` 开关，可与原版 `DSH Go` 并存安装；
+  - 更新源隔离至 `Rakanrkk/dsh-Su`，清空上游公共更新流、镜像与内测令牌；
+  - 真机 `chroot` 内已验证 `id` 与 Node 进程返回真实 UID 0。
+- **开发中部分**：
+  - `DshProcess.kt` 的 Root 启动、独立 mount namespace 挂载与卸载、进程归属清理及文件属主适配尚未完成。
 
 <br>
 
@@ -37,20 +59,16 @@
 <br>
 
 <a id="download"></a>
-<h3 align="center">下载 DSH Go</h3>
+<h3 align="center">下载与构建</h3>
 
-<p align="center">从 GitHub Releases 或官网下载页获取最新版 APK，常见手机选 arm64 包。</p>
+<p align="center">dsh-Su 的 Root 引擎仍在开发中；本仓库发布页为 <a href="https://github.com/Rakanrkk/dsh-Su/releases">Rakanrkk/dsh-Su Releases</a>（构建入口 <code>tooling/build-root-apk.sh</code>）。如需稳定版原版 PRoot 客户端，可前往上游 <a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest">ccch1mneyyy/dsh-Go Releases</a> 或 <a href="https://go.dshtui.com/download">go.dshtui.com</a>。</p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="从 GitHub Releases 下载" src="https://img.shields.io/badge/GitHub%20Releases-%E4%B8%8B%E8%BD%BD%20APK-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="从官网下载页下载" src="https://img.shields.io/badge/go.dshtui.com-%E5%AE%98%E7%BD%91%E4%B8%8B%E8%BD%BD-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="dsh-Su Releases" src="https://img.shields.io/badge/Rakanrkk%2Fdsh--Su-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="上游 DSH Go Releases" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
-  <b>感谢大家对 DSH Go 的支持和喜爱，我将尽快适配 iOS 和鸿蒙！大家 Star 点得越多，我适配得越快哦 hhh</b>
-</p>
-
-<p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/stargazers"><img alt="GitHub Star 数" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/stargazers"><img alt="dsh-Su Star 数" src="https://img.shields.io/github/stars/Rakanrkk/dsh-Su?style=flat-square&logo=github&label=dsh-Su%20Star&color=4B67B4&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/stargazers"><img alt="上游 DSH Go Star 数" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-Go?style=flat-square&logo=github&label=%E4%B8%8A%E6%B8%B8%20Star&color=4B67B4&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
@@ -181,7 +199,7 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 
 安装要求为 Android 8.0（API 26）及以上。Release 页面上的 **arm64** 安装包适用于常见的 64 位 Android 手机；x86_64 设备和模拟器用的 x64 包在发布说明末尾的「其他版本下载」里。仓库没有 32 位 ARM 构建。
 
-1. 从 [GitHub Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) 或[官网下载页](https://go.dshtui.com/download)下载对应架构的 APK，并按系统提示允许该安装来源。
+1. 从本仓库 [Rakanrkk/dsh-Su Releases](https://github.com/Rakanrkk/dsh-Su/releases)（或按下方说明使用 `tooling/build-root-apk.sh` 本地构建；上游原版 APK 见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)）获取对应架构的 APK，并按系统提示允许该安装来源。
 2. 首次启动时，选择在本机安装运行环境，或连接远程主机。
 3. 为所选主机配置模型和所需凭据，再开始对话；部分远程渠道需要在主机侧配置。
 
@@ -244,8 +262,8 @@ Android 8 及以上。手机直接下载 Release 页面上的安装包即可，�
 先取得完整源码和项目资源。`app/pubspec.yaml` 声明的字体、图片等都是构建输入，运行时包由下面的脚本生成。
 
 ```bash
-git clone https://github.com/ccch1mneyyy/dsh-go.git
-cd dsh-go
+git clone https://github.com/Rakanrkk/dsh-Su.git
+cd dsh-Su
 
 bash tooling/setup-toolchain.sh
 source tooling/env.sh
@@ -253,6 +271,10 @@ flutter --version
 java -version
 
 bash runtime/build-runtime.sh arm64-v8a
+# 构建 dsh-Su（Root 运行时配置，包名 io.github.rakanrkk.dsh_su）
+bash tooling/build-root-apk.sh -f arm64 --keep-daemon
+
+# 或构建与上游一致的默认 PRoot 包（包名 io.github.ccch1mneyyy.dsh_app）
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --keep-daemon
 ```
 
@@ -264,6 +286,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --keep-daemon
 
 ```bash
 bash runtime/build-runtime.sh x86_64
+bash tooling/build-root-apk.sh -f x64 --keep-daemon
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f x64 --keep-daemon
 ```
 
@@ -272,6 +295,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f x64 --keep-daemon
 只查看 APK 构建命令，可运行：
 
 ```bash
+bash tooling/build-root-apk.sh --dry-run -f all
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 ```
 
@@ -285,14 +309,15 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 | `runtime/` | Linux 运行时打包、引擎补丁与 App 桥接 |
 | `sdk/plugin-kit/` | 原生插件作者工具包；在仓库中使用，未发布到 npm |
 | `examples/plugins/` | 插件示例 |
+| `docs/dsh-su.md` | `dsh-Su` Root 架构设计、开发状态与验证说明 |
 | `docs/guide/`、`docs/plugins/` | 用户指南与插件开发文档 |
 | `docs/assets/` | 本页用到的展示图、桌宠动图和社群二维码 |
-| `tooling/` | 工具链、APK 构建与诊断脚本 |
+| `tooling/` | 工具链、`build-root-apk.sh` / `build-apk.sh` 构建与诊断脚本 |
 | `services/`、`site/`、`infra/` | 配套分享服务、网站和部署材料 |
 
 ## 参与贡献
 
-问题反馈和改进建议可提交到 [Issues](https://github.com/ccch1mneyyy/dsh-go/issues)。代码、文档和翻译贡献请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。插件作者可以从[插件教程](docs/plugins/README.md)和 [SDK](sdk/plugin-kit/README.md)开始。
+问题反馈和改进建议可提交到 [Rakanrkk/dsh-Su Issues](https://github.com/Rakanrkk/dsh-Su/issues)。代码、文档和翻译贡献请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。插件作者可以从[插件教程](docs/plugins/README.md)和 [SDK](sdk/plugin-kit/README.md)开始。
 
 安全问题请按 [SECURITY.md](SECURITY.md) 报告，避免在公开 Issue 中提交漏洞细节或凭据。
 
@@ -321,6 +346,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 本项目采用 [AGPL-3.0](LICENSE)；`sdk/` 和 `examples/` 保持 **MIT**。第三方代码和素材以各自声明为准。
 
+- [DSH Go (`ccch1mneyyy/dsh-Go`)](https://github.com/ccch1mneyyy/dsh-Go)：`dsh-Su` 的上游仓库与完整应用基底。
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)：DSH Go 运行和连接的就是它。
 - [DSH-TUI](https://github.com/ccch1mneyyy/dsh-TUI)：吉祥物 Deepy 小鲸鱼和鲸娘来自这里。
 

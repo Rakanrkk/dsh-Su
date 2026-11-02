@@ -8,12 +8,12 @@
   "riskAllowForChatBody": "这个对话之后的命令和改动都直接放行，可在输入框上方随时关闭。",
   "riskAllowForChatAction": "全部允许",
   "riskPetOverlayTitle": "显示在其他应用上层？",
-  "riskPetOverlayBody": "要在系统设置里为 DSH Go 打开「显示在其他应用上层」，宠物才能出现在别的 App 上。",
+  "riskPetOverlayBody": "要在系统设置里为 dsh-Su 打开「显示在其他应用上层」，宠物才能出现在别的 App 上。",
   "riskPetOverlayAction": "去设置",
   "askAiTooltip": "问 AI",
   "askAiHelpTitle": "使用帮助",
   "askAiHelpSubtitle": "不懂的地方，问 AI",
-  "askAiAboutApp": "关于 DSH Go App：{question}",
+  "askAiAboutApp": "关于 dsh-Su App：{question}",
   "@askAiAboutApp": {
     "placeholders": {
       "question": {
@@ -21,7 +21,7 @@
       }
     }
   },
-  "askAiWithGuide": "关于 DSH Go App：{question}\n请按附件里的使用说明回答。",
+  "askAiWithGuide": "关于 dsh-Su App：{question}\n请按附件里的使用说明回答。",
   "@askAiWithGuide": {
     "placeholders": {
       "question": {
@@ -29,8 +29,8 @@
       }
     }
   },
-  "askAiNoGuide": "这台主机没有 DSH Go 使用说明，回答可能不准确",
-  "askAiQuestionOverview": "DSH Go 能做什么？我该从哪里开始？",
+  "askAiNoGuide": "这台主机没有 dsh-Su 使用说明，回答可能不准确",
+  "askAiQuestionOverview": "dsh-Su 能做什么？我该从哪里开始？",
   "askAiQuestionPhoneControl": "手机操控是怎么工作的？有什么风险？",
   "askAiQuestionPhoneAlways": "手机操控选「始终免确认」会怎样？和「每次都询问」比风险在哪？",
   "askAiQuestionAppRules": "手机操控的应用名单有什么用？放开银行、支付类 App 有什么风险？",

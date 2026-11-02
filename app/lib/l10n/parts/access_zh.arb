@@ -1,6 +1,6 @@
 {
   "@@locale": "zh",
-  "accessPickTitle": "想让 DSH Go 帮你做哪些事",
+  "accessPickTitle": "想让 dsh-Su 帮你做哪些事",
   "accessPickMessage": "选好后逐项开启",
   "accessPickConfirm": "开启所选",
   "accessSkip": "跳过",
@@ -81,7 +81,7 @@
   "accessA11yTitle": "打开无障碍",
   "accessA11yWhy": "手机操控靠它看屏幕、点按",
   "accessPopupTitle": "允许后台弹出界面",
-  "accessPopupWhy": "手机操控做完能回到 DSH Go",
+  "accessPopupWhy": "手机操控做完能回到 dsh-Su",
   "accessVivoPopupPath": "权限管理 › {app} › 后台弹出界面",
   "@accessVivoPopupPath": {
     "placeholders": {
