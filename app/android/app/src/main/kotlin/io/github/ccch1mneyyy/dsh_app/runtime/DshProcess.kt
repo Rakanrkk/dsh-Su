@@ -272,11 +272,16 @@ class DshProcess(
             return
         }
         onLaunchMethod?.invoke(false)
-        val session = DshProcessRootSession(plan, onEvent = { event ->
-            if (event.event == "error") {
-                listener.onLog("[dsh-app] root supervisor error " + event.fields.joinToString(" "), "system")
-            }
-        }, onLog = listener::onLog)
+        val session = DshProcessRootSession(
+            plan,
+            onEvent = { event ->
+                if (event.event == "error") {
+                    listener.onLog("[dsh-app] root supervisor error " + event.fields.joinToString(" "), "system")
+                }
+            },
+            onLog = listener::onLog,
+            onStdout = ::detectToken,
+        )
         rootSession = session
         readyReported = false
         process = session.processReference()
@@ -291,7 +296,7 @@ class DshProcess(
             }
         }
         waiter = thread(name = "dsh-root-wait", isDaemon = true) {
-            val exited = session.awaitExit(STOP_TIMEOUT_MS)
+            val exited = session.awaitExit(0)
             val code = session.exitCode() ?: -1
             val confirmed = exited && session.cleanupConfirmed()
             reportRootExit(code, confirmed, unexpected = !stopping)

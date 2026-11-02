@@ -13,6 +13,7 @@ internal class DshProcessRootSession(
     private val spec: RootLaunch.Spec,
     private val onEvent: (RootLaunch.Event) -> Unit,
     private val onLog: (String, String) -> Unit,
+    private val onStdout: (String) -> Unit = {},
     processOverride: Process? = null,
 ) {
     // Test seam: production always spawns over su; tests inject a fake Process.
@@ -72,7 +73,10 @@ internal class DshProcessRootSession(
         thread(name = "dsh-root-stdout", isDaemon = true) {
             try {
                 process.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                    lines.forEach { line -> onLog(line, "stdout") }
+                    lines.forEach { line ->
+                        onLog(line, "stdout")
+                        onStdout(line)
+                    }
                 }
             } finally {
                 stdoutDone.countDown()
@@ -119,9 +123,13 @@ internal class DshProcessRootSession(
 
     /** Waits for the su child, then for both pumps so the final event is visible. */
     fun awaitExit(millis: Long): Boolean {
-        val deadline = System.nanoTime() + millis * 1_000_000L
-        while (process.isAlive && System.nanoTime() < deadline) Thread.sleep(100)
-        if (process.isAlive) return false
+        if (millis == 0L) {
+            process.waitFor()
+        } else {
+            val deadline = System.nanoTime() + millis * 1_000_000L
+            while (process.isAlive && System.nanoTime() < deadline) Thread.sleep(100)
+            if (process.isAlive) return false
+        }
         processExit = process.exitValue()
         val pumpDeadline = System.nanoTime() + PUMP_DRAIN_NANOS
         while ((stderrDone.count > 0L || stdoutDone.count > 0L) && System.nanoTime() < pumpDeadline) Thread.sleep(25)

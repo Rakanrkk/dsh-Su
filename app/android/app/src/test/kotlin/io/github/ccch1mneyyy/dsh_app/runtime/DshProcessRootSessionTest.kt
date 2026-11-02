@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.createTempDirectory
 import org.junit.Assert.*
 import org.junit.Test
@@ -86,5 +87,32 @@ class DshProcessRootSessionTest {
         assertEquals(0 to "clean", session.finalStatus())
         assertTrue(session.cleanupConfirmed())
         assertTrue(stdoutSeen)
+    }
+
+    @Test fun zeroTimeoutWaitsForActualExit() {
+        val fake = FakeProcess()
+        val session = DshProcessRootSession(
+            spec(), onEvent = {}, onLog = { _, _ -> },
+            processOverride = fake,
+        )
+        session.startPumps()
+        session.writeLaunchFrame(RootLaunch.frame(listOf("/usr/bin/env", "X=1", "/bin/sh")))
+        val returned = CountDownLatch(1)
+        val waiter = Thread {
+            session.awaitExit(0)
+            returned.countDown()
+        }
+        waiter.start()
+        try {
+            assertFalse(returned.await(200, TimeUnit.MILLISECONDS))
+        } finally {
+            fake.exited.countDown()
+        }
+        assertTrue(returned.await(5000, TimeUnit.MILLISECONDS))
+        waiter.join(1000)
+        assertFalse(waiter.isAlive)
+        assertEquals(0, session.exitCode())
+        assertEquals(0 to "clean", session.finalStatus())
+        assertTrue(session.cleanupConfirmed())
     }
 }
