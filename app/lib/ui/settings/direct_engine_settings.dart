@@ -23,6 +23,9 @@ class _DirectEngineSettingsState extends ConsumerState<DirectEngineSettings> {
   Widget build(BuildContext context) {
     final runtime = ref.watch(localRuntimeProvider);
     final status = runtime.status;
+    if (!status.directEngineAvailable && !status.directEngineEnabled) {
+      return const SizedBox.shrink();
+    }
     final l10n = context.l10n;
     final stopped = !status.phase.isBusy && status.phase != RuntimePhase.running;
     final enabled =

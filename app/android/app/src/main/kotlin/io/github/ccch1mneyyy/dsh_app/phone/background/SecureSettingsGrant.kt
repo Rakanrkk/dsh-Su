@@ -28,8 +28,9 @@ object SecureSettingsGrant {
     /** Neither is set up (不打扰模式's page sets up both). */
     const val SETUP = "setup"
 
-    fun path(granted: Boolean, shizuku: ShizukuStatus, adb: AdbStatus): String = when {
+    fun path(granted: Boolean, shizuku: ShizukuStatus, adb: AdbStatus, rootConnected: Boolean = false): String = when {
         granted -> GRANTED
+        rootConnected -> ROOT
         shizuku.running && shizuku.granted -> SHIZUKU
         adb.paired && adb.wirelessDebugging != false -> ADB
         shizuku.running -> SHIZUKU_PERMISSION
@@ -43,7 +44,8 @@ object SecureSettingsGrant {
         val legacy = path(granted, shizuku, adb)
         return when {
             granted -> GRANTED
-            rootSelected -> if (rootConnected) ROOT else SETUP
+            rootConnected -> ROOT
+            rootSelected -> SETUP
             shizuku.provider != ShizukuStatus.SUI -> legacy
             legacy == SHIZUKU -> SUI
             legacy == SHIZUKU_PERMISSION -> SUI_PERMISSION

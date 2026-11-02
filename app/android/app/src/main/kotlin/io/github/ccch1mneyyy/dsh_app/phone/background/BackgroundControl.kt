@@ -251,7 +251,16 @@ class BackgroundControl private constructor(context: Context) {
 
     /** The one-tap way to the permission right now ([SecureSettingsGrant.path]). */
     fun grantPath(granted: Boolean): String =
-        if (granted) SecureSettingsGrant.GRANTED else SecureSettingsGrant.path(false, shizuku.status(), adb.status())
+        if (granted) SecureSettingsGrant.GRANTED
+        else SecureSettingsGrant.path(false, shizuku.status(), adb.status(), root.status().connected)
+
+    /** Enables phone control in a root build: connect once, then the fixed WSS grant. */
+    fun autoGrantSecureSettingsWithRoot(mayStart: () -> Boolean): Map<String, Any?> {
+        if (secureSettingsGranted()) return mapOf("ok" to true)
+        if (root.status().connected) return grantRootSecureSettings()
+        val prepared = prepareRoot(mayStart)
+        return if (prepared["ok"] == true) grantRootSecureSettings() else prepared
+    }
 
     /**
      * Has the engine grant the permission over [via] (`shizuku` / `adb`): 不打扰模式's channel when it
