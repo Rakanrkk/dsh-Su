@@ -1,0 +1,59 @@
+== 20261102T210837Z serial=emulator-5582 avd=dsh-su-kernelsu-api36 ==
+-- qemu/AVD --
+1
+dsh-su-kernelsu-api36
+OK
+-- system --
+16
+36
+x86_64
+6.6.66-android15-8-gb66429556fb8-ab13070261
+-- shell identity control --
+uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012(readtracefs) context=u:r:shell:s0
+-- KernelSU su --
+3.3.1:KernelSU
+32680
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+6.6.66-android15-8-gb66429556fb8-ab13070261
+-- ksud / framework --
+ksud 3.3.1 (uapi: 5)
+version: 33355
+flags: 0x11
+uapi_version: 5
+features: 0x2714
+lkm: true
+bundled: true
+late_load: false
+runtime_mode: lkm
+pr_build: false
+kernelsu 430080 0 - Live 0x0000000000000000 (O)
+25
+  Size: 1767048	 Blocks: 3464	 IO Blocks: 512	 regular file
+busybox
+ksud
+resetprop
+-- manager --
+package:me.weishu.kernelsu uid:10150
+    versionName=v3.3.1
+-- enforce / namespace / cgroup --
+Enforcing
+mnt:[4026532358]
+cgroup2
+3:cpuset:/
+2:cpu:/
+1:blkio:/
+-- ksuinit log --
+11-03 04:52:44.729     0     0 I ksuinit : :init[1]: load kernelsu with params "allow_shell=1 bundled=1"
+-- host artifacts --
+pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  /home/rakan/dev/avd/backups/20261102T194623Z/ramdisk.img
+avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  /home/rakan/dev/avd/profiles/dsh-su-kernelsu-api36.avd/ramdisk.img
+avd-initrd(lz4 cpio with kernelsu.ko+ksuinit): a1a549323131b565ce3a8dfdcf714630bd27f243eedf113feb7eb994a7802dc1  /home/rakan/dev/avd/profiles/dsh-su-kernelsu-api36.avd/initrd
+cut: '"': No such file or directory
+cut: '"': No such file or directory
+tr: extra operand ‘"’
+Try 'tr --help' for more information.
+ksuinit-cpio: kernelsu.ko=50ebef0daa5b3fa1ce0e4d3267db8cf25b22b2a49a867dc6fd99f71d2f3efeb3 init=b0ae99c7eabcd470262b88cc8ee8c0be41376c5dccc084ac925aa06e4eedecf8 ksu_config=allow_shell=1 bundled=1
+ksud(x86_64-linux-android v3.3.1 tiann official): 5324a1e8f2f3c74dc69624c4cd973fb9bc1d5da3614a2f2e694583f73bd13cbd  /tmp/ksu-fix/ksud
+manager apk: b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450  /home/rakan/dev/avd/profiles/kernelsu/KernelSU_v3.3.1_32680-release.apk
+lkm-official-v3.3.1-android15-6.6(not loaded; AVD uses ksuinit bundle): c15aadcdd9507bcd3f0ba88f70438f86cfc69317b6e7e63e89f7025710fe276f  /tmp/ksu-fix/lkm.ko
+manager-screenshot: /home/rakan/dev/avd/profiles/kernelsu/evidence/manager-working-20261102T210721Z.png

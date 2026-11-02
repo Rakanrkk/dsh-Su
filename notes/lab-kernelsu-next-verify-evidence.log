@@ -1,0 +1,54 @@
+== 20261102T210856Z serial=emulator-5584 avd=dsh-su-next-api36 ==
+-- qemu/AVD --
+1
+dsh-su-next-api36
+OK
+-- system --
+16
+36
+x86_64
+6.6.66-android15-8-gb66429556fb8-ab13070261
+-- shell identity control --
+uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012(readtracefs) context=u:r:shell:s0
+-- KernelSU Next su --
+3.4.2:KernelSU
+33355
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+6.6.66-android15-8-gb66429556fb8-ab13070261
+-- ksud / framework --
+ksud 3.4.2 (uapi: 5)
+version: 33355
+flags: 0x11
+uapi_version: 5
+features: 0x2714
+lkm: true
+bundled: true
+late_load: false
+runtime_mode: lkm
+pr_build: false
+kernelsu 430080 0 - Live 0x0000000000000000 (O)
+25
+  Size: 1767048	 Blocks: 3464	 IO Blocks: 512	 regular file
+busybox
+ksud
+resetprop
+-- manager --
+package:com.rifsxd.ksunext uid:10150
+    versionName=v3.4.2
+-- enforce / namespace / cgroup --
+Enforcing
+mnt:[4026532339]
+cgroup2
+3:cpuset:/
+2:cpu:/
+1:blkio:/
+-- ksuinit log --
+11-03 04:18:34.854     0     0 I ksuinit : :init[1]: load kernelsu with params "allow_shell=1 bundled=1"
+-- host artifacts --
+pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  /home/rakan/dev/avd/backups/20261102T194623Z/ramdisk.img
+avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  /home/rakan/dev/avd/profiles/next.avd/ramdisk.img
+avd-initrd(lz4 cpio): b9b100aeae1b41a9a880031ea30e3da13cef657ee6fc5397a329ef881d82ef96  /home/rakan/dev/avd/profiles/next.avd/initrd
+ksuinit-cpio: kernelsu.ko=50ebef0daa5b3fa1ce0e4d3267db8cf25b22b2a49a867dc6fd99f71d2f3efeb3 init=b0ae99c7eabcd470262b88cc8ee8c0be41376c5dccc084ac925aa06e4eedecf8 ksu_config=allow_shell=1 bundled=1
+ksud(x86_64-linux-android v3.4.2 KernelSU-Next official): 6f01d6277d1675c617c9ee8b8d21f907075555e0a0ae724c04d42bc21dae8f89  /tmp/ksu-fix/ksud-next
+manager-screenshot: /home/rakan/dev/avd/profiles/next.avd/evidence/manager-working-20261102T210727Z.png
+manager apk (KernelSU_Next_v3.4.2_33355-release): 774a5511f7034a4930e881114e202319cbdc34c5aaaa5c7c6b6d2902364e4c58  /home/rakan/dev/avd/lab-state/cache/ksu-next/Apps/KernelSU.apk
