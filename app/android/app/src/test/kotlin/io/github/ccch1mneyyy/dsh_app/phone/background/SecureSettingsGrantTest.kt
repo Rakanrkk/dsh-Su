@@ -1,5 +1,6 @@
 package io.github.ccch1mneyyy.dsh_app.phone.background
 
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -31,5 +32,10 @@ class SecureSettingsGrantTest {
         assertEquals(SecureSettingsGrant.ADB, SecureSettingsGrant.path(false, shizuku.copy(granted = false), adb))
         assertEquals(SecureSettingsGrant.SHIZUKU_PERMISSION,
             SecureSettingsGrant.path(false, shizuku.copy(granted = false), adb.copy(wirelessDebugging = false)))
+    }
+
+    @Test fun appPackageMatchesBuildIdentity() {
+        assertEquals(if (BuildConfig.ROOT_RUNTIME) "io.github.rakanrkk.dsh_su" else "io.github.ccch1mneyyy.dsh_app", Proto.APP_PACKAGE)
+        assertNotNull(Proto.APP_PACKAGE)
     }
 }
