@@ -86,4 +86,45 @@ class GuestAgentsModeTest {
             assertEquals(modified, file.lastModified())
         } finally { root.deleteRecursively() }
     }
+
+    @Test fun rootBuildDescribesARealRootChroot() {
+        val root = kotlin.io.path.createTempDirectory("agents-root").toFile()
+        try {
+            val file = File(root, "root/.dsh/AGENTS.md")
+            GuestSetup.writeAgentsMd(root, phoneStorage = false, rootRuntime = true)
+            val text = file.readText()
+            assertTrue(text.contains("chroot"))
+            assertTrue(text.contains("真实 root（UID 0）"))
+            assertFalse(text.contains("proot，免 Root"))
+            // Chroot paths stay guest-side, unlike Direct's absolute host paths.
+            assertTrue(text.contains("`/root/workspace`"))
+            assertFalse(text.contains(root.canonicalPath))
+            assertTrue(text.contains("`\$DSH_HOME/dsh-app/diagnostics.md`"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun rootBuildStillLeavesAUserOwnedAgentsFileAlone() {
+        val root = kotlin.io.path.createTempDirectory("agents-root-user").toFile()
+        try {
+            val file = File(root, "root/.dsh/AGENTS.md")
+            file.parentFile.mkdirs()
+            file.writeText("# My own workspace instructions\n")
+            // Root mode keeps the same write contract as upstream: a user-owned AGENTS.md is
+            // left alone even when the app runs the engine as real root.
+            GuestSetup.writeAgentsMd(root, phoneStorage = true, rootRuntime = true)
+            assertEquals("# My own workspace instructions\n", file.readText())
+            // The managed root template (see rootBuildDescribesARealRootChroot) describes a
+            // chroot with real UID 0, never the upstream proot wording.
+            val probe = kotlin.io.path.createTempDirectory("agents-root-managed").toFile()
+            try {
+                val managed = File(probe, "root/.dsh/AGENTS.md")
+                GuestSetup.writeAgentsMd(probe, phoneStorage = true, rootRuntime = true)
+                val text = managed.readText()
+                assertTrue(text.startsWith("<!-- dsh-app:managed"))
+                assertTrue(text.contains("chroot"))
+                assertTrue(text.contains("真实 root（UID 0）"))
+                assertFalse(text.contains("proot，免 Root"))
+            } finally { probe.deleteRecursively() }
+        } finally { root.deleteRecursively() }
+    }
 }
