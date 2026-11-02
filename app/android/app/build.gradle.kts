@@ -15,6 +15,8 @@ val keyProps = Properties().apply {
 // Per-ABI runtime bundles produced by runtime/build-runtime.sh.
 val runtimeOut = rootProject.file("../../runtime/out")
 
+val rootRuntime = (project.findProperty("dsh.rootRuntime") as? String) == "true"
+
 // versionCode is the build minute, same encoding as tooling/build_number.py:
 // (year - 2026) * 10^8 + MMDDhhmm at UTC+8. tooling/build-apk.sh passes it as
 // --build-number; this covers builds that skip the script (flutter run, the
@@ -35,8 +37,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
-        applicationId = "io.github.ccch1mneyyy.dsh_app"
+        applicationId = if (rootRuntime) "io.github.rakanrkk.dsh_su" else "io.github.ccch1mneyyy.dsh_app"
         // java.nio.file (symlinks while unpacking the rootfs) needs API 26.
         minSdk = 26
         // Target 28 like Termux, so the API 29+ exec restriction on app-private
@@ -44,6 +50,8 @@ android {
         targetSdk = 28
         versionCode = flutter.versionCode.takeIf { it > 1 } ?: buildMinuteVersionCode()
         versionName = flutter.versionName
+        buildConfigField("boolean", "ROOT_RUNTIME", rootRuntime.toString())
+        manifestPlaceholders["dshAppLabel"] = if (rootRuntime) "DSH SU" else "DSH Go"
     }
 
     flavorDimensions += "abi"

@@ -17,11 +17,13 @@
 /// - `--dart-define=DSH_UPDATE_FEED=https://example.com/dsh/update.json`
 ///   asks another manifest in place of the copy's (empty string = none);
 /// - `--dart-define=DSH_UPDATE_MIRRORS=https://a.example/,https://b.example/`
-///   replaces the public GitHub accelerator list (empty string = none).
+///   replaces the public GitHub accelerator list (empty string = none);
+/// - `--dart-define=DSH_UPDATE_REPO=owner/name`
+///   changes the GitHub repository carrying the releases.
 library;
 
 /// GitHub repository the releases live in.
-const updateRepo = 'ccch1mneyyy/dsh-go';
+const updateRepo = String.fromEnvironment('DSH_UPDATE_REPO', defaultValue: 'ccch1mneyyy/dsh-go');
 
 /// `releases/latest` of the REST API: tag, notes, assets with sizes and
 /// SHA-256 digests. Unauthenticated: 60 requests per hour per IP.

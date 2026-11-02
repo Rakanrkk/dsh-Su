@@ -7,10 +7,19 @@
 #   tooling/emu.sh tap <x> <y>       tap at screen coordinates
 #   tooling/emu.sh text <string>     type text into the focused field
 #   tooling/emu.sh wait-boot         block until the emulator finished booting
+# Set DSH_SERIAL=<serial> to select a device when more than one is attached.
+# Set DSH_PACKAGE=<package> to target another install; Root example:
+#   DSH_PACKAGE=io.github.rakanrkk.dsh_su
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
-PKG=io.github.ccch1mneyyy.dsh_app
+PKG="${DSH_PACKAGE:-io.github.ccch1mneyyy.dsh_app}"
 SHOTS="$(dirname "$0")/shots"
+if [[ -n "${DSH_SERIAL:-}" ]]; then
+  ADBOPT=(-s "$DSH_SERIAL")
+else
+  ADBOPT=()
+fi
+adb() { command adb "${ADBOPT[@]}" "$@"; }
 
 case "${1:-}" in
   install) adb install -r -g "$2" ;;
@@ -24,5 +33,5 @@ case "${1:-}" in
     adb wait-for-device
     until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 2; done
     echo booted ;;
-  *) sed -n '2,9p' "$0"; exit 1 ;;
+  *) sed -n '2,12p' "$0"; exit 1 ;;
 esac
