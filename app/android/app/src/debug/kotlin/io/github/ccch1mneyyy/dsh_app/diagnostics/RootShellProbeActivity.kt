@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Debug-only identity probe for the installed app UID. Fixed su path, fixed
- * `id` command, no arbitrary input and no inherited Flutter/runtime startup.
+ * Debug-only identity probe for the installed app UID. Fixed su candidate
+ * list, fixed `id` command, no arbitrary input and no runtime startup.
  */
 class RootShellProbeActivity : Activity() {
     private val output = StringBuilder()
@@ -71,7 +71,8 @@ class RootShellProbeActivity : Activity() {
             line("APP_UID=${Process.myUid()}")
             line("SELINUX_CURRENT=${readContext("/proc/self/attr/current")}")
             line("SELINUX_ENFORCING=${readContext("/sys/fs/selinux/enforce")}")
-            runFixedId()
+            val results = PROBE_SU_PATHS.map { path -> runFixedId(path) }
+            line("SUMMARY=" + results.joinToString(";"))
             line("PROBE_DONE=true")
         } finally {
             Handler(Looper.getMainLooper()).post {
@@ -81,13 +82,13 @@ class RootShellProbeActivity : Activity() {
         }
     }
 
-    private fun runFixedId() {
-        line("SU=$PROBE_SU MODE=COMMAND COMMAND=$FIXED_ID")
+    private fun runFixedId(probeSu: String): String {
+        line("SU=$probeSu MODE=COMMAND COMMAND=$FIXED_ID")
         val process: java.lang.Process = try {
-            ProcessBuilder(listOf(PROBE_SU, "-c", FIXED_ID)).start()
+            ProcessBuilder(listOf(probeSu, "-c", FIXED_ID)).start()
         } catch (error: Exception) {
             line("RESULT=START_ERROR EXCEPTION=${error.javaClass.name} MESSAGE=${oneLine(error.message ?: "unknown")}")
-            return
+            return "START_ERROR"
         }
         val stdout = StringBuilder()
         val stderr = StringBuilder()
@@ -111,16 +112,18 @@ class RootShellProbeActivity : Activity() {
         if (!readersDone.await(PROBE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             closeOwnStdin(process.outputStream)
             line("RESULT=TIMEOUT EXIT=unknown")
-            return
+            return "TIMEOUT"
         }
         if (!process.waitFor(WAIT_AFTER_READERS_SECONDS, TimeUnit.SECONDS)) {
             closeOwnStdin(process.outputStream)
             line("RESULT=TIMEOUT EXIT=unknown READERS_DONE=true")
-            return
+            return "TIMEOUT"
         }
         val exit = process.exitValue()
         val uid = parseUid(stdout.toString())
+        val context = parseContext(stdout.toString())
         line("UID=$uid")
+        line("CONTEXT=${context ?: "UNKNOWN"}")
         line("STDERR=${oneLine(stderr.toString())}")
         line("EXIT=$exit")
         val result = when {
@@ -130,6 +133,10 @@ class RootShellProbeActivity : Activity() {
             else -> "COMMAND_ERROR"
         }
         line("RESULT=$result")
+        return when {
+            uid != null -> "$result uid=$uid ctx=${context ?: "unknown"}"
+            else -> result
+        }
     }
 
     private fun closeOwnStdin(output: java.io.OutputStream?) {
@@ -141,6 +148,10 @@ class RootShellProbeActivity : Activity() {
 
     private fun parseUid(text: String): Int? {
         return UID_PATTERN.find(text)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    private fun parseContext(text: String): String? {
+        return CONTEXT_PATTERN.find(text)?.groupValues?.get(1)
     }
 
     private fun oneLine(text: String): String {
@@ -158,11 +169,12 @@ class RootShellProbeActivity : Activity() {
     companion object {
         private const val TAG = "DshRootAppProbe"
         private const val PROBE_THREAD_NAME = "dsh-app-root-probe"
-        private const val PROBE_SU = "/system/bin/su"
+        private val PROBE_SU_PATHS = listOf("/system/bin/su", "/debug_ramdisk/su")
         private const val FIXED_ID = "id"
         private const val PROBE_TIMEOUT_SECONDS = 15L
         private const val WAIT_AFTER_READERS_SECONDS = 3L
         private const val LOG_LIMIT = 400
         private val UID_PATTERN = Regex("""\buid=(\d+)""")
+        private val CONTEXT_PATTERN = Regex("""\bcontext=(\S+)""")
     }
 }
