@@ -1,0 +1,37 @@
+--- app/android/app/src/main/assets/root-runtime/supervisor.sh	2026-11-03 07:38:56.585625594 +0800
++++ b/app/android/app/src/main/assets/root-runtime/supervisor.sh	2026-11-03 07:40:55.872550915 +0800
+@@ -205,7 +205,9 @@
+ }
+
+ stage2_main() {
+-  # argv: stage2 --cgdir <dir> --rootfs <path> [--bind H G]... -- <guest argv...>
++  # argv: stage2 --cgdir <dir> --rootfs <path> [--bind H G]... --
++  # Guest argv arrives after -- as the startup frame on stdin:
++  # "argv <argc>\n" then argc NUL-terminated UTF-8 records.
+   CGROOT=
+   ROOTFS=
+   shift
+@@ -219,6 +221,23 @@
+     esac
+   done
+   [ -n "$ROOTFS" ] || exit 90
++  [ $# -eq 0 ] || exit 90
++  guest_header=
++  guest_argc=
++  IFS= read -r guest_header || exit 91
++  case "$guest_header" in
++    argv\ *) guest_argc=${guest_header#argv } ;;
++    *) exit 91 ;;
++  esac
++  case "$guest_argc" in ''|0|*[!0-9]*) exit 91 ;; esac
++  guest_index=0
++  while [ "$guest_index" -lt "$guest_argc" ]; do
++    guest_arg=
++    IFS= read -r -d '' guest_arg || exit 91
++    set -- "$@" "$guest_arg"
++    guest_index=$((guest_index + 1))
++  done
++  [ $# -gt 0 ] || exit 90
+   mountinfo_clean || { [ -n "$CGROOT" ] && printf 1 > "$CGROOT/stage2-error"; exit 92; }
+   mount --bind /proc "$ROOTFS/proc" || { [ -n "$CGROOT" ] && printf 1 > "$CGROOT/stage2-error"; exit 93; }
+   mount --bind /sys "$ROOTFS/sys" || { [ -n "$CGROOT" ] && printf 1 > "$CGROOT/stage2-error"; exit 94; }
