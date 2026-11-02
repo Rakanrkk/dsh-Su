@@ -13,6 +13,16 @@ class SecureSettingsGrantTest {
             SecureSettingsGrant.path(false, ShizukuStatus.fromFacts(false, true, false, true), noAdb))
     }
 
+    @Test fun aLiveRootConnectionIsTheGrantPathButSelectionAloneIsNot() {
+        val none = ShizukuStatus(installed = false, running = false, granted = false)
+        val noAdb = AdbStatus(wirelessDebugging = false, paired = false, connected = false)
+        assertEquals(SecureSettingsGrant.ROOT, SecureSettingsGrant.path(false, none, noAdb, rootConnected = true))
+        assertEquals(SecureSettingsGrant.ROOT,
+            SecureSettingsGrant.privilegedPath(false, none, noAdb, rootSelected = false, rootConnected = true))
+        assertEquals(SecureSettingsGrant.SETUP,
+            SecureSettingsGrant.privilegedPath(false, none, noAdb, rootSelected = true, rootConnected = false))
+    }
+
     @Test fun prefersAnAuthorizedChannelWithoutAnotherPrompt() {
         val shizuku = ShizukuStatus(installed = true, running = true, granted = true)
         val adb = AdbStatus(paired = true, wirelessDebugging = true, connected = false)

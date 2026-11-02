@@ -1,5 +1,6 @@
 package io.github.ccch1mneyyy.dsh_app.phone
 
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
 import io.github.ccch1mneyyy.dsh_app.R
 import android.content.Context
@@ -127,6 +128,8 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
             }
             "setEnabled" -> {
                 val enabled = call.argument<Boolean>("enabled") == true
+                val rootAutoGrant = enabled && BuildConfig.ROOT_RUNTIME
+                val autoTicket = if (rootAutoGrant) privilegedActions.select() else null
                 if (!enabled) {
                     privilegedActions.select()
                     val cleared = control.background.clearKeep()
@@ -135,6 +138,9 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                 }
                 async(result) {
                     val ok = (!enabled || control.background.preparePhoneEnable()) && control.setEnabled(enabled)
+                    if (ok && rootAutoGrant) io.execute {
+                        control.background.autoGrantSecureSettingsWithRoot { attached && privilegedActions.current(autoTicket!!) }
+                    }
                     if (ok && !enabled) control.background.setBackgroundMode("off")["ok"] == true else ok
                 }
             }
