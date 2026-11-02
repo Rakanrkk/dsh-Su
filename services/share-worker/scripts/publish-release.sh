@@ -10,7 +10,7 @@
 #            --no-dl to leave it out
 #   China    <version>/ in the Hong Kong bucket, with ossutil or coscli; on when
 #            CN_BASE_URL (wrangler.jsonc) is set, --no-cn to leave it out
-#   GitHub   a release v<version> on ccch1mneyyy/dsh-go, with update.json, notes from
+#   GitHub   a release v<version> on Rakanrkk/dsh-Su, with update.json, notes from
 #            docs/changelog.md; only with --github. Made as a draft, published at the end
 #
 # Then every file is downloaded back from every route (the channel token for R2,
@@ -105,7 +105,7 @@ wrangler_var() { wrangler_json | jq -r --arg k "$1" '.vars[$k] // ""'; }
 
 ORIGIN=${BETA_ORIGIN:-https://go.dshtui.com}
 BUCKET=dshgo-share
-REPO=ccch1mneyyy/dsh-go
+REPO=Rakanrkk/dsh-Su
 GITHUB_DOWNLOAD_BASE=${GITHUB_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download}
 TOKEN_FILE=${BETA_TOKEN_FILE:-$HOME/keys/dshgo-beta-channel.token}
 CHANGELOG=${CHANGELOG:-../../docs/changelog.md}

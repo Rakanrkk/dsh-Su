@@ -39,7 +39,8 @@ from build_number import MAX_VERSION_CODE, decode
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FLAVORS = ("arm64", "x64")
 FLAVOR_ABI = {"arm64": "arm64-v8a", "x64": "x86_64"}
-REPO = "ccch1mneyyy/dsh-go"
+REPO = "Rakanrkk/dsh-Su"
+ROOT_APPLICATION_ID = "io.github.rakanrkk.dsh_su"
 VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+(\d+))?$")
 BADGING_RE = re.compile(r"^package: .*?\bversionCode='(\d*)' versionName='([^']*)'", re.MULTILINE)
 CACHE = pathlib.Path.home() / ".cache" / "dshgo-release" / "apk"
@@ -56,6 +57,18 @@ def check_abis(flavor: str, entries: list[str]) -> None:
     abis = {name.split("/")[1] for name in entries if name.startswith("lib/") and name.endswith(".so")}
     if abis != {FLAVOR_ABI[flavor]}:
         raise ReleaseError(f"{flavor} APK has native libraries for {sorted(abis)}, expected only {FLAVOR_ABI[flavor]}")
+
+
+def check_root_runtime(aapt2: str, path: pathlib.Path) -> None:
+    """The package is dsh-Su and its Dart code uses the fork update repo injected
+    by tooling/build-root-apk.sh; this keeps an ordinary DSH Go APK off this feed."""
+    out = subprocess.run([aapt2, "dump", "badging", str(path)], capture_output=True, text=True).stdout
+    if f"name={chr(39)}{ROOT_APPLICATION_ID}{chr(39)}" not in out:
+        raise ReleaseError(f"{path}: expected dsh-Su package {ROOT_APPLICATION_ID}; build with tooling/build-root-apk.sh")
+    with zipfile.ZipFile(path) as apk:
+        libapp = apk.read("lib/arm64-v8a/libapp.so")
+    if b"Rakanrkk/dsh-Su" not in libapp:
+        raise ReleaseError(f"{path}: lacks --dart-define=DSH_UPDATE_REPO=Rakanrkk/dsh-Su; build with tooling/build-root-apk.sh")
 
 
 def pubspec_version() -> str:
@@ -226,6 +239,7 @@ def main() -> None:
         for flavor, path in sources.items():
             with zipfile.ZipFile(path) as apk:
                 check_abis(flavor, apk.namelist())
+        check_root_runtime(aapt2, sources["arm64"])
     except ReleaseError as e:
         sys.exit(str(e))
 

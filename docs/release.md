@@ -6,7 +6,7 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
 
 ## 资产约定
 
-每个版本一个 GitHub Release，仓库 `ccch1mneyyy/dsh-go`，必须公开（私有仓库匿名访问一律 404，App 只会显示「暂时检查不了」）。同一组文件也放在公开下载桶：`https://dl.dshtui.com/download/<版本>/<文件>`，最新版的清单在 `https://dl.dshtui.com/update.json`（见「公开下载桶 dl」）。
+每个版本一个 GitHub Release，仓库 `Rakanrkk/dsh-Su`，必须公开（私有仓库匿名访问一律 404，App 只会显示「暂时检查不了」）。同一组文件也放在公开下载桶：`https://dl.dshtui.com/download/<版本>/<文件>`，最新版的清单在 `https://dl.dshtui.com/update.json`（见「公开下载桶 dl」）。
 
 正式版统一提供 arm64 安装包。`update.json` 供更新清单回退读取，`SHA256SUMS` 供缺少 GitHub digest 时校验 APK，`*.dshdelta` 是从最近几个旧版升上来的增量补丁（`docs/design/delta-update.md`），都由 App 自己用，不要求用户手动下载。GitHub 自动生成的 Source code 压缩包是源码快照，不是安装包。
 
@@ -31,7 +31,7 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
   "title": "DSH 1.2.0",
   "publishedAt": "2026-11-01T08:00:00Z",
   "notes": "## 新功能\n…",
-  "page": "https://github.com/ccch1mneyyy/dsh-go/releases/tag/v1.2.0",
+  "page": "https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0",
   "assets": {
     "arm64": { "name": "dsh-go-1.2.0-arm64.apk", "size": 180107933, "sha256": "…" }
   },
@@ -175,7 +175,7 @@ npx wrangler r2 object put dshgo-share/beta/update.json --file prev.json --conte
 |---|---|---|---|
 | 国内线路 | `<CN_BASE_URL><版本>/<文件>` | 香港对象存储（阿里云 OSS 或腾讯云 COS），公共读 | `request.cf.country` 为 `CN` |
 | 海外线路 | 公开模式 `https://dl.dshtui.com/download/<版本>/<文件>`（清单 `routes` 里没有 `dl` 的旧版本是 `/download/<版本>/<文件>`）；密钥模式是 10 分钟的签名链接 | 公开模式：公开 R2 桶 `dshgo-dl`，字节不经 Worker；旧版本和密钥模式：R2 `beta/<版本>/`，经 Worker | 其他地区 |
-| GitHub | `github.com/ccch1mneyyy/dsh-go/releases/download/v<版本>/<文件>` | GitHub Release | 手动切换 |
+| GitHub | `github.com/Rakanrkk/dsh-Su/releases/download/v<版本>/<文件>` | GitHub Release | 手动切换 |
 
 - 页面上用分段按钮切换（纯 CSS，不跑脚本）；`?via=cn|global|github` 直接指定线路，`?lang=zh|en` 指定语言（默认跟浏览器）。
 - 一条线路只在**配置了**并且**这一版确实传上去了**时出现：`beta/update.json` 的 `routes` 由发布脚本在下载核对之后写入。`CN_BASE_URL` 为空时国内线路整项隐藏；没有 `routes` 的旧清单只给海外线路。
@@ -308,7 +308,7 @@ scripts/publish-release.sh ../../dist --github
 |---|---|
 | 页面和带令牌的 App | 上一版的清单设为最新（「内测通道」的回滚两行）。上一版若是旧脚本发的、清单里没有 `routes`，回滚后页面只给海外线路 |
 | 公开桶的 `update.json` | `npx wrangler r2 object get dshgo-dl/download/<上一版>/update.json --file prev.json --remote`，再 `npx wrangler r2 object put dshgo-dl/update.json --file prev.json --content-type 'application/json; charset=utf-8' --cache-control 'public, max-age=300' --remote`（环境变量同上）；边缘最多再给 5 分钟旧的。上一版没传过公开桶（回滚的是第一个走 dl 的版本）时没有可回的清单，删掉 `dshgo-dl/update.json` 即可 |
-| GitHub 上的这一版 | `gh release edit v<版本> --repo ccch1mneyyy/dsh-go --draft=true` 撤回成草稿，`releases/latest` 回到上一版；彻底删除用 `gh release delete v<版本> --repo ccch1mneyyy/dsh-go --cleanup-tag` |
+| GitHub 上的这一版 | `gh release edit v<版本> --repo Rakanrkk/dsh-Su --draft=true` 撤回成草稿，`releases/latest` 回到上一版；彻底删除用 `gh release delete v<版本> --repo Rakanrkk/dsh-Su --cleanup-tag` |
 | 香港桶 | 不用动：页面跟着清单走，不再指向新版；要删就删 `<版本>/` |
 | 公开下载 | `DOWNLOAD_ACCESS` 改回 `"key"` 再部署 |
 
