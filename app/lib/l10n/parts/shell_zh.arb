@@ -496,7 +496,7 @@
   "shellJsonStringNewline": "字符串里不能直接换行",
   "shellJsonControlCharacter": "字符串里有控制字符",
   "shellJsonBadNumber": "数字格式不对",
-  "shellSkillInstallPrompt": "请在这台主机上安装 DSH Go 的界面技能 {skill}：",
+  "shellSkillInstallPrompt": "请在这台主机上安装 dsh-Su 的界面技能 {skill}：",
   "@shellSkillInstallPrompt": {
     "placeholders": {
       "skill": {

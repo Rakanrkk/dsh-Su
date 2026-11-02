@@ -1,5 +1,5 @@
 {
-  "stateDiagnosticsSubject": "DSH Go 诊断包",
+  "stateDiagnosticsSubject": "dsh-Su 诊断包",
   "stateStoragePermission": "没有存储权限，存不进「下载」",
   "stateDiagnosticsStorageFull": "存储空间不足，没能生成诊断包",
   "stateDiagnosticsExportFailed": "没能导出诊断包",

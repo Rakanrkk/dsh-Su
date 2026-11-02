@@ -44,7 +44,7 @@
   "engineAccountPreparingSignIn": "正在准备登录",
   "engineAccountOpenDeepSeekNext": "马上打开 DeepSeek 登录页",
   "engineAccountFinishInBrowser": "在浏览器中完成登录",
-  "engineAccountReturnToDsh": "登录完成后回到 DSH Go",
+  "engineAccountReturnToDsh": "登录完成后回到 dsh-Su",
   "engineAccountFinishingSignIn": "正在完成登录",
   "engineAccountSavingSignIn": "正在保存登录信息",
   "engineAccountAwaitingResult": "还没收到登录结果",
