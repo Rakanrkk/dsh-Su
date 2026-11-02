@@ -45,15 +45,15 @@ cgroup2
 -- ksuinit log --
 11-03 04:52:44.729     0     0 I ksuinit : :init[1]: load kernelsu with params "allow_shell=1 bundled=1"
 -- host artifacts --
-pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  /home/rakan/dev/avd/backups/20261102T194623Z/ramdisk.img
-avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  /home/rakan/dev/avd/profiles/dsh-su-kernelsu-api36.avd/ramdisk.img
-avd-initrd(lz4 cpio with kernelsu.ko+ksuinit): a1a549323131b565ce3a8dfdcf714630bd27f243eedf113feb7eb994a7802dc1  /home/rakan/dev/avd/profiles/dsh-su-kernelsu-api36.avd/initrd
+pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  $HOME/dev/avd/backups/20261102T194623Z/ramdisk.img
+avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  $HOME/dev/avd/profiles/dsh-su-kernelsu-api36.avd/ramdisk.img
+avd-initrd(lz4 cpio with kernelsu.ko+ksuinit): a1a549323131b565ce3a8dfdcf714630bd27f243eedf113feb7eb994a7802dc1  $HOME/dev/avd/profiles/dsh-su-kernelsu-api36.avd/initrd
 cut: '"': No such file or directory
 cut: '"': No such file or directory
 tr: extra operand ‘"’
 Try 'tr --help' for more information.
 ksuinit-cpio: kernelsu.ko=50ebef0daa5b3fa1ce0e4d3267db8cf25b22b2a49a867dc6fd99f71d2f3efeb3 init=b0ae99c7eabcd470262b88cc8ee8c0be41376c5dccc084ac925aa06e4eedecf8 ksu_config=allow_shell=1 bundled=1
 ksud(x86_64-linux-android v3.3.1 tiann official): 5324a1e8f2f3c74dc69624c4cd973fb9bc1d5da3614a2f2e694583f73bd13cbd  /tmp/ksu-fix/ksud
-manager apk: b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450  /home/rakan/dev/avd/profiles/kernelsu/KernelSU_v3.3.1_32680-release.apk
+manager apk: b4a059ace71de2fa65cc7f12b1c58d55fc23ab25e057ee4230ce779742abe450  $HOME/dev/avd/profiles/kernelsu/KernelSU_v3.3.1_32680-release.apk
 lkm-official-v3.3.1-android15-6.6(not loaded; AVD uses ksuinit bundle): c15aadcdd9507bcd3f0ba88f70438f86cfc69317b6e7e63e89f7025710fe276f  /tmp/ksu-fix/lkm.ko
-manager-screenshot: /home/rakan/dev/avd/profiles/kernelsu/evidence/manager-working-20261102T210721Z.png
+manager-screenshot: $HOME/dev/avd/profiles/kernelsu/evidence/manager-working-20261102T210721Z.png

@@ -45,10 +45,10 @@ cgroup2
 -- ksuinit log --
 11-03 04:18:34.854     0     0 I ksuinit : :init[1]: load kernelsu with params "allow_shell=1 bundled=1"
 -- host artifacts --
-pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  /home/rakan/dev/avd/backups/20261102T194623Z/ramdisk.img
-avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  /home/rakan/dev/avd/profiles/next.avd/ramdisk.img
-avd-initrd(lz4 cpio): b9b100aeae1b41a9a880031ea30e3da13cef657ee6fc5397a329ef881d82ef96  /home/rakan/dev/avd/profiles/next.avd/initrd
+pristine: e1e798efba67b02c6813946283d94c6a33e55a30514865e1efe4b9b0c81fbac0  $HOME/dev/avd/backups/20261102T194623Z/ramdisk.img
+avd-ramdisk(hardware-qemu disk.ramdisk.path): ac310cf8bc1723e058bd4d1dbc445599ac5ce284cc9196dfdf06820f19846998  $HOME/dev/avd/profiles/next.avd/ramdisk.img
+avd-initrd(lz4 cpio): b9b100aeae1b41a9a880031ea30e3da13cef657ee6fc5397a329ef881d82ef96  $HOME/dev/avd/profiles/next.avd/initrd
 ksuinit-cpio: kernelsu.ko=50ebef0daa5b3fa1ce0e4d3267db8cf25b22b2a49a867dc6fd99f71d2f3efeb3 init=b0ae99c7eabcd470262b88cc8ee8c0be41376c5dccc084ac925aa06e4eedecf8 ksu_config=allow_shell=1 bundled=1
 ksud(x86_64-linux-android v3.4.2 KernelSU-Next official): 6f01d6277d1675c617c9ee8b8d21f907075555e0a0ae724c04d42bc21dae8f89  /tmp/ksu-fix/ksud-next
-manager-screenshot: /home/rakan/dev/avd/profiles/next.avd/evidence/manager-working-20261102T210727Z.png
-manager apk (KernelSU_Next_v3.4.2_33355-release): 774a5511f7034a4930e881114e202319cbdc34c5aaaa5c7c6b6d2902364e4c58  /home/rakan/dev/avd/lab-state/cache/ksu-next/Apps/KernelSU.apk
+manager-screenshot: $HOME/dev/avd/profiles/next.avd/evidence/manager-working-20261102T210727Z.png
+manager apk (KernelSU_Next_v3.4.2_33355-release): 774a5511f7034a4930e881114e202319cbdc34c5aaaa5c7c6b6d2902364e4c58  $HOME/dev/avd/lab-state/cache/ksu-next/Apps/KernelSU.apk
