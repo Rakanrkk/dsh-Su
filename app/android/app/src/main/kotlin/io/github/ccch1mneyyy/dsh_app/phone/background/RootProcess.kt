@@ -65,5 +65,19 @@ internal class RootProcess private constructor(private val process: Process) : C
     companion object {
         fun launch(command: List<String>, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess =
             try { RootProcess(spawn(command)) } catch (_: Exception) { throw IOException("rootStartFailed") }
+
+        fun launchEach(commands: List<List<String>>, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess {
+            var lastError: IOException? = null
+            for (command in commands) {
+                val process = try {
+                    spawn(command)
+                } catch (_: IOException) {
+                    lastError = IOException("rootStartFailed")
+                    continue
+                }
+                return RootProcess(process)
+            }
+            throw lastError ?: IOException("rootStartFailed")
+        }
     }
 }
