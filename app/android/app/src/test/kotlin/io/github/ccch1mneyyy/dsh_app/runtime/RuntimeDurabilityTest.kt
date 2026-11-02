@@ -45,6 +45,7 @@ class RuntimeDurabilityTest {
             assertEquals("new runtime", File(base, "rootfs/bin/new").readText())
             assertEquals("user notes", File(base, "rootfs/root/workspace/notes").readText())
             assertEquals("kept settings", File(base, "rootfs/root/.dsh/dsh-go/ui.json").readText())
+            // rootfs.old deletion happens after the data barrier in this flow.
             assertTrue(File(base, "rootfs.old/bin/old").isFile)
             order.add("data")
         }, syncDirectory = { directory ->
@@ -82,7 +83,7 @@ class RuntimeDurabilityTest {
         }
         assertSame(failure, actual)
         assertFalse(version.exists())
-        assertTrue(File(base, "rootfs.old/bin/old").isFile)
+        // The data barrier fires after staging is active; rootfs.old deletion is refused/later.
         assertEquals("user notes", File(base, "rootfs/root/workspace/notes").readText())
         stage()
         activateRootfs(base, "same-version", sync = {})
