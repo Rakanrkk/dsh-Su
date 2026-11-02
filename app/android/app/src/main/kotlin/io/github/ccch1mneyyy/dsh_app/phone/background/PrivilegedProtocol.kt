@@ -1,6 +1,7 @@
 // Portions derived from Phase (https://github.com/CikeSeven/phase), used with the author's permission. See THIRD_PARTY_NOTICES.md.
 package io.github.ccch1mneyyy.dsh_app.phone.background
 
+import android.Manifest
 import android.os.Bundle
 import android.os.Parcel
 import io.github.ccch1mneyyy.dsh_app.BuildConfig
@@ -50,6 +51,7 @@ object Proto {
     const val OP_RELEASE = "release"
     const val OP_DESTROY = "destroy"
     const val OP_GATE = "gate"
+    const val OP_GRANT_SELF = "grantSelf"
 
     /** 自动恢复无障碍: grants [APP_PACKAGE] WRITE_SECURE_SETTINGS in [USER]; nothing else is grantable. */
     const val OP_GRANT_SECURE_SETTINGS = "grantSecureSettings"
@@ -65,6 +67,7 @@ object Proto {
     // response keys
     const val OK = "ok"
     const val ERROR = "error"
+    const val FAILED_PERMISSIONS = "failedPermissions"
     const val DISPLAY_ID = "displayId"
     const val UID = "uid"
     const val SECURE = "secure"
@@ -95,6 +98,19 @@ object Proto {
     const val FLAG_SCROLLABLE = 1 shl 5
     const val FLAG_SENSITIVE = 1 shl 6
     const val FLAG_FOCUSED = 1 shl 7
+}
+
+/** The fixed set grantSelf may request; the privileged side grants it to [Proto.APP_PACKAGE] only. */
+fun selfPermissions(sdkInt: Int): List<String> {
+    val permissions = mutableListOf(
+        SecureSettingsGrant.PERMISSION,
+        Manifest.permission.READ_EXTERNAL_STORAGE,
+        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.SYSTEM_ALERT_WINDOW,
+    )
+    if (sdkInt >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+    return permissions
 }
 
 /** Stable reason codes → one short Chinese sentence for the model (after Phase's set). */

@@ -102,6 +102,12 @@ class PrivilegedDisplayCore(private val context: Context) {
                 response.putBoolean(Proto.OK, true)
                 return response
             }
+            if (op == Proto.OP_GRANT_SELF) {
+                val failed = grantSelf(request.getInt(Proto.USER))
+                if (failed.isNotEmpty()) response.putStringArrayList(Proto.FAILED_PERMISSIONS, failed)
+                response.putBoolean(Proto.OK, true)
+                return response
+            }
             synchronized(lock) { dispatch(op, request, response) }
             if (!response.containsKey(Proto.ERROR)) response.putBoolean(Proto.OK, true)
         } catch (e: Throwable) {
@@ -718,19 +724,39 @@ class PrivilegedDisplayCore(private val context: Context) {
     }
 
     /**
-     * `pm grant` of WRITE_SECURE_SETTINGS to this app, through the binder `pm` itself uses:
+     * `pm grant` to this app, through the binder `pm` itself uses:
      * IPackageManager up to Android 10, IPermissionManager from 11 (Android 15 added a device id
      * before the user). Fixed permission, fixed package.
      */
     @SuppressLint("PrivateApi")
     private fun grantSecureSettings(userId: Int) {
+        grantRuntimePermission(SecureSettingsGrant.PERMISSION, userId)
+    }
+
+    private fun grantSelf(userId: Int): ArrayList<String> {
+        val failed = ArrayList<String>()
+        for (permission in selfPermissions(Build.VERSION.SDK_INT)) {
+            try {
+                grantRuntimePermission(permission, userId)
+            } catch (e: InvocationTargetException) {
+                val target = e.targetException
+                if (isExpectedPermissionRejection(target)) failed.add(permission) else throw target
+            }
+        }
+        return failed
+    }
+
+    private fun isExpectedPermissionRejection(e: Throwable): Boolean =
+        e is SecurityException || e.message?.contains("not a changeable permission type", ignoreCase = true) == true
+
+    @SuppressLint("PrivateApi")
+    private fun grantRuntimePermission(permission: String, userId: Int) {
         val (service, type) = if (Build.VERSION.SDK_INT >= 30) "permissionmgr" to "android.permission.IPermissionManager"
             else "package" to "android.content.pm.IPackageManager"
         val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
             .invoke(null, service) as IBinder
         val manager = Class.forName("$type\$Stub").getMethod("asInterface", IBinder::class.java).invoke(null, binder)
         val grant = manager.javaClass.methods.first { it.name == "grantRuntimePermission" }
-        val permission = SecureSettingsGrant.PERMISSION
         val args = when {
             grant.parameterTypes.size == 3 -> arrayOf<Any>(Proto.APP_PACKAGE, permission, userId)
             // VirtualDeviceManager.PERSISTENT_DEVICE_ID_DEFAULT, or Context.DEVICE_ID_DEFAULT.
