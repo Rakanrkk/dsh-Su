@@ -40,6 +40,9 @@ object RootLaunch {
         }
     }
 
+    /** How to invoke su: the classic -c shell form or Suki/KSU positional root form. */
+    enum class SuInvocation { COMMAND, ROOT_POSITIONAL }
+
     data class Spec(
         val scriptPath: String,
         val packageName: String,
@@ -52,6 +55,7 @@ object RootLaunch {
         val binds: List<Bind>,
         val guestArgv: List<String>,
         val suExecutable: String = DEFAULT_SU,
+        val invocation: SuInvocation = SuInvocation.COMMAND,
     )
 
     data class Event(val instance: String, val event: String, val fields: List<String>, val raw: String)
@@ -81,8 +85,11 @@ object RootLaunch {
             for (bind in spec.binds) { add("--bind"); add(bind.host); add(bind.guest) }
             add("--")
         }
-        val command = flags.joinToString(" ") { shellQuote(it) }
-        return listOf(spec.suExecutable, "-c", "exec $command")
+        if (spec.invocation == SuInvocation.COMMAND) {
+            val command = flags.joinToString(" ") { shellQuote(it) }
+            return listOf(spec.suExecutable, "-c", "exec " + command)
+        }
+        return listOf(spec.suExecutable, "0") + flags
     }
 
     fun shellQuote(value: String): String {

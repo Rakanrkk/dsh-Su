@@ -12,6 +12,7 @@ class RootLaunchTest {
         binds: List<RootLaunch.Bind> = emptyList(),
         guestArgv: List<String> = listOf("/usr/bin/env", "-i", "HOME=/root", "/bin/sh", "-c", "echo hi"),
         suExecutable: String = "su",
+        invocation: RootLaunch.SuInvocation = RootLaunch.SuInvocation.COMMAND,
     ): RootLaunch.Spec = RootLaunch.Spec(
         scriptPath = "/data/data/io.test/files/supervisor.sh",
         packageName = "io.github.ccch1mneyyy.dsh_app",
@@ -24,6 +25,7 @@ class RootLaunchTest {
         binds = binds,
         guestArgv = guestArgv,
         suExecutable = suExecutable,
+        invocation = invocation,
     )
 
     @Test fun suArgvUsesConfigurableExecutableAndQuotedFlags() {
@@ -67,6 +69,31 @@ class RootLaunchTest {
         assertThrows(IllegalArgumentException::class.java) { RootLaunch.frame(listOf("/usr/bin/env", 0.toChar().toString())) }
     }
 
+    @Test fun positionalModeBuildsDirectArgvWithoutShellQuote() {
+        val root = tempRoot()
+        val argv = RootLaunch.launch(spec(root, invocation = RootLaunch.SuInvocation.ROOT_POSITIONAL))
+        assertEquals(listOf("su", "0", "/system/bin/sh", "/data/data/io.test/files/supervisor.sh", "run", "--protocol", "1", "--package", "io.github.ccch1mneyyy.dsh_app", "--app-uid", "10000", "--instance", "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "--rootfs", root.canonicalPath, "--loader", "/rootfs/usr/lib/ld-linux.so", "--library-path", "/rootfs/usr/lib", "--cwd", "/root", "--"), argv)
+        root.deleteRecursively()
+    }
+
+    @Test fun positionalModeKeepsSpacesIntact() {
+        val root = tempRoot()
+        val tricky = RootLaunch.Bind("/sd card/quote", "/data/local/tricky")
+        val argv = RootLaunch.launch(spec(root, binds = listOf(tricky), invocation = RootLaunch.SuInvocation.ROOT_POSITIONAL))
+        assertTrue(argv.contains("/sd card/quote"))
+        assertFalse(argv.any { it.contains("\\") })
+        root.deleteRecursively()
+    }
+
+    @Test fun commandModeRemainsDefaultAndQuotes() {
+        val root = tempRoot()
+        val argv = RootLaunch.launch(spec(root))
+        assertEquals(3, argv.size)
+        assertEquals("su", argv[0])
+        assertEquals("-c", argv[1])
+        assertTrue(argv[2].startsWith("exec '"))
+        root.deleteRecursively()
+    }
     @Test fun parseEventMatchesInstanceAndFields() {
         val instance = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         val event = RootLaunch.parseEvent("[dsh-su] 1 " + instance + " hello", instance)!!
