@@ -33,3 +33,4 @@ site/build/
 
 # Release assets (tooling/release_assets.py)
 /dist/
+app/android/.kotlin/
