@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">简体中文</a> · <b>English</b>
+  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="docs/guide/en/README.md">User Guide</a>
 </p>
 
 <p align="center">
@@ -14,11 +14,33 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="docs/dsh-su.md"><img alt="dsh-Su Root Runtime WIP" src="https://img.shields.io/badge/dsh--Su-Root%20Runtime%20(WIP)-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/upstream-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="Forum" src="https://img.shields.io/badge/forum-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ group 1132118290" src="https://img.shields.io/badge/QQ%20group-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
 </p>
+
+## About dsh-Su (Root Branch)
+
+This repository is **`dsh-Su`** ([`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)), built for enthusiasts, phone modders, and developers in parallel with upstream [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go). It retains the upstream features, protocols, copyright, and [AGPL-3.0](LICENSE) license attribution. See [docs/dsh-su.md](docs/dsh-su.md) for architecture and current progress.
+
+```mermaid
+flowchart LR
+  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] --> Su["su (UID 0)<br/>KernelSU / SukiSU / Magisk / APatch"]
+  Su --> NS["Isolated Mount Namespace<br/>+ chroot Ubuntu 24.04"]
+  NS --> Engine["Node.js + DSH Engine<br/>127.0.0.1:3080"]
+  UI -->|SSH / DSH Remote| Remote["Desktop / Server DSH"]
+```
+
+- **Scope and Architecture**: No separate `shell` tool or permission tiers are added. `dsh-Su` reuses the upstream Ubuntu rootfs, Node.js, DSH engine, and Flutter UI while replacing the local PRoot layer with a real UID 0 `chroot` environment.
+- **Implemented**:
+  - Root build entry point `tooling/build-root-apk.sh`, application ID `io.github.rakanrkk.dsh_su`, launcher label `DSH SU`, and `BuildConfig.ROOT_RUNTIME`, allowing side-by-side installation with upstream `DSH Go`;
+  - Update feed isolated to `Rakanrkk/dsh-Su` with upstream public mirrors, feeds, and beta tokens cleared;
+  - Real UID 0 execution verified for `id` and Node inside on-device `chroot`.
+- **In Progress**:
+  - `DshProcess.kt` root startup, isolated mount namespace setup/teardown, process ownership tracking, stop cleanup, and file ownership handling are not yet complete.
 
 <br>
 
@@ -37,20 +59,16 @@
 <br>
 
 <a id="download"></a>
-<h3 align="center">Download DSH Go</h3>
+<h3 align="center">Downloads & Builds</h3>
 
-<p align="center">Get the latest APK from GitHub Releases or the download page at go.dshtui.com. Most phones need the arm64 package.</p>
+<p align="center">The root engine backend in dsh-Su is still under development; this repository's releases live at <a href="https://github.com/Rakanrkk/dsh-Su/releases">Rakanrkk/dsh-Su Releases</a> (built via <code>tooling/build-root-apk.sh</code>). For the stable upstream PRoot client, visit <a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest">ccch1mneyyy/dsh-Go Releases</a> or <a href="https://go.dshtui.com/download">go.dshtui.com</a>.</p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Download from GitHub Releases" src="https://img.shields.io/badge/GitHub%20Releases-Download%20APK-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Download%20page-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="dsh-Su Releases" src="https://img.shields.io/badge/Rakanrkk%2Fdsh--Su-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
-  <b>Thank you all for supporting and loving DSH Go! iOS and HarmonyOS versions are coming as soon as I can make them. The more stars, the faster they come, hehe</b>
-</p>
-
-<p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/stargazers"><img alt="dsh-Su stars" src="https://img.shields.io/github/stars/Rakanrkk/dsh-Su?style=flat-square&logo=github&label=dsh-Su%20Star&color=4B67B4&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/stargazers"><img alt="Upstream DSH Go stars" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-Go?style=flat-square&logo=github&label=Upstream%20Star&color=4B67B4&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
@@ -181,7 +199,7 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 Installation requires Android 8.0 (API 26) or later. The **arm64** package on the Releases page is for typical 64-bit Android phones; the x64 package for x86_64 devices and emulators is under “Other builds” at the end of the release notes. This repository has no 32-bit ARM build.
 
-1. Download the APK for your device architecture from [GitHub Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) or the [download page](https://go.dshtui.com/download), and follow Android's prompt to allow that installation source.
+1. Get the APK for your device architecture from [Rakanrkk/dsh-Su Releases](https://github.com/Rakanrkk/dsh-Su/releases) (or build locally with `tooling/build-root-apk.sh`; upstream PRoot builds are at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download)), and follow Android's prompt to allow that installation source.
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
@@ -244,8 +262,8 @@ The following workflow targets **Linux x86_64**. The toolchain script currently 
 Start with the complete source tree and project assets. Fonts, images and other files declared in `app/pubspec.yaml` are build inputs. The following script generates the runtime bundle.
 
 ```bash
-git clone https://github.com/ccch1mneyyy/dsh-go.git
-cd dsh-go
+git clone https://github.com/Rakanrkk/dsh-Su.git
+cd dsh-Su
 
 bash tooling/setup-toolchain.sh
 source tooling/env.sh
@@ -253,6 +271,10 @@ flutter --version
 java -version
 
 bash runtime/build-runtime.sh arm64-v8a
+# Build dsh-Su (Root runtime config, package io.github.rakanrkk.dsh_su, label DSH SU)
+bash tooling/build-root-apk.sh -f arm64 --keep-daemon
+
+# Or build the default upstream PRoot package (package io.github.ccch1mneyyy.dsh_app)
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f arm64 --keep-daemon
 ```
 
@@ -264,6 +286,7 @@ For an x86_64 APK, generate its runtime first:
 
 ```bash
 bash runtime/build-runtime.sh x86_64
+bash tooling/build-root-apk.sh -f x64 --keep-daemon
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh -f x64 --keep-daemon
 ```
 
@@ -272,6 +295,7 @@ Without `app/android/key.properties`, a local release build uses debug signing. 
 To inspect APK build commands without building:
 
 ```bash
+bash tooling/build-root-apk.sh --dry-run -f all
 DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 ```
 
@@ -285,14 +309,15 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 | `runtime/` | Linux runtime assembly, engine patches and the app bridge |
 | `sdk/plugin-kit/` | Native plugin authoring kit, used from the repository and not published to npm |
 | `examples/plugins/` | Example plugins |
+| `docs/dsh-su.md` | `dsh-Su` Root architecture, status and verification notes |
 | `docs/guide/`, `docs/plugins/` | User and plugin development guides |
 | `docs/assets/` | Showcase images, pet animations and community QR codes used on this page |
-| `tooling/` | Toolchain, APK build and diagnostic scripts |
+| `tooling/` | Toolchain, `build-root-apk.sh` / `build-apk.sh` build and diagnostic scripts |
 | `services/`, `site/`, `infra/` | Companion sharing service, website and deployment materials |
 
 ## Contribute
 
-Report bugs and suggest improvements in [Issues](https://github.com/ccch1mneyyy/dsh-go/issues). For code, documentation and translation changes, start with [CONTRIBUTING.en.md](CONTRIBUTING.en.md). Plugin authors can use the [plugin guides](docs/plugins/en/README.md) and [SDK](sdk/plugin-kit/README.en.md).
+Report bugs and suggest improvements in [Rakanrkk/dsh-Su Issues](https://github.com/Rakanrkk/dsh-Su/issues). For code, documentation and translation changes, start with [CONTRIBUTING.en.md](CONTRIBUTING.en.md). Plugin authors can use the [plugin guides](docs/plugins/en/README.md) and [SDK](sdk/plugin-kit/README.en.md).
 
 Report security issues through [SECURITY.en.md](SECURITY.en.md). Keep vulnerability details and credentials out of public issues.
 
@@ -321,6 +346,7 @@ Report security issues through [SECURITY.en.md](SECURITY.en.md). Keep vulnerabil
 
 This project is licensed under [AGPL-3.0](LICENSE). `sdk/` and `examples/` remain **MIT**. Third-party code and assets retain the terms stated in their own notices.
 
+- [DSH Go (`ccch1mneyyy/dsh-Go`)](https://github.com/ccch1mneyyy/dsh-Go): the upstream repository and full application base of `dsh-Su`.
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): the agent DSH Go runs and connects to.
 - [DSH-TUI](https://github.com/ccch1mneyyy/dsh-TUI): home of the mascots, Deepy and Whale girl.
 
