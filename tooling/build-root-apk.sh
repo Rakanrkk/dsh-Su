@@ -33,4 +33,5 @@ exec "$ROOT/tooling/build-apk.sh" \
   "--dart-define=DSH_UPDATE_MIRROR=" \
   "--dart-define=DSH_UPDATE_FEED=" \
   "--dart-define=DSH_UPDATE_MIRRORS=" \
+  "--dart-define=DSH_ROOT_RUNTIME=true" \
   "${post[@]}"
