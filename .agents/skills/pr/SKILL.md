@@ -1,9 +1,9 @@
 ---
 name: pr
-description: Open or update an internal pull request in ccch1mneyyy/dsh-Go, including writing or rewriting its description. Use for every PR the maintainer creates or edits here, and for /pr. External pull requests are not accepted (see AGENTS.md).
+description: Open or update a pull request in Rakanrkk/dsh-Su (fork of ccch1mneyyy/dsh-Go), including writing or rewriting its description. Use for every PR the maintainer creates or edits here, and for /pr. External PRs are welcome (see AGENTS.md).
 ---
 
-Ship the current change as an internal pull request a reviewer can understand from the description alone: why it exists, the shape of the implementation, and what was actually verified. 外部 PR 一律不接受，本技能只用于维护者自己的分支。
+Ship the current change as an internal pull request a reviewer can understand from the description alone: why it exists, the shape of the implementation, and what was actually verified. 本 fork 接受外部 PR（见 AGENTS.md 与 CONTRIBUTING.md），本技能覆盖维护者与贡献者的分支 PR。
 
 1. 一个 PR 一个主题。确认改动有明确目标；不要因为某个 issue 存在就自动把实现包装成 PR。关联 issue（如有）。
 2. 提交并推送分支，分支 upstream 是它自己，绝不推 `main`。提交信息用 `type(scope): summary`（conventional commits，中文或英文与周边一致）。只暂存明确路径。

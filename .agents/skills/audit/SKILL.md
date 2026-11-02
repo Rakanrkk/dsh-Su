@@ -1,6 +1,6 @@
 ---
 name: audit
-description: Audit the ccch1mneyyy/dsh-Go repository or a broad subsystem for security, correctness, and maintainability risks. Use for audit requests or /audit; use review for a specific change and vuln-check for a security-only assessment.
+description: Audit the Rakanrkk/dsh-Su repository or a broad subsystem for security, correctness, and maintainability risks. Use for audit requests or /audit; use review for a specific change and vuln-check for a security-only assessment.
 ---
 
 Establish the audit scope, then trace the relevant runtime paths. For a findings-only request, leave code unchanged; carry out fixes when the user has requested them.

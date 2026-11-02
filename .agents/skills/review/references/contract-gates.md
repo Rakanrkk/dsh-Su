@@ -1,4 +1,4 @@
-# dsh-Go 契约门禁
+# dsh-Su 契约门禁
 真源：`runtime/bridge/dsh-go-bridge/`（HTTP 路由）、`packages/dsh_client` 的公开 API、`app/lib/state` 的能力状态、`runtime/patches/pins.json`、`app/lib/l10n/parts/*.arb`、`sdk/plugin-kit`、CONTRIBUTING.md。本文件仅检查顺序，不存日期化常量；契约变更缺兼容策略/迁移/验证默认阻断。
 
 ## 门 1｜桥接 HTTP 契约

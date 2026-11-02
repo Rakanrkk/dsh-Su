@@ -1,0 +1,160 @@
+# CI——按改动面选择检查，不做无谓全量。
+# changes job 依 diff 算出各改动面的 true/false，后续 job 只跑受影响的面：
+#   - dart-packages: packages/dsh_client、packages/dsh_remote（纯 Dart，按包矩阵跑）
+#   - flutter-app:   app/；client/remote 是 app 的 path 依赖，二者改动也联动 app
+#   - plugin-kit:    sdk/plugin-kit/
+#   - runtime:       runtime/（node --test）
+#   - guide:         docs/guide/ 或 guide_sync.py 本身（--check）
+# 本 workflow 或 docs/guide 等共享输入变动时相应放大；手动 dispatch 全量运行。
+# Flutter 钉在 3.47.7（本机验证所用版本），不跟随 stable 漂移；升级时同步两处 flutter-version 与本注释。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.sel.outputs.app }}
+      dart: ${{ steps.sel.outputs.dart }}
+      pluginkit: ${{ steps.sel.outputs.pluginkit }}
+      runtime: ${{ steps.sel.outputs.runtime }}
+      guide: ${{ steps.sel.outputs.guide }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: List changed files
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE=$(git merge-base "origin/$BASE_REF" HEAD)
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            BASE="$BEFORE"
+          else
+            echo "ALL=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          git diff --name-only "$BASE" HEAD > /tmp/changed.txt
+          wc -l /tmp/changed.txt
+
+      - name: Select surfaces
+        id: sel
+        run: |
+          if [ -f /tmp/changed.txt ] && grep -Eq '^\.github/workflows/ci\.yml$' /tmp/changed.txt; then
+            echo "ALL=true" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${ALL:-}" ]; then
+            for k in app dart pluginkit runtime guide; do
+              echo "$k=true" >> "$GITHUB_OUTPUT"
+            done
+            exit 0
+          fi
+          sel() {
+            if grep -Eq "$2" /tmp/changed.txt; then
+              echo "$1=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$1=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          sel app '^(app/|packages/dsh_client/|packages/dsh_remote/)'
+          sel dart '^packages/(dsh_client|dsh_remote)/'
+          sel pluginkit '^sdk/plugin-kit/'
+          sel runtime '^runtime/'
+          sel guide '^(docs/guide/|app/tool/guide_sync\.py$)'
+          cat "$GITHUB_OUTPUT"
+
+  dart-packages:
+    if: needs.changes.outputs.dart == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [dsh_client, dsh_remote]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: dart pub get / analyze / test (${{ matrix.package }})
+        working-directory: packages/${{ matrix.package }}
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
+  flutter-app:
+    if: needs.changes.outputs.app == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: flutter pub get / analyze / test (app)
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+      - name: l10n merge check
+        run: python3 app/tool/l10n_merge.py --check
+
+  plugin-kit:
+    if: needs.changes.outputs.pluginkit == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+        working-directory: sdk/plugin-kit
+      - run: npm test
+        working-directory: sdk/plugin-kit
+
+  runtime:
+    if: needs.changes.outputs.runtime == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test runtime/tests/*.test.mjs
+
+  guide:
+    if: needs.changes.outputs.guide == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 app/tool/guide_sync.py --check

@@ -2,19 +2,14 @@
 
 [中文](CONTRIBUTING.md) · [Project overview](README.en.md)
 
-## No external pull requests for now
+## Pull requests welcome
 
-This repository currently **does not accept any external pull requests** (code, docs, configuration or templates).
+External pull requests are accepted. This fork (Rakanrkk/dsh-Su) is developed in parallel with upstream [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-Go); upstream changes arrive as periodically generated `chore/upstream-sync-*` PRs that are reviewed one by one — no automatic merges or releases.
 
-- External PRs are closed automatically by the intake check, see `.github/workflows/pr-gate.yml`.
-- For feature ideas, improvements or bug reports, please [open an issue](https://github.com/ccch1mneyyy/dsh-Go/issues/new/choose) with the use case and expected behavior.
-- Internal PRs by the maintainer (and maintainer agents) are unaffected.
-
-This is temporary; this page will be updated when external PRs reopen.
-
-## Welcome
-
-Contributions through issues are welcome — bug reports, documentation and translation improvements, tests, or plugin work. For larger changes to protocols, data formats or permissions, explain the problem and proposed approach before implementation so work can be coordinated.
+- Read "Keep changes focused" and "Open a PR" below before starting.
+- For feature ideas, improvements or bug reports, please [open an issue](https://github.com/Rakanrkk/dsh-Su/issues/new/choose) with the use case and expected behavior.
+- For larger changes to protocols, data formats or permissions, open an issue first to align on the problem and approach.
+- CI selects checks by change surface (`.github/workflows/ci.yml`); run the same checks locally before submitting.
 
 ## Report an issue
 
@@ -99,6 +94,8 @@ Complete the default PR template in Chinese or English:
 3. Checks actually run, their results and remaining verification gaps.
 4. Before-and-after screenshots or recordings for UI changes, using test data with private content removed.
 5. Sources and licenses of new content, and any notices that must be updated.
+
+Confirm each item on the PR template checklist; CI runs the checks matching your change surface, and running the same commands locally covers most verification in advance.
 
 Review the diff for credentials, personal configuration, real conversations, device serial numbers, build caches and private operations notes. Review diagnostic files and logs manually as well; automatic redaction is not a guarantee.
 

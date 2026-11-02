@@ -2,19 +2,14 @@
 
 [English](CONTRIBUTING.en.md) · [项目首页](README.md)
 
-## 暂不接受外部 Pull Request
+## 欢迎 Pull Request
 
-本仓库目前**不接受任何外部 Pull Request**（代码、文档、配置、模板都不接收）。
+本仓库接受外部 PR。fork（Rakanrkk/dsh-Su）与上游 [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-Go) 长期平行开发；上游改动通过定期生成的 `chore/upstream-sync-*` PR 逐个审阅合入，不自动 merge、不自动发布。
 
-- 外部 PR 会被入口检查自动关闭，见 `.github/workflows/pr-gate.yml`。
-- 想提功能建议、改进想法或反馈问题：请[开 Issue](https://github.com/ccch1mneyyy/dsh-Go/issues/new/choose)，写清使用场景和期望的行为。
-- 维护者自己（及其代理）的内部 PR 不受影响。
-
-这是暂时限制，恢复接收外部 PR 时会更新本页。
-
-## 欢迎参与
-
-欢迎通过 Issue 反馈问题、改善文档和翻译、补充测试，或开发插件。影响协议、数据格式或权限行为的较大改动，先说明问题和方案，便于协调。
+- 动手前先读下面的「修改范围」和「提交 PR」。
+- 想提功能建议、改进想法或反馈问题：请[开 Issue](https://github.com/Rakanrkk/dsh-Su/issues/new/choose)，写清使用场景和期望的行为。
+- 影响协议、数据格式或权限行为的较大改动，先开 Issue 对齐问题与方案，再实现。
+- CI 按改动面自动选择检查（`.github/workflows/ci.yml`）；本地按同一套「常用检查」先行执行。
 
 ## 提交问题
 
@@ -99,6 +94,8 @@ node sdk/plugin-kit/scripts/sync-skill.mjs --check
 3. 实际运行的检查、结果和未验证范围。
 4. UI 改动的前后截图或录屏；使用测试数据，遮盖个人内容。
 5. 新引入内容的来源、许可证和必须同步的声明。
+
+逐项确认 PR 模板的清单；CI 会按改动面运行对应检查，本地先行执行相同命令即可覆盖大部分验证。
 
 提交前检查差异，排除密钥、个人配置、真实对话、设备序列号、构建缓存与私有运维资料。诊断包和日志也需要人工检查；不要把自动打码当成保证。
 

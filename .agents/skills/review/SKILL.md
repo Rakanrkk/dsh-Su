@@ -1,9 +1,9 @@
 ---
 name: review
-description: "Review or de-slop concrete changes in ccch1mneyyy/dsh-Go at maintainer level: branches, commit ranges, patch files, staged or unstaged worktrees, and scoped repository-hygiene requests. Use for evidence-first correctness, contract, repository-rule, process, and behavior-preserving cleanup review, including debug residue, dead or duplicate code, speculative abstractions, stale comments or tests, and unrelated diff churn. Do not use for abstract designs with no concrete repository artifact; use audit for repository-wide assessments and vuln-check for security-only checks."
+description: "Review or de-slop concrete changes in Rakanrkk/dsh-Su at maintainer level: branches, commit ranges, patch files, staged or unstaged worktrees, and scoped repository-hygiene requests. Use for evidence-first correctness, contract, repository-rule, process, and behavior-preserving cleanup review, including debug residue, dead or duplicate code, speculative abstractions, stale comments or tests, and unrelated diff churn. Do not use for abstract designs with no concrete repository artifact; use audit for repository-wide assessments and vuln-check for security-only checks."
 ---
 
-# dsh-Go Deslop 与维护者审查
+# dsh-Su Deslop 与维护者审查
 按规则 → 独立取证 → 叙事对账 → 验证 → 裁决工作。文件引用一律仓库根相对；不得跳过脚本或伪称运行。
 
 ## 全局不变量与模式
@@ -53,7 +53,7 @@ description: "Review or de-slop concrete changes in ccch1mneyyy/dsh-Go at mainta
 
 ## 阶段 5｜验证
 - 先用 CONTRIBUTING.md 的「常用检查」选最小充分集：Flutter 应用（`flutter analyze` / `flutter test`）、Dart 包（`dart analyze` / `dart test`）、插件 SDK（`npm test`）、runtime 桥与补丁（`node --test`）、l10n/guide 生成检查、APK 构建；再选最小充分集。
-- **信任门**：`trusted-maintainer` / `trusted-local` 的适用、安全且环境具备检查必须实跑；`untrusted-fork` 默认仅静态（本仓库目前不接受外部 PR，主要是前两者）。记录命令、退出码、SHA、输出摘要。
+- **信任门**：`trusted-maintainer` / `trusted-local` 的适用、安全且环境具备检查必须实跑；`untrusted-fork` 默认仅静态（外部贡献者的分支 PR，主要是前两者）。记录命令、退出码、SHA、输出摘要。
 - 运行失败不免静态逐文件对照 exports/peer/事件白名单/快照/协议。
 - cleanup 删除证明逐类补齐；任一未知不得自动删除。
 **账本**：验证执行表、静态对照表、障碍、坏基线结果、cleanup 删除证明。

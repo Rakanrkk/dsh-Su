@@ -1,6 +1,6 @@
 # AGENTS.md
 
-dsh-Go 是 DeepSeek Harness 的 Android 手机应用：Flutter 原生界面 + 纯 Dart 客户端 + 打过补丁的 DSH 引擎运行时（在 PRoot 里运行 `dsh web`）。改动前先读 [CONTRIBUTING.md](CONTRIBUTING.md)（贡献与验证契约）与 [docs/architecture.md](docs/architecture.md)。
+dsh-Su 是 DeepSeek Harness（上游 [ccch1mneyyy/dsh-Go](https://github.com/ccch1mneyyy/dsh-Go)）的 Android fork：Flutter 原生界面 + 纯 Dart 客户端 + 打过补丁的 DSH 引擎运行时（在 PRoot 里运行 `dsh web`），聚焦 root 运行时，与上游长期平行开发。改动前先读 [CONTRIBUTING.md](CONTRIBUTING.md)（贡献与验证契约）与 [docs/architecture.md](docs/architecture.md)。
 
 ## 仓库布局
 
@@ -34,14 +34,6 @@ tooling/build-apk.sh --build-name <x.y.z>                          # 构建 APK
 
 ## 硬规则
 
-### 不接受外部 PR（最高优先级）
-
-- 本仓库**暂不接受任何外部 Pull Request**（代码、文档、配置、模板都不收）。
-- **禁止合并任何外部 PR**：不得用 `gh pr merge`、GitHub API、网页合并、rebase 或 cherry-pick 把外部提交带进 `main`。
-- **禁止替用户创建 PR**，除非用户在当次对话里明确要求。
-- 收到外部 PR：关闭它并回复"暂不接受外部 PR，请改用 issue 提供建议"。入口检查（`.github/workflows/pr-gate.yml`）会自动关闭外部 PR；人工按同一政策处理，不要"先合并再说"。
-- 不要因为某个 issue 有了实现，就自动把实现包装成 PR 合入。
-
 ### 源码、生成物与运行时补丁
 
 - 不手改生成物：`app/build/`、`.dart_tool/`、生成的 l10n 产物等；改输入后运行对应生成器。
@@ -67,6 +59,16 @@ tooling/build-apk.sh --build-name <x.y.z>                          # 构建 APK
 - 只暂存明确路径，不用 `git add .` / `git add -A`。
 - 未经要求不 commit、不 push、不打 tag、不发布。
 - 不 force push `main` 或重写共享历史，除非用户在当前对话里明确要求；重写后必须重建受影响的分支与 PR。
+
+### 会话分工
+
+- 主会话只做编排：拆分任务、派发子代理、整合与验收结果，不直接修改文件。
+- Git staging 与 commit 由 Git 执行代理独占，其余代理不执行任何 Git 写操作。
+
+### 模拟器优先
+
+- 验证优先用仓库的模拟器环境（`tooling/` 下的模拟器脚本），能代表目标行为时不再占用真机。
+- 模拟器覆盖不了的行为（真实 root 权限、硬件交互、厂商差异化环境）按「真机验证」执行。
 
 ### 真机验证
 

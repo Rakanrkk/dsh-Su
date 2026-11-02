@@ -1,0 +1,110 @@
+# 上游同步——只产出可审阅的 sync PR，不自动 merge、不自动 release、不做部署。
+# 每周一跑一次，也可手动 dispatch。合并冲突时不 push，把上游提交列表写进
+# step summary 并失败退出，交给人工在本地解决后手动开 PR。
+# 只用默认 GITHUB_TOKEN，不读取任何存储凭据。
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'Rakanrkk/dsh-Su'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      UPSTREAM_REPO: https://github.com/ccch1mneyyy/dsh-Go.git
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM_REPO"
+          git fetch upstream main --no-tags
+
+      - name: Check for new upstream commits
+        id: new
+        run: |
+          COUNT=$(git rev-list --count main..upstream/main)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "上游新提交：$COUNT"
+
+      - name: Merge upstream into sync branch
+        id: merge
+        if: steps.new.outputs.count != '0'
+        run: |
+          DATE=$(date +%Y%m%d)
+          SHORT=$(git rev-parse --short upstream/main)
+          BRANCH="chore/upstream-sync-$DATE"
+          git checkout -B "$BRANCH" main
+          if git merge --no-ff upstream/main \
+            -m "Merge upstream ccch1mneyyy/dsh-Go@$SHORT"; then
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            {
+              echo "## 上游同步冲突 $DATE（ccch1mneyyy/dsh-Go@$SHORT）"
+              echo ""
+              echo '```'
+              git log --oneline main..upstream/main
+              echo '```'
+              echo ""
+              echo "自动合并失败，未推送任何分支。请本地执行："
+              echo '```bash'
+              echo "git fetch upstream"
+              echo "git checkout -b $BRANCH main"
+              echo "git merge upstream/main"
+              echo '```'
+              echo "解决冲突后推送并手动开 PR。"
+            } > "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Push sync branch
+        if: steps.merge.outputs.branch
+        run: git push origin "${{ steps.merge.outputs.branch }}"
+
+      - name: Open review PR
+        if: steps.merge.outputs.branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.merge.outputs.branch }}
+          SHORT: ${{ steps.merge.outputs.short }}
+        run: |
+          {
+            echo "同步上游 ccch1mneyyy/dsh-Go@$SHORT → main。"
+            echo ""
+            echo "## 上游新提交"
+            echo '```'
+            git log --oneline main..upstream/main
+            echo '```'
+            echo ""
+            echo "## 验收"
+            echo "- [ ] 逐个审阅上游提交，确认与 fork 的本地改动兼容"
+            echo "- [ ] 合入后按改动面跑 CI（.github/workflows/ci.yml）"
+            echo ""
+            echo "本 PR 不自动 merge、不自动 release；合入由维护者手动完成。"
+          } > body.md
+          # 同名分支已有 PR 时 create 报错；此时复用既有 PR 并回显地址。
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "同步上游 ccch1mneyyy/dsh-Go@$SHORT" \
+            --body-file body.md \
+            || gh pr view "$BRANCH" --json url
