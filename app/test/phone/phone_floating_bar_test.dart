@@ -23,7 +23,7 @@ import 'support.dart';
 const _group = '悬浮条';
 const _opacity = '闲置时不透明度';
 const _auto = '闲置时自动收起';
-const _return = '完成后返回 DSH Go';
+const _return = '完成后返回 dsh-Su';
 
 Finder _row(String title) => find.ancestor(of: find.text(title), matching: find.byType(ListPageRow)).first;
 

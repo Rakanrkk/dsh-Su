@@ -513,7 +513,7 @@ void main() {
     final panel = await _open(tester, state: _fixture(), reply: 'a6', scope: ShareScope.whole);
     await _key(tester, 'share-to-file');
     expect(find.text('修复登录重复提交.dshgo'), findsOneWidget);
-    expect(find.text('在 DSH Go 里回放、接着聊'), findsOneWidget);
+    expect(find.text('在 dsh-Su 里回放、接着聊'), findsOneWidget);
     await _key(tester, 'share-file-save');
     final (saved, format) = panel.out.saved.single;
     expect(format, ConversationFormat.file);
@@ -657,7 +657,7 @@ void main() {
 
       await _key(tester, 'share-to-file');
       expect(tester.takeException(), isNull);
-      for (final label in ['对话文件', '网页', 'Markdown', '保存', '分享', '在 DSH Go 里回放、接着聊']) {
+      for (final label in ['对话文件', '网页', 'Markdown', '保存', '分享', '在 dsh-Su 里回放、接着聊']) {
         _expectWhole(tester, label);
       }
       await _back(tester);

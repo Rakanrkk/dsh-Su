@@ -82,7 +82,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('share-code-share')));
     await _settle(tester);
-    expect(out.sharedText.single, contains('「读书笔记」· DSH Go 插件'));
+    expect(out.sharedText.single, contains('「读书笔记」· dsh-Su 插件'));
     expect(out.sharedText.single, contains(link));
 
     expect(find.byKey(const ValueKey('share-code-save')), findsNothing);

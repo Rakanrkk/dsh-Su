@@ -317,12 +317,12 @@ void main() {
 
     testWidgets('three sections; cards carry the section and the risk', (tester) async {
       await pumpScreen(tester);
-      for (final title in ['官方', '适配 DSH Go', '全部']) {
+      for (final title in ['官方', '适配 dsh-Su', '全部']) {
         expect(find.widgetWithText(Semantics, title), findsWidgets, reason: title);
       }
       expect(inCard('生图生视频', '官方'), findsOneWidget);
       expect(inCard('生图生视频', '中风险'), findsNothing, reason: 'low risk shows no tag');
-      expect(inCard('天气', '适配 DSH Go'), findsOneWidget);
+      expect(inCard('天气', '适配 dsh-Su'), findsOneWidget);
       expect(inCard('天气', '中风险'), findsOneWidget);
       expect(inCard('原生助手', '高风险'), findsOneWidget);
       // The tags' colours: amber for medium, red for high.
@@ -347,7 +347,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       expect(find.text('官方'), findsNothing);
-      expect(find.text('适配 DSH Go'), findsWidgets);
+      expect(find.text('适配 dsh-Su'), findsWidgets);
       expect(card('天气'), findsOneWidget);
     });
 
@@ -454,9 +454,9 @@ void main() {
     testWidgets('an app older than minApp shows the plugin but no install', (tester) async {
       await pumpScreen(tester);
       await openSheet(tester, '同声翻译');
-      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '需要 DSH Go 9.0.0 或更高版本'));
+      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, '需要 dsh-Su 9.0.0 或更高版本'));
       expect(button.onPressed, isNull);
-      expect(find.text('需要 DSH Go'), findsOneWidget);
+      expect(find.text('需要 dsh-Su'), findsOneWidget);
       expect(find.text('安装到本机'), findsNothing);
     });
 

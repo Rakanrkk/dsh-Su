@@ -54,14 +54,14 @@ void main() {
       for (final code in ['PROTOCOL_MISMATCH', 'FRAME_TOO_LARGE']) {
         final e = map(code);
         expect(e.retryable, isFalse, reason: code);
-        expect(e.message, '版本不匹配，请更新 DSH Go 和主机上的远程插件');
+        expect(e.message, '版本不匹配，请更新 dsh-Su 和主机上的远程插件');
         expect(e.detail, contains(code));
       }
       // Explicit incompatibility is final even when the transport called it retryable.
       for (final code in ['PROTOCOL_MISMATCH', 'UNSUPPORTED_VERSION', 'CAPABILITY_NOT_SUPPORTED']) {
         final e = map(code, retryable: true);
         expect(e.retryable, isFalse, reason: code);
-        expect(e.message, '版本不匹配，请更新 DSH Go 和主机上的远程插件');
+        expect(e.message, '版本不匹配，请更新 dsh-Su 和主机上的远程插件');
       }
       final host = map('HARNESS_VERSION_INCOMPATIBLE', retryable: true);
       expect(host.retryable, isFalse);
@@ -215,7 +215,7 @@ void main() {
       relay.connectErrors.add(mismatch);
       await expectLater(link.open(), throwsA(isA<HostLinkError>()));
       expect(link.status.phase, HostLinkPhase.failed);
-      expect(link.status.error?.message, '版本不匹配，请更新 DSH Go 和主机上的远程插件');
+      expect(link.status.error?.message, '版本不匹配，请更新 dsh-Su 和主机上的远程插件');
       expect(relay.connects, 1, reason: 'no backoff loop');
       link.kick();
       await Future<void>.delayed(const Duration(milliseconds: 30));

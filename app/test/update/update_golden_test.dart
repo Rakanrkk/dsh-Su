@@ -356,9 +356,9 @@ void main() {
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -5000));
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.widgetWithText(UpdateBadge, '有新版本'), findsOneWidget);
-    await tester.ensureVisible(find.text('关于 DSH Go'));
+    await tester.ensureVisible(find.text('关于 dsh-Su'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('关于 DSH Go'));
+    await tester.tap(find.text('关于 dsh-Su'));
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
     expect(find.byType(AppUpdateTiles), findsOneWidget);

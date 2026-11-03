@@ -151,7 +151,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, '继续'));
       await frames(tester);
       expect(find.byType(AccessStepPage), findsOneWidget);
-      expect(find.text('想让 DSH Go 帮你做哪些事'), findsOneWidget);
+      expect(find.text('想让 dsh-Su 帮你做哪些事'), findsOneWidget);
       expect(find.bySemanticsLabel('第 3 步，共 4 步'), findsOneWidget);
       expect(_capsuleText('运行环境 30%'), findsOneWidget);
       expect(rig.prefs.setupStep, SetupStep.access);
