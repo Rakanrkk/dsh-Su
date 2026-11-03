@@ -120,6 +120,29 @@ jobs:
           flutter pub get
           flutter analyze
           flutter test
+      - name: Root-mode Flutter checks
+        working-directory: app
+        run: |
+          flutter test test/access/access_step_root_storage_test.dart \
+            --dart-define=DSH_ROOT_RUNTIME=true \
+            --dart-define=DSH_UPDATE_REPO=Rakanrkk/dsh-Su
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Root-mode Android unit tests
+        working-directory: app/android
+        run: |
+          ./gradlew \
+            -Pdsh.rootRuntime=true \
+            :app:testX86_64DebugUnitTest \
+            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsTest \
+            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SecureSettingsGrantTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.DshProcessRootSessionTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.RootLaunchTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeMountGuardTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeResetMountGuardTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.GuestAgentsModeTest
       - name: l10n merge check
         run: python3 app/tool/l10n_merge.py --check
 
