@@ -51,22 +51,22 @@ flowchart TB
 
 ## 兼容目标与当前验证状态
 
-当前尚未发布稳定内测包或正式 Release 产物，各模块与 Root 框架处于分步验证阶段：
+公开预发布版 `v1.0.9-internal.4` 已发布，Release 仅含 ARM64 APK、`SHA256SUMS` 与 `update.json`。ARM64 包已通过签名、ABI、资源和哈希静态检查，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器调试包，各 Root 框架的证据分别列出：
 
 ### Root 框架兼容状态
 
 | Root 框架 | 当前状态 | 已验证范围与进展 |
 | --- | --- | --- |
-| **SukiSU Ultra（x86_64）** | 主链路与交互已验证 | 已通过完整真 Root 启动（`127.0.0.1:3080`）、UI Stop/Start、App 进程终止恢复、原 UI PTY 终端（`shell`/`node`/`python` UID 0）、文件读写删与 `getent` DNS 解析；覆盖升级保留 UID/rootfs、自动权限授予系统状态核验、共享存储开启时读取宿主 `Download` 及关闭后自动重启移除挂载配置均已通过。 |
-| **Magisk（x86_64）** | 主链路与启停已验证 | 最新合并源码下已验证私有候选 `su`（`/debug_ramdisk/su` + `RootService.bindOrTask`）选中、`runc` + Node UID 0 监听（`127.0.0.1:3080`）、通知栏 Stop 与多轮启停后无迟到 Node 进程。 |
-| **KernelSU（标准版）/ KernelSU Next（x86_64）** | 基线已过 / 同源复核中 | 前期基线已完成真 Root 引擎就绪（`DSH is listening`）、App 进程终止重启恢复与清理验证，正基于最新合并源码补跑同版本复核。 |
-| **APatch（ARM64）** | 镜像引导中 | 官方完整 Android 14（kernel `6.1.172`）配套环境已进入 `init` 第二阶段与控制台输出，尚未完成 ADB 就绪与 App 验证。 |
+| **SukiSU Ultra（x86_64）** | 模拟器主链路已验证 | 同源码 x64 debug APK SHA-256 `c77f1a6a25c39705e9d6424d76ac14ccbfaa41114320b13225ccab3659ba1e72`。真实 App 启动后 Node 以 UID 0 监听 `127.0.0.1:3080`；原 UI PTY 与 Phone MCP 13 项工具通过，`apps` / `screen` 调用成功；Android 宿主视图、DNS、无密钥 HTTPS 401、录音权限由首次引擎启动自授予、存储 Off 无挂载、UI Stop/Start 与 force-stop 后重启均通过。 |
+| **KernelSU（标准版，x86_64）** | 同源码模拟器验收通过 | KernelSU `3.3.1` / `32680`，UAPI 5、LKM、SELinux Enforcing。相同 APK SHA 下，真实 App UID 0 主链、PTY、Phone MCP 13 项工具、Android 宿主视图、DNS、无密钥 HTTPS 200、UI Stop/Start 清理均通过。 |
+| **Magisk / KernelSU Next（x86_64）** | 当前版本验收中 | 当前源码版本的对应框架验收尚未完成。 |
+| **APatch** | App RootService 链未通过 | Android 16 已到 Package Manager 就绪；普通 App 的 `su` 到 `RootService` 主链仍在调通，当前没有 App UID 0 运行证据。 |
 
 ### 功能模块进展
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| 构建入口与 ARM64 内部包 | 已生成待真机验证 | `tooling/build-root-apk.sh`、`tooling/fetch-runc-assets.sh`（校验官方 `runc` 1.4.3 双 ABI SHA-256）、包名 `io.github.rakanrkk.dsh_su`、桌面名称 `DSH SU` 与更新源隔离已就绪；ARM64 内部测试包（`1.0.9-internal.3`，`r15` rootfs）已完成签名固定、ABI、`main.jar` `RootServerMain` 引导与哈希静态校验，**尚未在 ARM64 真机上实测**。 |
+| 构建入口与 ARM64 预发布包 | 公开预发布已发布 | [Release `v1.0.9-internal.4`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4) 仅含 ARM64 APK、`SHA256SUMS` 与 `update.json`。APK SHA-256：`6964950b0fd5b3c8e5b402d303e097a2654e9a24a7566aaf4abf86fcaa58776a`；签名、ABI、资源与哈希静态检查通过，尚无 ARM64 设备运行验证。 |
 | `RootService` + `runc` 启动链 | x86_64 已验证 | `DshRuncClient` 与 `RootProbeService` 已支持默认绑定与私有 `su` 候选 `bindOrTask` 回退、启动期取消 FD 门控、PFD 标准流转发及 `runc kill/delete` 退出回收。 |
 | 权限自授予与共享存储挂载 | x86_64 已验证 | Root 通道自动权限授予（核验系统实际权限值）以及共享存储开启时 `rbind` + `rprivate` 读取宿主 `Download`、关闭时自动重启并移除挂载配置已在 x86_64 验证通过。 |
 
