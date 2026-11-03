@@ -129,10 +129,22 @@ List<AccessItem> accessItemsFor(AccessFeature feature, String? vendor) {
   ];
 }
 
+bool rootManagedAccess(AccessItem item) => const {
+  AccessItem.mic,
+  AccessItem.storage,
+  AccessItem.notifications,
+  AccessItem.battery,
+  AccessItem.accessibility,
+  AccessItem.overlay,
+}.contains(item);
+
 /// Everything [features] need, each item once, in walk order.
-List<AccessItem> accessWalk(Iterable<AccessFeature> features, String? vendor) {
+List<AccessItem> accessWalk(Iterable<AccessFeature> features, String? vendor, {bool rootRuntime = false}) {
   final wanted = {for (final f in features) ...accessItemsFor(f, vendor)};
-  return [for (final item in AccessItem.values) if (wanted.contains(item)) item];
+  return [
+    for (final item in AccessItem.values)
+      if (wanted.contains(item) && (!rootRuntime || !rootManagedAccess(item))) item,
+  ];
 }
 
 /// What the phone says right now. A null grant: this phone can't tell (no
@@ -141,6 +153,7 @@ class AccessReadings {
   const AccessReadings({
     this.vendor,
     this.appLabel,
+    this.rootRuntime = false,
     this.mic,
     this.storage,
     this.notifications,
@@ -160,6 +173,7 @@ class AccessReadings {
 
   /// The app's name as system settings list it.
   final String? appLabel;
+  final bool rootRuntime;
   final bool? mic;
   final bool? storage;
   final bool? notifications;
@@ -206,6 +220,13 @@ AccessState? accessStateOf(AccessItem item, AccessReadings readings, Set<AccessI
     false => AccessState.off,
     null => null,
   };
+}
+
+AccessState? accessSettingsStateOf(AccessItem item, AccessReadings readings, Set<AccessItem> visited) {
+  final state = accessStateOf(item, readings, visited);
+  if (!readings.rootRuntime || !rootManagedAccess(item)) return state;
+  if (state == AccessState.on) return null;
+  return state ?? AccessState.unknown;
 }
 
 /// The step of 「先允许受限制的设置」 the accessibility page is on, 1-based
@@ -293,6 +314,7 @@ class SystemAccessDriver implements AccessDriver {
     return AccessReadings(
       vendor: settings?.vendor,
       appLabel: settings?.label,
+      rootRuntime: status.rootRuntime,
       mic: await mic,
       storage: await storage,
       notifications: await notify,
@@ -535,7 +557,9 @@ class AccessSetupController extends Notifier<AccessSetup> {
     }
 
     var restart = false;
-    if (features.contains(AccessFeature.files) && readings.storage == true && !ref.read(settingsProvider).phoneStorage) {
+    if (features.contains(AccessFeature.files) &&
+        (readings.storage == true || readings.rootRuntime) &&
+        !ref.read(settingsProvider).phoneStorage) {
       await attempt(() => ref.read(settingsProvider.notifier).setPhoneStorage(true));
       restart = true;
     }

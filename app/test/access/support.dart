@@ -21,6 +21,7 @@ import '../shell/golden_harness.dart';
 const offPhone = AccessReadings(
   vendor: 'vivo',
   appLabel: 'DSH Go',
+  rootRuntime: false,
   mic: false,
   storage: false,
   notifications: false,
@@ -39,6 +40,7 @@ AccessReadings readingsWith(
   String? vendor,
   bool clearVendor = false,
   bool? mic,
+  bool? rootRuntime,
   bool? storage,
   bool? notifications,
   bool? battery,
@@ -51,6 +53,7 @@ AccessReadings readingsWith(
 }) => AccessReadings(
   vendor: clearVendor ? null : (vendor ?? r.vendor),
   appLabel: r.appLabel,
+  rootRuntime: rootRuntime ?? r.rootRuntime,
   mic: mic ?? r.mic,
   storage: storage ?? r.storage,
   notifications: notifications ?? r.notifications,

@@ -40,7 +40,10 @@ class AccessSummaryPage extends ConsumerWidget {
     final visited = ref.watch(accessVisitedProvider);
     final rows = [
       for (final item in items)
-        if (accessStateOf(item, readings, visited) case final state?) (item, state),
+        if (accessStateOf(item, readings, visited) case final state?)
+          (item, state)
+        else if (readings.rootRuntime && rootManagedAccess(item))
+          (item, AccessState.unknown),
     ];
     final left = rows.where((r) => !r.$2.settled).length;
     return OnboardingScaffold(
