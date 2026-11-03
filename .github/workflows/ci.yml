@@ -107,13 +107,18 @@ jobs:
           dart analyze
           dart test
 
-  flutter-app:
+  flutter-app-normal:
     if: needs.changes.outputs.app == 'true'
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [0, 1, 2, 3]
     env:
       DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
+      TZ: Asia/Shanghai
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -125,12 +130,43 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk-extra
-      - name: flutter pub get / analyze / test (app)
+      - name: flutter pub get / analyze / test (app, shard)
         working-directory: app
+        env:
+          SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
           flutter pub get
-          flutter analyze
-          flutter test
+          if [ "$SHARD_INDEX" = "0" ]; then flutter analyze; fi
+          printf "TZ=%s\n" "$TZ"
+          date +"timezone_offset=%z timezone=%Z"
+          flutter test --total-shards 4 --shard-index "$SHARD_INDEX"
+      - name: Upload shard failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-app-normal-shard-${{ matrix.shard-index }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: app/test/**/failures/
+          if-no-files-found: ignore
+
+  flutter-app-root:
+    needs: [changes, flutter-app-normal]
+    if: always() && !cancelled() && needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.7'
+          channel: stable
+          cache: true
+      - name: Install CJK test fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk-extra
       - name: Root-mode Flutter checks
         working-directory: app
         run: |
@@ -158,6 +194,16 @@ jobs:
             --tests io.github.ccch1mneyyy.dsh_app.runtime.GuestAgentsModeTest
       - name: l10n merge check
         run: python3 app/tool/l10n_merge.py --check
+      - name: Upload root post-check failure evidence
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-app-root-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            app/test/**/failures/
+            app/android/app/build/reports/
+            app/android/app/build/test-results/
+          if-no-files-found: ignore
 
   plugin-kit:
     if: needs.changes.outputs.pluginkit == 'true'
