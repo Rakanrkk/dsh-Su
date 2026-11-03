@@ -10,6 +10,10 @@ interface IRootProbe {
     String start(in List<String> argv, String containerId, String stateRoot, in ParcelFileDescriptor stdin, in ParcelFileDescriptor stdout, in ParcelFileDescriptor stderr);
 
     // Stops the container: runc kill <id> KILL, waits for exit, then runc delete --force <id>.
-    // Returns "ok" on success, or a short reason code ("timeout", "stillRunning", "deleteFailed").
+    // Returns "ok:<code>" after kill, exit, and delete, or a short failure reason.
     String stop(String containerId, String stateRoot);
+
+    // Blocks up to timeoutMs for the runc process to exit.
+    // Returns "ok:<code>" (real waitFor code, may be non-zero), "timeout", or "notRunning".
+    String waitExit(String containerId, String stateRoot, long timeoutMs);
 }

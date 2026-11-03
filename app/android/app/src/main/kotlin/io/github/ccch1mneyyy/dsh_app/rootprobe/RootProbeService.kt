@@ -6,6 +6,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.topjohnwu.superuser.ipc.RootService
 import java.io.File
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -17,11 +18,16 @@ import kotlin.concurrent.thread
  * the same runc kill/delete, not raw process destroy.
  */
 class RootProbeService : RootService() {
-    private data class Instance(
+    private class Instance(
         val id: String,
         val stateRoot: String,
         val process: java.lang.Process,
-    )
+    ) {
+        @Volatile var exitCode: Int? = null
+        val exited = CountDownLatch(1)
+        var consumed = false
+        var deleted = false
+    }
 
     @Volatile private var instance: Instance? = null
 
@@ -39,11 +45,12 @@ class RootProbeService : RootService() {
                 stderr: ParcelFileDescriptor,
             ): String {
                 synchronized(this@RootProbeService) {
-                    check(instance == null) { "container $containerId already running" }
+                    check(instance == null) { "container ${instance?.id} already running" }
                 }
                 val builder = ProcessBuilder(argv).redirectErrorStream(false)
                 val p = builder.start()
-                synchronized(this@RootProbeService) { instance = Instance(containerId, stateRoot, p) }
+                val entry = Instance(containerId, stateRoot, p)
+                synchronized(this@RootProbeService) { instance = entry }
                 thread(name = "runc-stdin", isDaemon = true) {
                     ParcelFileDescriptor.AutoCloseInputStream(stdin).use { input ->
                         p.outputStream.use { output -> input.copyTo(output) }
@@ -61,8 +68,9 @@ class RootProbeService : RootService() {
                 }
                 thread(name = "runc-wait", isDaemon = true) {
                     val code = p.waitFor()
+                    entry.exitCode = code
+                    entry.exited.countDown()
                     Log.i("RootProbe", "runc $containerId exited $code")
-                    synchronized(this@RootProbeService) { instance = null }
                 }
                 return containerId
             }
@@ -71,19 +79,52 @@ class RootProbeService : RootService() {
                 val current = synchronized(this@RootProbeService) { instance } ?: return "notRunning"
                 check(current.id == containerId) { "container id mismatch" }
                 val runcPath = resolveRunc()
-                val kill = runCatching {
+                val kill = try {
                     ProcessBuilder(listOf(runcPath, "--root", stateRoot, "kill", containerId, "KILL"))
-                        .redirectErrorStream(true).start().waitFor(10, TimeUnit.SECONDS)
-                }.getOrDefault(-1)
-                if (kill != 0) return "killFailed"
-                val exited = current.process.waitFor(15, TimeUnit.SECONDS)
-                if (!exited) return "timeout"
-                val delete = runCatching {
-                    ProcessBuilder(listOf(runcPath, "--root", stateRoot, "delete", "--force", containerId))
-                        .redirectErrorStream(true).start().waitFor(10, TimeUnit.SECONDS)
-                }.getOrDefault(-1)
-                synchronized(this@RootProbeService) { instance = null }
-                return if (delete == 0) "ok" else "deleteFailed"
+                        .redirectErrorStream(true).start()
+                } catch (_: Exception) {
+                    return "killFailed"
+                }
+                if (!kill.waitFor(10, TimeUnit.SECONDS)) return "killTimeout"
+                if (kill.exitValue() != 0) return "killFailed"
+                if (!current.exited.await(15, TimeUnit.SECONDS)) return "timeout"
+                val status = delete(current, runcPath)
+                if (status != "ok") return status
+                val code = current.exitCode ?: current.process.exitValue()
+                current.exitCode = code
+                synchronized(this@RootProbeService) {
+                    current.consumed = true
+                    if (instance === current) instance = null
+                }
+                return "ok:$code"
+            }
+
+            override fun waitExit(containerId: String, stateRoot: String, timeoutMs: Long): String {
+                val current = synchronized(this@RootProbeService) { instance } ?: return "notRunning"
+                if (current.id != containerId || current.stateRoot != stateRoot) return "notRunning"
+                if (!current.exited.await(timeoutMs, TimeUnit.MILLISECONDS)) return "timeout"
+                val status = delete(current, resolveRunc())
+                if (status != "ok") return status
+                val code = current.exitCode ?: return "unknown"
+                synchronized(this@RootProbeService) {
+                    current.consumed = true
+                    if (instance === current) instance = null
+                }
+                return "ok:$code"
+            }
+
+            private fun delete(current: Instance, runcPath: String): String = synchronized(this@RootProbeService) {
+                if (current.deleted) return@synchronized "ok"
+                val delete = try {
+                    ProcessBuilder(listOf(runcPath, "--root", current.stateRoot, "delete", "--force", current.id))
+                        .redirectErrorStream(true).start()
+                } catch (_: Exception) {
+                    return@synchronized "deleteFailed"
+                }
+                if (!delete.waitFor(10, TimeUnit.SECONDS)) return@synchronized "deleteTimeout"
+                if (delete.exitValue() != 0) return@synchronized "deleteFailed"
+                current.deleted = true
+                "ok"
             }
         }
     }

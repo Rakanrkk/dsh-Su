@@ -74,7 +74,7 @@ internal object DshRuncClient {
             val versionStamp = File(runc.parentFile, "version")
             var assetBytes: ByteArray
             try {
-                context.assets.open("root-runtime/runc").use { input -> assetBytes = input.readBytes() }
+                context.assets.open("runtime/root-runtime/runc").use { input -> assetBytes = input.readBytes() }
             } catch (error: Exception) {
                 if (runc.isFile && runc.canExecute()) return
                 onFailure(IllegalStateException("runc asset not found: ${error.message}"))
@@ -101,9 +101,11 @@ internal object DshRuncClient {
         @Volatile private var probe: IRootProbe? = null
         private val bound = java.util.concurrent.CountDownLatch(1)
         private val exitLatch = java.util.concurrent.CountDownLatch(1)
+        private val remoteExitReported = java.util.concurrent.atomic.AtomicBoolean(false)
         private val mainHandler = Handler(Looper.getMainLooper())
         @Volatile private var started = false
         @Volatile private var exited = false
+        @Volatile private var disconnected = false
         @Volatile private var remoteExitCode: Int? = null
         private var appStdin: ParcelFileDescriptor? = null
         private var connection: ServiceConnection? = null
@@ -123,6 +125,8 @@ internal object DshRuncClient {
                     onReady()
                 }
                 override fun onServiceDisconnected(name: ComponentName) {
+                    disconnected = true
+                    onRemoteExit(-1)
                     onLog("[dsh-app] runc root service disconnected", "system")
                 }
             }
@@ -203,12 +207,36 @@ internal object DshRuncClient {
             get() = remoteExitCode
 
         fun awaitRemoteExit(): Int {
-            exitLatch.await()
-            return remoteExitCode ?: 0
+            while (exitLatch.count > 0) {
+                if (disconnected) {
+                    onRemoteExit(-1)
+                    break
+                }
+                val current = probe
+                if (started && current != null) {
+                    try {
+                        val result = current.waitExit(containerId, stateRoot.canonicalPath, 1000)
+                        if (result.startsWith("ok:")) {
+                            val code = result.substringAfter(':').toIntOrNull()
+                            if (code != null) onRemoteExit(code) else onRemoteExit(-1)
+                        } else if (result != "timeout" && result != "notRunning") {
+                            onLog("[dsh-app] runc exit unavailable: $result", "system")
+                            onRemoteExit(-1)
+                        }
+                    } catch (error: Exception) {
+                        onLog("[dsh-app] runc exit unavailable: ${error.javaClass.simpleName}", "system")
+                        onRemoteExit(-1)
+                    }
+                } else {
+                    exitLatch.await(250, java.util.concurrent.TimeUnit.MILLISECONDS)
+                }
+            }
+            return remoteExitCode ?: -1
         }
 
         fun onRemoteExit(code: Int) {
-            if (remoteExitCode == null) remoteExitCode = code
+            if (!remoteExitReported.compareAndSet(false, true)) return
+            remoteExitCode = code
             exited = true
             exitLatch.countDown()
             onLog("[dsh-app] runc exited with code $code", "system")
@@ -230,6 +258,11 @@ internal object DshRuncClient {
                 "remoteError"
             }
             stopStdin()
+            if (status.startsWith("ok:")) {
+                val code = status.substringAfter(':').toIntOrNull()
+                onRemoteExit(code ?: -1)
+                return if (code == null) "unknown" else "ok"
+            }
             return status
         }
     }

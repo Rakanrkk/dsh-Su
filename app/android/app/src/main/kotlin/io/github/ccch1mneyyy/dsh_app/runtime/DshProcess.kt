@@ -287,16 +287,19 @@ class DshProcess(
                     try {
                         session.start(guestArgv, effectiveGuestEnv) { error ->
                             listener.onLog("[dsh-app] runc launch failed: ${error.message}", "system")
+                            session.onRemoteExit(-1)
                             failStart(error.message ?: error.javaClass.simpleName)
                         }
                     } catch (error: Exception) {
                         listener.onLog("[dsh-app] runc compose failed: ${error.message}", "system")
+                        session.onRemoteExit(-1)
                         failStart(error.message ?: error.javaClass.simpleName)
                     }
                 }
             },
             onFailure = { error ->
                 listener.onLog("[dsh-app] runc bind failed: ${error.message}", "system")
+                session.onRemoteExit(-1)
                 failStart(error.message ?: error.javaClass.simpleName)
             },
         )
@@ -385,7 +388,7 @@ class DshProcess(
         if (stopper != null) return
         if (BuildConfig.ROOT_RUNTIME) {
             val session = runcSession ?: run {
-                if (waiter?.isAlive != true) reportRootExit(0, confirmed = true, unexpected = false)
+                if (waiter?.isAlive != true) reportRootExit(-1, confirmed = false, unexpected = false)
                 return
             }
             stopper = thread(name = "dsh-stop", isDaemon = true) {
@@ -395,12 +398,8 @@ class DshProcess(
                 } catch (error: Exception) {
                     null
                 }
-                if (status == "ok") {
-                    session.onRemoteExit(0)
-                    reportRootExit(0, confirmed = true, unexpected = false)
-                } else {
+                if (status != "ok") {
                     listener.onLog("[dsh-app] runc stop not confirmed: ${status ?: "remoteError"}", "system")
-                    reportRootExit(-1, confirmed = false, unexpected = false)
                 }
             }
             return
