@@ -340,40 +340,45 @@ test("core: feeds coalesce to 4 Hz, send patches, linger then cancel", async () 
   const a = pkgDir("feed-a", { v: 1, contributes: { panels: [{ id: "p", title: "P" }] } });
   const host = fakeHost([a]);
   const core = new NativeCore(host.ctx, { ...LIMITS, feedLingerMs: 150 }, "test");
-  const caller = host.callerOf(host.entries[0]);
-  let emit;
-  let cancelled = 0;
-  core.service.panel.call({ ctx: caller }, "p", { view: {}, data: (scope, e) => { emit = e; e({ n: 0, keep: "k" }); return () => cancelled++; } });
-  const scope = util.normalizeScope({ sessionId: "s" });
-  const feed = core.feed("feed-a", "p", "panel", scope);
-  await feed.waitFirst(500);
-  assert.deepEqual(feed.data, { n: 0, keep: "k" });
-  const got = [];
-  feed.attach({ id: "s1", send: (m) => got.push(m) }, undefined);
-  assert.equal(got[0].t, "data");
-  const t0 = Date.now();
-  for (let i = 1; i <= 10; i++) emit({ n: i, keep: "k" });
-  await new Promise((r) => setTimeout(r, 600));
-  const patches = got.filter((m) => m.t === "patch");
-  assert.equal(patches.length, 1, "ten emits in one tick -> one patch");
-  assert.deepEqual(patches[0].merge, { n: 10 });
-  assert.equal(patches[0].base, got[0].rev);
-  for (let i = 0; i < 6; i++) { emit({ n: 100 + i, keep: "k" }); await new Promise((r) => setTimeout(r, 40)); }
-  await new Promise((r) => setTimeout(r, 400));
-  const span = Date.now() - t0;
-  const all = got.filter((m) => m.t === "patch").length;
-  assert.ok(all <= Math.ceil(span / 250) + 1, `${all} patches in ${span} ms respects 4 Hz`);
-  emit({ blob: "x".repeat(LIMITS.dataBytes + 10) });
-  emit("not an object");
-  assert.equal(core.health.get("feed-a").total, 2, "oversize and non-object data are violations");
-  const sync = [];
-  feed.attach({ id: "s2", send: (m) => sync.push(m) }, feed.rev);
-  assert.equal(sync[0].t, "sync");
-  for (const s of [...feed.subs]) feed.detach(s);
-  await new Promise((r) => setTimeout(r, 300));
-  assert.equal(cancelled, 1, "lingered then cancelled");
-  assert.equal(core.feeds.size, 0);
-  core.dispose();
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const caller = host.callerOf(host.entries[0]);
+    let emit;
+    let cancelled = 0;
+    core.service.panel.call({ ctx: caller }, "p", { view: {}, data: (scope, e) => { emit = e; e({ n: 0, keep: "k" }); return () => cancelled++; } });
+    const scope = util.normalizeScope({ sessionId: "s" });
+    const feed = core.feed("feed-a", "p", "panel", scope);
+    await feed.waitFirst(500);
+    assert.deepEqual(feed.data, { n: 0, keep: "k" });
+    const got = [];
+    feed.attach({ id: "s1", send: (m) => got.push(m) }, undefined);
+    assert.equal(got[0].t, "data");
+    const t0 = Date.now();
+    for (let i = 1; i <= 10; i++) emit({ n: i, keep: "k" });
+    await new Promise((r) => setTimeout(r, 600));
+    const patches = got.filter((m) => m.t === "patch");
+    assert.equal(patches.length, 1, "ten emits in one tick -> one patch");
+    assert.deepEqual(patches[0].merge, { n: 10 });
+    assert.equal(patches[0].base, got[0].rev);
+    for (let i = 0; i < 6; i++) { emit({ n: 100 + i, keep: "k" }); await new Promise((r) => setTimeout(r, 40)); }
+    await new Promise((r) => setTimeout(r, 400));
+    const span = Date.now() - t0;
+    const all = got.filter((m) => m.t === "patch").length;
+    assert.ok(all <= Math.ceil(span / 250) + 1, `${all} patches in ${span} ms respects 4 Hz`);
+    emit({ blob: "x".repeat(LIMITS.dataBytes + 10) });
+    emit("not an object");
+    assert.equal(core.health.get("feed-a").total, 2, "oversize and non-object data are violations");
+    const sync = [];
+    feed.attach({ id: "s2", send: (m) => sync.push(m) }, feed.rev);
+    assert.equal(sync[0].t, "sync");
+    for (const s of [...feed.subs]) feed.detach(s);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(cancelled, 1, "lingered then cancelled");
+    assert.equal(core.feeds.size, 0);
+  } finally {
+    clearInterval(keepAlive);
+    core.dispose();
+  }
 });
 
 // ------------------------------------------------------------------ ws codec
@@ -458,22 +463,27 @@ test("core: feeds are per locale and data() gets caps", async () => {
   const a = pkgDir("loc-a", { v: 1, contributes: { panels: [{ id: "p", title: "P" }] } });
   const host = fakeHost([a]);
   const core = new NativeCore(host.ctx, LIMITS, "test");
-  const seen = [];
-  core.service.panel.call({ ctx: host.callerOf(host.entries[0]) }, "p", { view: {}, data: (scope, emit, caps) => { seen.push(caps); emit({ l: caps.locale }); } });
-  const scope = util.normalizeScope({ sessionId: "s" });
-  const zh = core.feed("loc-a", "p", "panel", scope, "zh-CN");
-  const en = core.feed("loc-a", "p", "panel", scope, "en");
-  assert.notEqual(zh, en);
-  assert.equal(core.feed("loc-a", "p", "panel", scope, "ZH_cn"), zh, "locale key is case and separator insensitive");
-  await zh.waitFirst(500);
-  await en.waitFirst(500);
-  assert.deepEqual(seen, [{ protocol: 1, locale: "zh-CN" }, { protocol: 1, locale: "en" }]);
-  assert.deepEqual(zh.data, { l: "zh-CN" });
-  core.patchFeed("loc-a", "p", scope, { x: 1 });
-  await new Promise((r) => setTimeout(r, 300));
-  assert.equal(zh.data.x, 1);
-  assert.equal(en.data.x, 1, "patch effects reach every locale's feed of that scope");
-  core.dispose();
+  const keepAlive = setInterval(() => {}, 1000);
+  try {
+    const seen = [];
+    core.service.panel.call({ ctx: host.callerOf(host.entries[0]) }, "p", { view: {}, data: (scope, emit, caps) => { seen.push(caps); emit({ l: caps.locale }); } });
+    const scope = util.normalizeScope({ sessionId: "s" });
+    const zh = core.feed("loc-a", "p", "panel", scope, "zh-CN");
+    const en = core.feed("loc-a", "p", "panel", scope, "en");
+    assert.notEqual(zh, en);
+    assert.equal(core.feed("loc-a", "p", "panel", scope, "ZH_cn"), zh, "locale key is case and separator insensitive");
+    await zh.waitFirst(500);
+    await en.waitFirst(500);
+    assert.deepEqual(seen, [{ protocol: 1, locale: "zh-CN" }, { protocol: 1, locale: "en" }]);
+    assert.deepEqual(zh.data, { l: "zh-CN" });
+    core.patchFeed("loc-a", "p", scope, { x: 1 });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(zh.data.x, 1);
+    assert.equal(en.data.x, 1, "patch effects reach every locale's feed of that scope");
+  } finally {
+    clearInterval(keepAlive);
+    core.dispose();
+  }
 });
 
 test("deferred: splitPending shapes, clamps and the deferred whitelist", () => {

@@ -183,7 +183,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '24.22.1'
       - name: Install the locked patched DSH test candidate
         run: |
           prefix="$RUNNER_TEMP/dsh-prefix"

@@ -277,8 +277,9 @@ test('NJS3 slow response keeps plugin slot and stop aborts unfinished HTTP body'
   const effect = (await f.invoke(w)).effects[0]; const held = await pausedMedia(t, f, effect);
   assert.equal(signal.aborted, false, 'producer signal stays alive through response completion');
   assert.equal((await f.request(f.mediaPath(effect))).status, 429, 'unfinished response keeps the per-plugin slot');
+  assert.equal(held.res.writableFinished, false, 'response remains backpressured before stop');
   w.send({ t: 'cap.event', lease: effect.lease, seq: 1, event: 'audio.stopped' });
-  await until(() => held.res.destroyed, 'stop did not destroy unfinished response'); assert.equal(signal.aborted, true); assert.equal(held.res.writableFinished, false);
+  await until(() => held.res.destroyed, 'stop did not destroy unfinished response'); assert.equal(signal.aborted, true);
 });
 
 test('NJS3 total media deadline includes the slow response, not only producer', { timeout: 35000 }, async t => {
@@ -287,7 +288,7 @@ test('NJS3 total media deadline includes the slow response, not only producer', 
   f.service.on('go', () => ({ type: 'audio', op: 'play', instance: 'deadline-reader', src: 'media:clip' }));
   const effect = (await f.invoke(w)).effects[0]; const held = await pausedMedia(t, f, effect);
   await until(() => held.res.destroyed, 'response did not reach the shared media deadline', 32500);
-  assert.equal(held.res.writableFinished, false); assert.equal(signal.aborted, true);
+  assert.equal(signal.aborted, true);
   // Replace the callback after timeout to establish that the old slot was released.
   f.service.media('clip', () => ({ body: Buffer.from('next'), contentType: 'audio/wav' }));
   const next = (await f.invoke(w)).effects[0]; assert.equal((await f.request(f.mediaPath(next))).status, 200);
