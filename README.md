@@ -1,5 +1,5 @@
 <p align="center">
-  <b>简体中文</b> · <a href="README.en.md">English</a> · <a href="docs/dsh-su.md">dsh-Su 架构与状态</a> · <a href="docs/guide/README.md">使用指南</a>
+  <b>简体中文</b> · <a href="README.en.md">English</a> · <a href="docs/dsh-su.md">dsh-Su 架构与状态</a> · <a href="#build-from-source">从源码构建</a> · <a href="docs/guide/README.md">使用指南</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 <p align="center">
   <a href="docs/dsh-su.md"><img alt="dsh-Su Root Runtime WIP" src="https://img.shields.io/badge/dsh--Su-Root%20Runtime%20(WIP)-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="许可证 AGPL-3.0" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="论坛" src="https://img.shields.io/badge/%E8%AE%BA%E5%9D%9B-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ 群 1132118290" src="https://img.shields.io/badge/QQ%20%E7%BE%A4-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
@@ -24,23 +24,23 @@
 
 ## 关于 dsh-Su（Root 分支说明）
 
-本仓库是 **`dsh-Su`**（[`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)），面向极客、玩机者与开发者，与上游 [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) 长期并行开发，完整保留原版功能、协议、版权与 [AGPL-3.0](LICENSE) 许可证归属。详细架构与进展见 [docs/dsh-su.md](docs/dsh-su.md)。
+本仓库是 **`dsh-Su`**（[`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)），面向极客、玩机者与开发者，以最小上游补丁集方式与 [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) 长期平行开发，完整保留原版主界面、聊天、工具、插件、远程主机能力以及原作者版权与 [AGPL-3.0](LICENSE) 许可证归属。详细架构与验证进展见 [docs/dsh-su.md](docs/dsh-su.md)。
 
 ```mermaid
 flowchart LR
-  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] --> Su["su (UID 0)<br/>KernelSU / SukiSU / Magisk / APatch"]
-  Su --> NS["独立 Mount Namespace<br/>+ chroot Ubuntu 24.04"]
-  NS --> Engine["Node.js + DSH 引擎<br/>127.0.0.1:3080"]
+  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] -->|Binder IPC + PFD| Libsu["libsu 6.0.0<br/>普通非 daemon RootService"]
+  Libsu --> Runc["官方 runc 1.4.3<br/>mount-only private ns · UID/GID 0"]
+  Runc --> Engine["Ubuntu 24.04 rootfs<br/>Node.js + DSH 引擎 (127.0.0.1:3080)"]
   UI -->|SSH / DSH Remote| Remote["电脑 / 服务器 DSH"]
 ```
 
-- **定位与架构**：不新增独立 `shell` 工具或权限分档，直接复用原版 Ubuntu rootfs、Node.js、DSH 引擎与 Flutter 界面，将本地运行环境从 PRoot 切换为真实 UID 0 `chroot`。
-- **已就绪部分**：
-  - Root 构建入口 `tooling/build-root-apk.sh`、独立包名 `io.github.rakanrkk.dsh_su`、桌面名称 `DSH SU` 与 `BuildConfig.ROOT_RUNTIME` 开关，可与原版 `DSH Go` 并存安装；
-  - 更新源隔离至 `Rakanrkk/dsh-Su`，清空上游公共更新流、镜像与内测令牌；
-  - 真机 `chroot` 内已验证 `id` 与 Node 进程返回真实 UID 0。
-- **开发中部分**：
-  - `DshProcess.kt` 的 Root 启动、独立 mount namespace 挂载与卸载、进程归属清理及文件属主适配尚未完成。
+- **架构定位**：`RootService` 仅作为 UID 0 进程桥，不重新实现 DSH。通过 `libsu` `6.0.0` 普通非 daemon `RootService` 驱动官方 `runc` `1.4.3`，在原版 Ubuntu rootfs 上开启独立 `mount` 私有命名空间（无 PID namespace，以 `UID/GID 0` 运行并保留继承的 capabilities）。
+- **身份与构建隔离**：构建入口为 `tooling/build-root-apk.sh`（自动通过 `tooling/fetch-runc-assets.sh` 拉取并校验官方 `runc` 1.4.3 双架构二进制），应用包名为 `io.github.rakanrkk.dsh_su`、桌面名称为 `DSH SU`，可与原版 `DSH Go` 并存安装；更新源隔离至 `Rakanrkk/dsh-Su`。
+- **兼容目标与当前验证范围**（尚未发布公开 Release，ARM64 内部构建包尚未真机测试）：
+  - **SukiSU Ultra（x86_64）**：已通过真 Root 启动、UI Stop/Start、App 进程终止恢复、原 UI PTY 终端（`shell`/`node`/`python` UID 0）、文件读写删与 `getent` DNS 解析；覆盖升级保留 UID/rootfs、自动权限实际系统状态核验、共享存储开启时读取宿主 `Download` 与关闭后自动重启移除挂载配置均已验证通过；
+  - **Magisk（x86_64）**：最新源码构建已验证候选 `su`（`/debug_ramdisk/su`）选中、`runc` + Node UID 0 监听、通知栏 Stop 与连续启停后无残留或迟到 Node 进程；
+  - **KernelSU（标准版）/ KernelSU Next（x86_64）**：已完成前期基线下的真 Root 就绪与生命周期验证，正补跑当前同源码版本复核；
+  - **APatch（ARM64）与 ARM64 真机**：APatch 官方 Android 14（kernel `6.1.172`）虚拟化环境已进入 `init` 第二阶段与串口控制台，尚未完成 ADB 启动与 App 验证；ARM64 内部测试包（`1.0.9-internal.3`）已完成签名固定、ABI、`main.jar` `RootServerMain` 引导与哈希静态校验，尚未在 ARM64 真机上测试。
 
 <br>
 
@@ -61,10 +61,10 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">下载与构建</h3>
 
-<p align="center">dsh-Su 的 Root 引擎仍在开发中；本仓库发布页为 <a href="https://github.com/Rakanrkk/dsh-Su/releases">Rakanrkk/dsh-Su Releases</a>（构建入口 <code>tooling/build-root-apk.sh</code>）。如需稳定版原版 PRoot 客户端，可前往上游 <a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest">ccch1mneyyy/dsh-Go Releases</a> 或 <a href="https://go.dshtui.com/download">go.dshtui.com</a>。</p>
+<p align="center"><code>dsh-Su</code> 当前处于活跃开发与分框架验证阶段，尚未发布稳定内测或正式 Release 安装包，请按<a href="#build-from-source">从源码构建</a>章节使用 <code>tooling/build-root-apk.sh</code> 本地构建。如需日常使用的稳定版免 Root（PRoot）客户端，请从上游下载原版 <b>DSH Go</b>。</p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="dsh-Su Releases" src="https://img.shields.io/badge/Rakanrkk%2Fdsh--Su-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="上游 DSH Go Releases" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>
+  <a href="#build-from-source"><img alt="从源码构建 dsh-Su" src="https://img.shields.io/badge/dsh--Su-%E4%BB%8E%E6%BA%90%E7%A0%81%E6%9E%84%E5%BB%BA-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="上游 DSH Go Releases" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="从官网下载页下载" src="https://img.shields.io/badge/go.dshtui.com-%E4%B8%8A%E6%B8%B8%E5%AE%98%E7%BD%91-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
@@ -199,13 +199,13 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 
 安装要求为 Android 8.0（API 26）及以上。Release 页面上的 **arm64** 安装包适用于常见的 64 位 Android 手机；x86_64 设备和模拟器用的 x64 包在发布说明末尾的「其他版本下载」里。仓库没有 32 位 ARM 构建。
 
-1. 从本仓库 [Rakanrkk/dsh-Su Releases](https://github.com/Rakanrkk/dsh-Su/releases)（或按下方说明使用 `tooling/build-root-apk.sh` 本地构建；上游原版 APK 见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)）获取对应架构的 APK，并按系统提示允许该安装来源。
+1. `dsh-Su` 在首个正式版本发布前，请按[从源码构建](#build-from-source)使用 `tooling/build-root-apk.sh` 生成 APK（上游原版免 Root 安装包见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)），并按系统提示允许该安装来源。
 2. 首次启动时，选择在本机安装运行环境，或连接远程主机。
 3. 为所选主机配置模型和所需凭据，再开始对话；部分远程渠道需要在主机侧配置。
 
 仅连接远程主机时，不必在手机上安装本机运行环境。手机操控只对正常模式下的本机引擎开放，需要按界面说明开启无障碍等权限；不打扰模式另外要求 Android 14 及以上，以及 Shizuku 或自连 ADB。首次使用可按[使用指南](docs/guide/README.md)逐项配置。
 
-本地引擎默认使用 PRoot 兼容启动。开发者选项中的直接启动默认关闭，开启后的兼容性和回退方式见[常见问题](docs/guide/zh/11-faq.md)。当前 Android 构建以 APK 侧载为目标，不是 Google Play 发布配置。
+上游原版默认使用 PRoot 兼容启动；`dsh-Su`（`BuildConfig.ROOT_RUNTIME = true`）使用 `libsu` `RootService` + `runc` 启动本地容器环境，详见 [docs/dsh-su.md](docs/dsh-su.md)。当前 Android 构建以 APK 侧载为目标，不是 Google Play 发布配置。
 
 ## 数据与权限
 
@@ -255,6 +255,7 @@ Android 8 及以上。手机直接下载 Release 页面上的安装包即可，�
 
 </details>
 
+<a id="build-from-source"></a>
 ## 从源码构建
 
 以下流程面向 **Linux x86_64**。当前工具链脚本默认安装 JDK 17、Flutter 3.47.7 和 Android SDK/NDK；App 要求 Dart `^3.13.5`。准备 Bash、Git、curl、tar、unzip、xz、Python 3、zstd（Python 未提供 `compression.zstd` 时用于解包 zstd 压缩的 deb）、file 和常见 GNU 命令；重新解析 Ubuntu 软件包锁时还需要 gpgv。
@@ -271,7 +272,7 @@ flutter --version
 java -version
 
 bash runtime/build-runtime.sh arm64-v8a
-# 构建 dsh-Su（Root 运行时配置，包名 io.github.rakanrkk.dsh_su）
+# 构建 dsh-Su（自动拉取并校验官方 runc 1.4.3，包名 io.github.rakanrkk.dsh_su，桌面名 DSH SU）
 bash tooling/build-root-apk.sh -f arm64 --keep-daemon
 
 # 或构建与上游一致的默认 PRoot 包（包名 io.github.ccch1mneyyy.dsh_app）

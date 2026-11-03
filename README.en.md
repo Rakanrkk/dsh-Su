@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="docs/guide/en/README.md">User Guide</a>
+  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="#build-from-source">Build from Source</a> · <a href="docs/guide/en/README.md">User Guide</a>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 <p align="center">
   <a href="docs/dsh-su.md"><img alt="dsh-Su Root Runtime WIP" src="https://img.shields.io/badge/dsh--Su-Root%20Runtime%20(WIP)-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/upstream-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="Forum" src="https://img.shields.io/badge/forum-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ group 1132118290" src="https://img.shields.io/badge/QQ%20group-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
@@ -24,23 +24,23 @@
 
 ## About dsh-Su (Root Branch)
 
-This repository is **`dsh-Su`** ([`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)), built for enthusiasts, phone modders, and developers in parallel with upstream [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go). It retains the upstream features, protocols, copyright, and [AGPL-3.0](LICENSE) license attribution. See [docs/dsh-su.md](docs/dsh-su.md) for architecture and current progress.
+This repository is **`dsh-Su`** ([`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)), maintained as a minimal patch set in long-term parallel development with upstream [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) for enthusiasts, phone modders, and developers. It preserves the original UI, chat, tools, plugins, remote host connectivity, author credits, and [AGPL-3.0](LICENSE) license attribution. See [docs/dsh-su.md](docs/dsh-su.md) for architecture and current verification status.
 
 ```mermaid
 flowchart LR
-  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] --> Su["su (UID 0)<br/>KernelSU / SukiSU / Magisk / APatch"]
-  Su --> NS["Isolated Mount Namespace<br/>+ chroot Ubuntu 24.04"]
-  NS --> Engine["Node.js + DSH Engine<br/>127.0.0.1:3080"]
+  UI["Flutter App · DSH SU<br/>io.github.rakanrkk.dsh_su"] -->|Binder IPC + PFD| Libsu["libsu 6.0.0<br/>non-daemon RootService"]
+  Libsu --> Runc["Official runc 1.4.3<br/>mount-only private ns · UID/GID 0"]
+  Runc --> Engine["Ubuntu 24.04 rootfs<br/>Node.js + DSH Engine (127.0.0.1:3080)"]
   UI -->|SSH / DSH Remote| Remote["Desktop / Server DSH"]
 ```
 
-- **Scope and Architecture**: No separate `shell` tool or permission tiers are added. `dsh-Su` reuses the upstream Ubuntu rootfs, Node.js, DSH engine, and Flutter UI while replacing the local PRoot layer with a real UID 0 `chroot` environment.
-- **Implemented**:
-  - Root build entry point `tooling/build-root-apk.sh`, application ID `io.github.rakanrkk.dsh_su`, launcher label `DSH SU`, and `BuildConfig.ROOT_RUNTIME`, allowing side-by-side installation with upstream `DSH Go`;
-  - Update feed isolated to `Rakanrkk/dsh-Su` with upstream public mirrors, feeds, and beta tokens cleared;
-  - Real UID 0 execution verified for `id` and Node inside on-device `chroot`.
-- **In Progress**:
-  - `DshProcess.kt` root startup, isolated mount namespace setup/teardown, process ownership tracking, stop cleanup, and file ownership handling are not yet complete.
+- **Architecture**: `RootService` acts purely as a UID 0 process bridge rather than reimplementing DSH. It uses a `libsu` `6.0.0` non-daemon `RootService` and official `runc` `1.4.3` over the embedded Ubuntu 24.04 rootfs in a mount-only private namespace (no PID namespace, running as `UID/GID 0` with inherited capabilities preserved).
+- **Identity and Build Isolation**: Built via `tooling/build-root-apk.sh` (which fetches and verifies official `runc` 1.4.3 binaries through `tooling/fetch-runc-assets.sh`), with package name `io.github.rakanrkk.dsh_su` and launcher label `DSH SU` for side-by-side installation with upstream `DSH Go`. Update sources are isolated to `Rakanrkk/dsh-Su`.
+- **Compatibility Targets & Verified Scope** (no public release published yet; ARM64 internal build is not yet tested on physical devices):
+  - **SukiSU Ultra (x86_64)**: Verified full UID 0 startup, UI Stop/Start, recovery after app death, native UI PTY terminal (`shell`/`node`/`python` at UID 0), file R/W/delete, `getent` DNS resolution, in-place upgrade preserving UID/rootfs, verified system permission self-grants, host `Download` read with shared storage enabled, and automatic restart with mount removal when disabled;
+  - **Magisk (x86_64)**: Verified on the latest source with candidate `su` (`/debug_ramdisk/su`) selection, `runc` + Node UID 0 listening, notification Stop, and repeated start/stop cycles without late orphaned Node processes;
+  - **KernelSU (standard) / KernelSU Next (x86_64)**: Passed root startup and lifecycle checks on prior baselines; re-verifying against the latest merged source;
+  - **APatch (ARM64) & Physical ARM64 Devices**: APatch Android 14 (kernel `6.1.172`) virtualized environment has reached second-stage `init` and console output, with ADB boot completion pending; the signed ARM64 internal release (`1.0.9-internal.3`) has passed static ABI, `main.jar` `RootServerMain` bootstrap, and hash verification, and awaits physical device testing.
 
 <br>
 
@@ -61,10 +61,10 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">Downloads & Builds</h3>
 
-<p align="center">The root engine backend in dsh-Su is still under development; this repository's releases live at <a href="https://github.com/Rakanrkk/dsh-Su/releases">Rakanrkk/dsh-Su Releases</a> (built via <code>tooling/build-root-apk.sh</code>). For the stable upstream PRoot client, visit <a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest">ccch1mneyyy/dsh-Go Releases</a> or <a href="https://go.dshtui.com/download">go.dshtui.com</a>.</p>
+<p align="center"><code>dsh-Su</code> is under active development and framework-by-framework verification, with no stable or beta APK releases published yet. Build from source with <code>tooling/build-root-apk.sh</code> as shown in <a href="#build-from-source">Build from source</a>. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases"><img alt="dsh-Su Releases" src="https://img.shields.io/badge/Rakanrkk%2Fdsh--Su-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>
+  <a href="#build-from-source"><img alt="Build dsh-Su from Source" src="https://img.shields.io/badge/dsh--Su-Build%20from%20Source-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Upstream%20Site-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
@@ -199,13 +199,13 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 Installation requires Android 8.0 (API 26) or later. The **arm64** package on the Releases page is for typical 64-bit Android phones; the x64 package for x86_64 devices and emulators is under “Other builds” at the end of the release notes. This repository has no 32-bit ARM build.
 
-1. Get the APK for your device architecture from [Rakanrkk/dsh-Su Releases](https://github.com/Rakanrkk/dsh-Su/releases) (or build locally with `tooling/build-root-apk.sh`; upstream PRoot builds are at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download)), and follow Android's prompt to allow that installation source.
+1. Until the first `dsh-Su` release is published, build the APK locally with `tooling/build-root-apk.sh` following [Build from source](#build-from-source) (upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download)), and follow Android's prompt to allow that installation source.
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
 A remote-only setup does not need a local runtime on the phone. Phone control works with the local engine outside safe mode and requires permissions such as Accessibility, as explained in the app. Non-disruptive mode additionally requires Android 14 or later and Shizuku or self-ADB. Follow the [user guide](docs/guide/README.md) for setup.
 
-The local engine uses compatible PRoot startup by default. Direct startup is off by default in Developer options; see [Troubleshooting](docs/guide/en/11-faq.md) for compatibility and fallback behavior. The current Android build targets APK sideloading, not Google Play distribution.
+Upstream builds use PRoot startup by default; `dsh-Su` (`BuildConfig.ROOT_RUNTIME = true`) launches the local container runtime through `libsu` `RootService` + `runc` (see [docs/dsh-su.md](docs/dsh-su.md)). The current Android build targets APK sideloading, not Google Play distribution.
 
 ## Data and permissions
 
@@ -255,6 +255,7 @@ Yes. The code is in this repository under [AGPL-3.0](LICENSE); `sdk/` and `examp
 
 </details>
 
+<a id="build-from-source"></a>
 ## Build from source
 
 The following workflow targets **Linux x86_64**. The toolchain script currently defaults to JDK 17, Flutter 3.47.7 and the Android SDK/NDK. The app requires Dart `^3.13.5`. Prepare Bash, Git, curl, tar, unzip, xz, Python 3, zstd (for unpacking zstd-compressed deb archives when Python does not provide `compression.zstd`), file and standard GNU utilities. Resolving Ubuntu package locks again also requires gpgv.
@@ -271,7 +272,7 @@ flutter --version
 java -version
 
 bash runtime/build-runtime.sh arm64-v8a
-# Build dsh-Su (Root runtime config, package io.github.rakanrkk.dsh_su, label DSH SU)
+# Build dsh-Su (fetches and verifies official runc 1.4.3, package io.github.rakanrkk.dsh_su, label DSH SU)
 bash tooling/build-root-apk.sh -f arm64 --keep-daemon
 
 # Or build the default upstream PRoot package (package io.github.ccch1mneyyy.dsh_app)
