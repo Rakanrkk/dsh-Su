@@ -57,7 +57,10 @@ jobs:
         id: sel
         run: |
           if [ -f /tmp/changed.txt ] && grep -Eq '^\.github/workflows/ci\.yml$' /tmp/changed.txt; then
-            echo "ALL=true" >> "$GITHUB_ENV"
+            for k in app dart pluginkit runtime guide; do
+              echo "$k=true" >> "$GITHUB_OUTPUT"
+            done
+            exit 0
           fi
           if [ -n "${ALL:-}" ]; then
             for k in app dart pluginkit runtime guide; do
