@@ -58,13 +58,18 @@ const sampleFolders = DrawerView(
 
 bool _emojiLoaded = false;
 
-/// Noto Color Emoji under the family [FolderMarkGlyph] names as a fallback,
-/// when the machine has it.
+/// Loads Noto Color Emoji under the fallback family used by [FolderMarkGlyph].
 Future<void> loadEmojiFont() async {
   if (_emojiLoaded) return;
   _emojiLoaded = true;
-  final file = File('/usr/share/fonts/noto/NotoColorEmoji.ttf');
-  if (!file.existsSync()) return;
+  final file =
+      [
+        File('/usr/share/fonts/noto/NotoColorEmoji.ttf'),
+        File('/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf'),
+      ].firstWhere(
+        (candidate) => candidate.existsSync(),
+        orElse: () => throw StateError('Test font missing: Noto Color Emoji'),
+      );
   final loader = FontLoader('Noto Color Emoji')..addFont(Future.value(ByteData.view(file.readAsBytesSync().buffer)));
   await loader.load();
 }
