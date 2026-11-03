@@ -219,7 +219,10 @@ internal object DshRuncClient {
                         if (result.startsWith("ok:")) {
                             val code = result.substringAfter(':').toIntOrNull()
                             if (code != null) onRemoteExit(code) else onRemoteExit(-1)
-                        } else if (result != "timeout" && result != "notRunning") {
+                        } else if (result == "notRunning") {
+                            onLog("[dsh-app] runc exit unavailable: $result", "system")
+                            onRemoteExit(-1)
+                        } else if (result != "timeout") {
                             onLog("[dsh-app] runc exit unavailable: $result", "system")
                             onRemoteExit(-1)
                         }

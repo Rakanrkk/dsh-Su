@@ -230,8 +230,7 @@ class DshProcess(
         )
         fun expand(s: String) = vars.entries.fold(s) { acc, (k, v) -> acc.replace(k, v) }
         val argv = ArrayList<String>()
-        val effectiveGuestEnv = guestEnv + ("DSH_GO_RUNTIME_ROOT" to rootfs.canonicalPath) +
-            ("NODE_OPTIONS" to DirectLaunch.prootNodeOptions(guestEnv["NODE_OPTIONS"]))
+        val effectiveGuestEnv = guestEnv + ("DSH_GO_RUNTIME_ROOT" to rootfs.canonicalPath)
         var guestEnvPlaced = false
         var profileSelected = false
         var searchPending = !safe && SessionSearchGuest.file(rootfs).isFile
@@ -307,7 +306,7 @@ class DshProcess(
             val code = session.awaitRemoteExit()
             session.onRemoteExit(code)
             session.release()
-            reportRootExit(code, confirmed = true, unexpected = false)
+            reportRootExit(code, confirmed = code >= 0, unexpected = !expectedExit)
         }
         if (stopping) stop()
     }
@@ -329,7 +328,7 @@ class DshProcess(
             val reason = if (unexpected) "exit" else "stop"
             listener.onLog("[dsh-app] root $reason not confirmed; su exit " + code, "system")
         }
-        listener.onExit(this, code, !unexpected && confirmed)
+        listener.onExit(this, code, !unexpected)
     }
 
     /**

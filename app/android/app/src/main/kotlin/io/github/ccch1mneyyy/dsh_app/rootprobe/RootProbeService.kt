@@ -25,7 +25,6 @@ class RootProbeService : RootService() {
     ) {
         @Volatile var exitCode: Int? = null
         val exited = CountDownLatch(1)
-        var consumed = false
         var deleted = false
     }
 
@@ -45,7 +44,7 @@ class RootProbeService : RootService() {
                 stderr: ParcelFileDescriptor,
             ): String {
                 synchronized(this@RootProbeService) {
-                    check(instance == null) { "container ${instance?.id} already running" }
+                    check(instance == null || instance!!.exited.count == 0L) { "container ${instance?.id} already running" }
                 }
                 val builder = ProcessBuilder(argv).redirectErrorStream(false)
                 val p = builder.start()
@@ -92,10 +91,6 @@ class RootProbeService : RootService() {
                 if (status != "ok") return status
                 val code = current.exitCode ?: current.process.exitValue()
                 current.exitCode = code
-                synchronized(this@RootProbeService) {
-                    current.consumed = true
-                    if (instance === current) instance = null
-                }
                 return "ok:$code"
             }
 
@@ -106,10 +101,6 @@ class RootProbeService : RootService() {
                 val status = delete(current, resolveRunc())
                 if (status != "ok") return status
                 val code = current.exitCode ?: return "unknown"
-                synchronized(this@RootProbeService) {
-                    current.consumed = true
-                    if (instance === current) instance = null
-                }
                 return "ok:$code"
             }
 
