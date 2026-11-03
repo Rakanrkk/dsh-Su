@@ -107,7 +107,7 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
         val ok = selfGrantComplete(
             response.getBoolean(Proto.OK),
             response.getStringArrayList(Proto.FAILED_PERMISSIONS).orEmpty(),
-            selfPermissions(Build.VERSION.SDK_INT),
+            selfGrantTargets(Build.VERSION.SDK_INT),
         )
         if (!ok) synchronized(guard) {
             if (channel === current) state.note("rootGrantFailed")

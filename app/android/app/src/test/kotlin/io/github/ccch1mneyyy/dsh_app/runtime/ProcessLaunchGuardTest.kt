@@ -310,10 +310,11 @@ class ProcessLaunchGuardTest {
         val section = sourceSection(
             source,
             "private fun setSpecialAppOp(permission: String, userId: Int) {",
-            "\n    private fun isExpectedPermissionRejection",
+            "\n    private fun setDeviceIdleWhitelist",
         )
         check("Manifest.permission.SYSTEM_ALERT_WINDOW -> \"android:system_alert_window\"" in section.text &&
             "Manifest.permission.MANAGE_EXTERNAL_STORAGE -> \"android:manage_external_storage\"" in section.text &&
+            "Manifest.permission.REQUEST_INSTALL_PACKAGES -> \"android:request_install_packages\"" in section.text &&
             "val op = when (permission)" in section.text &&
             "else -> throw SecurityException(\"unsupported special permission: \$permission\")" in section.text
         ) { "Review the special app-op permission mapping" }
@@ -322,6 +323,17 @@ class ProcessLaunchGuardTest {
                 """ProcessBuilder\(\s*"cmd",\s*"appops",\s*"set",\s*"--user",\s*userId\.toString\(\),\s*Proto\.APP_PACKAGE,\s*op,\s*"allow",?\s*\)""",
             ).containsMatchIn(section.text),
         ) { "Review the fixed appops argv" }
+        val whitelist = sourceSection(
+            source,
+            "private fun setDeviceIdleWhitelist() {",
+            "\n    private fun isExpectedPermissionRejection",
+        )
+        check(
+            Regex(
+                """ProcessBuilder\(\s*"cmd",\s*"deviceidle",\s*"whitelist",\s*"\+\$\{Proto\.APP_PACKAGE\}",?\s*\)""",
+            ).containsMatchIn(whitelist.text) &&
+                "if (exit != 0) throw SecurityException(\"deviceidle whitelist failed: \$output\")" in whitelist.text,
+        ) { "Review the fixed deviceidle whitelist argv and exit handling" }
         val appPackage = File(
             repository(),
             "app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/phone/background/PrivilegedProtocol.kt",
@@ -330,9 +342,10 @@ class ProcessLaunchGuardTest {
             "Review the package identity used by the appops command"
         }
         val allCalls = calls.filter { it.text == "ProcessBuilder" }
-        check(allCalls.size == 1) { "Review all privileged display process launches" }
-        val reviewed = callsInSection(allCalls, section, "ProcessBuilder")
-        check(reviewed.size == 1) { "Review the setSpecialAppOp launch location" }
+        check(allCalls.size == 2) { "Review all privileged display process launches" }
+        val reviewed = callsInSection(allCalls, section, "ProcessBuilder") +
+            callsInSection(allCalls, whitelist, "ProcessBuilder")
+        check(reviewed.size == 2) { "Review the appops and deviceidle launch locations" }
         return reviewed.toSet()
     }
 

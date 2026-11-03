@@ -109,10 +109,29 @@ fun selfPermissions(sdkInt: Int): List<String> {
         Manifest.permission.RECORD_AUDIO,
         Manifest.permission.SYSTEM_ALERT_WINDOW,
     )
+    if (sdkInt >= 26) permissions.add(Manifest.permission.REQUEST_INSTALL_PACKAGES)
     if (sdkInt >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
     if (sdkInt >= 30) permissions.add(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
     return permissions
 }
+
+const val SELF_GRANT_DEVICE_IDLE_WHITELIST = "deviceidle:whitelist"
+
+fun shouldAutoGrantRootSelf(rootRuntime: Boolean, stateComplete: Boolean): Boolean =
+    rootRuntime && !stateComplete
+
+fun selfGrantTargets(sdkInt: Int): List<String> =
+    selfPermissions(sdkInt) + SELF_GRANT_DEVICE_IDLE_WHITELIST
+
+fun selfGrantStateComplete(
+    sdkInt: Int,
+    permissionsGranted: (String) -> Boolean,
+    canRequestPackageInstalls: Boolean,
+    ignoresBatteryOptimizations: Boolean,
+): Boolean =
+    selfPermissions(sdkInt).all(permissionsGranted) &&
+        (sdkInt < 26 || canRequestPackageInstalls) &&
+        (sdkInt < 23 || ignoresBatteryOptimizations)
 
 /** Only a complete fixed set counts; the response's [Proto.OK] alone can hide partial failures. */
 fun selfGrantComplete(ok: Boolean, failedPermissions: List<String>, permissions: List<String>): Boolean {
