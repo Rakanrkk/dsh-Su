@@ -39,10 +39,12 @@ android {
 
     buildFeatures {
         buildConfig = true
+        aidl = true
     }
 
     defaultConfig {
         applicationId = if (rootRuntime) "io.github.rakanrkk.dsh_su" else "io.github.ccch1mneyyy.dsh_app"
+        buildConfigField("String", "APPLICATION_ID", "\"$applicationId\"")
         // java.nio.file (symlinks while unpacking the rootfs) needs API 26.
         minSdk = 26
         // Target 28 like Termux, so the API 29+ exec restriction on app-private
@@ -135,6 +137,8 @@ flutter {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    implementation("com.github.topjohnwu.libsu:core:6.0.0") // Apache-2.0: root shell + RootService Binder IPC
+    implementation("com.github.topjohnwu.libsu:service:6.0.0")
 
     // .tar.xz support for the rootfs bundle.
     implementation("org.tukaani:xz:1.10")

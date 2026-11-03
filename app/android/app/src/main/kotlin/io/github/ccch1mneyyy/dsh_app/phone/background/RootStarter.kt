@@ -4,6 +4,7 @@ package io.github.ccch1mneyyy.dsh_app.phone.background
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Build
 import android.os.Process
 import java.io.IOException
 
@@ -49,7 +50,7 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
         if (!stillAccepted) { onChanged(); return@start null }
         val info = context.applicationInfo
         val process = try {
-            RootProcess.launch(RootCommands.appProcess(info.sourceDir, info.splitSourceDirs?.toList().orEmpty()))
+            RootProcess.launchEach(RootCommands.appProcess(info.sourceDir, info.splitSourceDirs?.toList().orEmpty()))
         } catch (error: Exception) {
             synchronized(guard) { if (state.current(ticket)) { pendingAllowed = null; state.finish(ticket, reason(error)) } }
             onChanged()
@@ -89,6 +90,25 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
             putString(Proto.OP, Proto.OP_GRANT_SECURE_SETTINGS)
             putInt(Proto.USER, Process.myUid() / 100000)
         }).getBoolean(Proto.OK)
+        if (!ok) synchronized(guard) {
+            if (channel === current) state.note("rootGrantFailed")
+        }
+        onChanged()
+        return ok
+    }
+
+    /** The fixed self grants over the connected root process; the app-side check is the answer. */
+    fun grantSelf(): Boolean {
+        val current = connect() ?: return false
+        val response = current.execute(Bundle().apply {
+            putString(Proto.OP, Proto.OP_GRANT_SELF)
+            putInt(Proto.USER, Process.myUid() / 100000)
+        })
+        val ok = selfGrantComplete(
+            response.getBoolean(Proto.OK),
+            response.getStringArrayList(Proto.FAILED_PERMISSIONS).orEmpty(),
+            selfPermissions(Build.VERSION.SDK_INT),
+        )
         if (!ok) synchronized(guard) {
             if (channel === current) state.note("rootGrantFailed")
         }

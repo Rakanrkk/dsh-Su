@@ -31,6 +31,8 @@ class RuntimeInstaller(
     private val manifest: RuntimeManifest,
     private val onLog: (String) -> Unit,
     private val sync: () -> Unit = ::syncFilesystems,
+    /** Root builds refuse deletes that cannot be proven mount-free (notes/root-backend-interface.md). */
+    private val rootRuntime: Boolean = false,
 ) {
     val baseDir = File(context.filesDir, "runtime")
     val rootfs = File(baseDir, "rootfs")
@@ -51,9 +53,11 @@ class RuntimeInstaller(
      */
     fun install(dropKept: Boolean = false, onProgress: (Long, Long) -> Unit) {
         // A reset killed halfway finishes first, so what it keeps is in runtime-keep for the restore.
-        settleReset(retiredDir, keepDir, dropKept)
+        val mounts = MountGuard.read(strict = rootRuntime)
+        settleReset(retiredDir, keepDir, dropKept, mounts)
         baseDir.mkdirs()
-        staging.deleteRecursivelySafely()
+        // staging is a fresh tree that was never a chroot target: it deletes without host-view proof.
+        staging.deleteRecursivelySafely(mounts, allowWithoutHostProof = true)
         checkFreeSpace()
         staging.mkdirs()
 
@@ -77,7 +81,7 @@ class RuntimeInstaller(
             val actual = digest.digest().joinToString("") { "%02x".format(it) }
             val expected = manifest.rootfsSha256
             if (expected != null && !expected.equals(actual, ignoreCase = true)) {
-                staging.deleteRecursivelySafely()
+                staging.deleteRecursivelySafely(mounts, allowWithoutHostProof = true)
                 throw IllegalStateException(AppStrings.get(context, R.string.service_package_checksum_failed))
             }
         }
@@ -98,7 +102,7 @@ class RuntimeInstaller(
 
         timed("activate") {
             activateRootfs(baseDir, manifest.runtimeVersion, keepDir, dropKept,
-                sync = { timed("sync") { sync() } })
+                sync = { timed("sync") { sync() } }, mounts = mounts, rootRuntime = rootRuntime)
         }
     }
 
@@ -122,7 +126,7 @@ class RuntimeInstaller(
 
     /** Deletes the runtime; [keep] (paths under the rootfs) waits in runtime-keep for the next install. */
     fun reset(keep: List<String>) {
-        retireRuntime(baseDir, retiredDir, keepDir, keep)
+        retireRuntime(baseDir, retiredDir, keepDir, keep, MountGuard.read(strict = rootRuntime))
     }
 
     private fun assetLength(path: String): Long = try {
@@ -131,30 +135,6 @@ class RuntimeInstaller(
         -1L // compressed asset; fall back to the manifest
     }
 }
-
-/** Recursive delete that removes symlinks without following them and copes with read-only dirs. */
-internal fun File.deleteRecursivelySafely() {
-    if (isSymlink()) {
-        delete()
-        return
-    }
-    if (isDirectory) {
-        if (!canWrite()) runCatching { android.system.Os.chmod(path, 0x1C0) } // 0700
-        if (!canWrite()) setWritable(true) // no android.system off the device (JVM tests)
-        listFiles()?.forEach { it.deleteRecursivelySafely() }
-    }
-    delete()
-}
-
-private fun File.isSymlink(): Boolean = try {
-    android.system.OsConstants.S_ISLNK(android.system.Os.lstat(path).st_mode)
-} catch (_: Exception) {
-    // No android.system off the device (JVM tests).
-    runCatching { Files.isSymbolicLink(toPath()) }.getOrDefault(false)
-}
-
-/** Exists, counting a symlink whose target is gone. */
-private fun File.present(): Boolean = exists() || isSymlink()
 
 /**
  * Swaps `staging` in as `rootfs` and moves the user's /root over. The home waits in `home.carry`,
@@ -168,6 +148,8 @@ internal fun activateRootfs(
     dropKept: Boolean = false,
     sync: () -> Unit,
     syncDirectory: (File) -> Unit = ::syncDirectory,
+    mounts: MountGuard? = null,
+    rootRuntime: Boolean = false,
 ) {
     val rootfs = File(base, "rootfs")
     val staging = File(base, "staging")
@@ -179,27 +161,197 @@ internal fun activateRootfs(
     if (Files.deleteIfExists(versionFile.toPath())) syncDirectory(base)
     // /opt is replaced below. Remember old direct use with the carried home so
     // saved physical cwd paths remain readable after upgrading in PRoot mode.
-    DirectLaunch.preservePhysicalAlias(rootfs, if (carry.exists()) carry else home, retired)
+    if (!rootRuntime) {
+        DirectLaunch.preservePhysicalAlias(rootfs, if (carry.exists()) carry else home, retired)
+    }
     if (!carry.exists() && home.isDirectory && !home.renameTo(carry)) {
         throw IllegalStateException("could not keep the user's home")
     }
-    retired.deleteRecursivelySafely()
-    if (rootfs.exists() && !rootfs.renameTo(retired)) rootfs.deleteRecursivelySafely()
+    retired.deleteRecursivelySafely(mounts)
+    if (rootfs.exists() && !rootfs.renameTo(retired)) rootfs.deleteRecursivelySafely(mounts)
     if (!staging.renameTo(rootfs)) throw IllegalStateException("could not activate rootfs")
     if (carry.exists()) {
-        home.deleteRecursivelySafely()
+        // The fresh home out of staging was never a chroot target: it deletes without host-view proof.
+        home.deleteRecursivelySafely(mounts, allowWithoutHostProof = true)
         if (!carry.renameTo(home)) throw IllegalStateException("could not restore the user's home")
     }
     listOf("root", "root/workspace", "tmp", "dev", "proc", "sys").forEach { File(rootfs, it).mkdirs() }
     File(rootfs, "tmp").setWritable(true, false)
     // Before the version: until everything kept is back, the runtime reads as not installed.
-    if (keep != null) restoreKept(keep, rootfs, dropKept)
+    if (keep != null) restoreKept(keep, rootfs, dropKept, mounts)
     // Everything the marker vouches for is on disk before it says ready. A marker torn by a
     // power cut doesn't match the version, so the next start just installs again.
     sync()
     versionFile.writeText(version)
-    retired.deleteRecursivelySafely()
+    retired.deleteRecursivelySafely(mounts)
 }
+
+/** One line of /proc/<pid>/mountinfo: the mount point (field 5) plus its peer-group markers. */
+internal data class MountEntry(val mountPoint: String, val shared: Boolean = false, val master: Boolean = false)
+
+/** Parses /proc/<pid>/mountinfo by field; the regex-free field split the mount-leak review called for. */
+internal object MountInfo {
+    private val ESCAPES = mapOf("040" to " ", "011" to "\t", "012" to "\n", "134" to "\\")
+
+    /** [text] is the raw mountinfo; malformed lines are skipped. */
+    fun parse(text: String): List<MountEntry> = text.lines().mapNotNull { line ->
+        val fields = splitFields(line)
+        if (fields.size < 5) return@mapNotNull null
+        val optional = fields.drop(6).takeWhile { it != "-" }
+        MountEntry(
+            mountPoint = decode(fields[4]),
+            shared = optional.any { it.startsWith("shared:") },
+            master = optional.any { it.startsWith("master:") },
+        )
+    }
+
+    /** Mounts at [tree] itself or below it, compared on whole path components. */
+    fun under(mounts: List<MountEntry>, tree: String): List<MountEntry> {
+        val base = tree.trimEnd('/').ifEmpty { "/" }
+        if (base == "/") return mounts.toList()
+        val prefix = "$base/"
+        return mounts.filter { it.mountPoint == base || it.mountPoint.startsWith(prefix) }
+    }
+
+    /** Splits on unescaped spaces; a `\040` keeps a literal space inside one field. */
+    private fun splitFields(line: String): List<String> {
+        val fields = mutableListOf<String>()
+        val current = StringBuilder()
+        var escaped = false
+        for (c in line) {
+            when {
+                c == '\\' -> {
+                    escaped = true
+                    current.append(c)
+                }
+                c == ' ' && !escaped -> {
+                    fields += current.toString()
+                    current.clear()
+                }
+                else -> {
+                    if (c != ' ') escaped = false
+                    current.append(c)
+                }
+            }
+        }
+        if (current.isNotEmpty()) fields += current.toString()
+        return fields
+    }
+
+    /** Decodes the kernel's octal escapes (040 space, 011 tab, 012 newline, 134 backslash). */
+    private fun decode(field: String): String {
+        if (!field.contains('\\')) return field
+        val out = StringBuilder(field.length)
+        var i = 0
+        while (i < field.length) {
+            val c = field[i]
+            if (c == '\\' && i + 4 <= field.length) {
+                val code = field.substring(i + 1, i + 4)
+                ESCAPES[code]?.let {
+                    out.append(it)
+                    i += 4
+                    continue
+                }
+            }
+            out.append(c)
+            i++
+        }
+        return out.toString()
+    }
+}
+
+/**
+ * The mount tables a delete must respect: this process's view plus the host's own
+ * (`/proc/1/mountinfo`). A null list is a view that could not be read; root builds refuse
+ * to delete environment trees until the root backend provides an authoritative check
+ * (notes/root-backend-interface.md), so a leaked mount can never be rm -rf'd through.
+ */
+internal class MountGuard(
+    private val self: List<MountEntry>?,
+    private val host: List<MountEntry>?,
+    internal val strict: Boolean,
+) {
+    constructor(self: List<MountEntry>?, host: List<MountEntry>?) : this(self, host, false)
+
+    val hostVisible: Boolean get() = host != null
+
+    /** Throws when [tree] holds live mounts in any readable view, or — in strict builds — when no view can rule them out. */
+    fun assertDeletable(tree: File, allowWithoutHostProof: Boolean = false) {
+        val blockers = MountInfo.under(self.orEmpty() + host.orEmpty(), tree.absolutePath)
+        if (blockers.isNotEmpty()) {
+            throw IllegalStateException(
+                "refusing to delete ${tree.path}: " +
+                    blockers.joinToString { "${it.mountPoint} is mounted there${if (it.shared || it.master) " (shared)" else ""}" } +
+                    "; a recursive delete would cross live mounts (notes/probes/incident-root-cause.md)",
+            )
+        }
+        if (strict && !hostVisible && !allowWithoutHostProof) {
+            throw IllegalStateException(
+                "refusing to delete ${tree.path}: the host mount table (/proc/1/mountinfo) is not readable, " +
+                    "so mounts under it cannot be ruled out; the root backend must provide this check (notes/root-backend-interface.md)",
+            )
+        }
+    }
+
+    companion object {
+        fun read(
+            strict: Boolean,
+            selfPath: String = "/proc/self/mountinfo",
+            hostPath: String = "/proc/1/mountinfo",
+        ): MountGuard = MountGuard(readMounts(selfPath), readMounts(hostPath), strict)
+
+        private fun readMounts(path: String): List<MountEntry>? = try {
+            MountInfo.parse(File(path).readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/**
+ * Recursive delete that removes symlinks without following them and copes with read-only dirs.
+ * With [mounts], a tree that could hold mounts: refuses up front when any view shows a mount
+ * under it, and in strict (root) builds verifies nothing was left behind afterwards.
+ */
+internal fun File.deleteRecursivelySafely(mounts: MountGuard? = null, allowWithoutHostProof: Boolean = false) {
+    if (mounts == null) {
+        deleteRecursivelyLenient()
+        return
+    }
+    // A mount keeps its directory alive, so a missing tree has nothing mounted under it.
+    if (!present()) return
+    mounts.assertDeletable(this, allowWithoutHostProof)
+    deleteRecursivelyLenient()
+    if (mounts.strict && present()) {
+        throw IllegalStateException(
+            "could not delete $path completely; what remains is likely root-owned and needs the root-side " +
+                "file interface (notes/root-backend-interface.md)",
+        )
+    }
+}
+
+private fun File.deleteRecursivelyLenient() {
+    if (isSymlink()) {
+        delete()
+        return
+    }
+    if (isDirectory) {
+        if (!canWrite()) runCatching { android.system.Os.chmod(path, 0x1C0) } // 0700
+        if (!canWrite()) setWritable(true) // no android.system off the device (JVM tests)
+        listFiles()?.forEach { it.deleteRecursivelyLenient() }
+    }
+    delete()
+}
+
+private fun File.isSymlink(): Boolean = try {
+    android.system.OsConstants.S_ISLNK(android.system.Os.lstat(path).st_mode)
+} catch (_: Exception) {
+    // No android.system off the device (JVM tests).
+    runCatching { Files.isSymbolicLink(toPath()) }.getOrDefault(false)
+}
+
+/** Exists, counting a symlink whose target is gone. */
+private fun File.present(): Boolean = exists() || isSymlink()
 
 internal fun syncDirectory(directory: File) {
     FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { it.force(true) }
@@ -236,11 +388,11 @@ class KeepFailed(rel: String) : IllegalStateException("keep: could not move $rel
  * killed at any point is finished by the next one or by the next install ([settleReset]). Nothing is
  * deleted before what is kept has moved.
  */
-internal fun retireRuntime(base: File, retired: File, keep: File, paths: List<String>) {
-    settleReset(retired, keep)
+internal fun retireRuntime(base: File, retired: File, keep: File, paths: List<String>, mounts: MountGuard? = null) {
+    settleReset(retired, keep, mounts = mounts)
     if (!base.exists()) {
         // Nothing to take from; the choice still applies to what an earlier reset kept.
-        pruneKept(keep, paths)
+        pruneKept(keep, paths, mounts)
         return
     }
     val list = File(base, KEEP_LIST)
@@ -249,7 +401,7 @@ internal fun retireRuntime(base: File, retired: File, keep: File, paths: List<St
         list.delete()
         throw IllegalStateException("could not retire the runtime")
     }
-    settleReset(retired, keep)
+    settleReset(retired, keep, mounts = mounts)
 }
 
 /**
@@ -259,7 +411,7 @@ internal fun retireRuntime(base: File, retired: File, keep: File, paths: List<St
  * runtime stays as it is and the next attempt picks up from there; with [dropFailed] it is deleted
  * with whatever could not move.
  */
-internal fun settleReset(retired: File, keep: File, dropFailed: Boolean = false) {
+internal fun settleReset(retired: File, keep: File, dropFailed: Boolean = false, mounts: MountGuard? = null) {
     if (!retired.present()) return
     val list = File(retired, KEEP_LIST)
     val listed = readKeepList(list)
@@ -272,10 +424,10 @@ internal fun settleReset(retired: File, keep: File, dropFailed: Boolean = false)
         if (!from.renameTo(to) && !dropFailed) throw KeepFailed(rel)
     }
     // An unreadable list keeps whatever is already kept.
-    if (listed != null) pruneKept(keep, listed)
+    if (listed != null) pruneKept(keep, listed, mounts)
     // The list goes first: a delete cut short leaves nothing that a later settle would keep.
     list.delete()
-    retired.deleteRecursivelySafely()
+    retired.deleteRecursivelySafely(mounts)
 }
 
 /** The kept paths, or null when the list is missing; anything that could leave the rootfs is dropped. */
@@ -285,9 +437,9 @@ private fun readKeepList(file: File): List<String>? {
 }
 
 /** Drops what [keep] holds outside [paths]: the latest reset's choice wins. */
-private fun pruneKept(keep: File, paths: List<String>) {
+private fun pruneKept(keep: File, paths: List<String>, mounts: MountGuard? = null) {
     if (!keep.present()) return
-    for (rel in ResetKeep.ALL) if (rel !in paths) File(keep, rel).deleteRecursivelySafely()
+    for (rel in ResetKeep.ALL) if (rel !in paths) File(keep, rel).deleteRecursivelySafely(mounts)
     keep.deleteEmptyDirs()
 }
 
@@ -297,12 +449,12 @@ private fun pruneKept(keep: File, paths: List<String>) {
  * [KeepFailed]; what is not back yet stays in [keep] for the next install. With [dropFailed] the
  * paths that cannot move are given up instead and [keep] is cleared.
  */
-internal fun restoreKept(keep: File, rootfs: File, dropFailed: Boolean = false) {
+internal fun restoreKept(keep: File, rootfs: File, dropFailed: Boolean = false, mounts: MountGuard? = null) {
     val dropped = File(keep.parentFile, "${keep.name}.dropped")
-    dropped.deleteRecursivelySafely()
+    dropped.deleteRecursivelySafely(mounts)
     if (!keep.present()) return
     val trash = File(rootfs.parentFile, "keep.trash")
-    trash.deleteRecursivelySafely()
+    trash.deleteRecursivelySafely(mounts, allowWithoutHostProof = true)
     for (rel in ResetKeep.ALL) {
         val kept = File(keep, rel)
         if (!kept.present()) continue
@@ -322,13 +474,13 @@ internal fun restoreKept(keep: File, rootfs: File, dropFailed: Boolean = false) 
             throw KeepFailed(rel)
         }
     }
-    trash.deleteRecursivelySafely()
+    trash.deleteRecursivelySafely(mounts, allowWithoutHostProof = true)
     if (!dropFailed) {
         keep.deleteEmptyDirs()
         return
     }
     // Out of the restore's way in one step, then deleted; a delete cut short is retried next time.
-    if (keep.renameTo(dropped)) dropped.deleteRecursivelySafely() else keep.deleteRecursivelySafely()
+    if (keep.renameTo(dropped)) dropped.deleteRecursivelySafely(mounts) else keep.deleteRecursivelySafely(mounts)
 }
 
 /** Removes the empty directories of this tree, itself included; files (and symlinks) stay. */

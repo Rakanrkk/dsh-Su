@@ -25,6 +25,15 @@ for arg in "${pre[@]}"; do
 done
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+prepare_runtime=1
+for arg in "${pre[@]}"; do
+  case "$arg" in
+    --dry-run | -h | --help) prepare_runtime=0 ;;
+  esac
+done
+if ((prepare_runtime)); then
+  "$ROOT/tooling/fetch-runc-assets.sh"
+fi
 exec "$ROOT/tooling/build-apk.sh" \
   "${pre[@]}" \
   -- \
@@ -33,4 +42,5 @@ exec "$ROOT/tooling/build-apk.sh" \
   "--dart-define=DSH_UPDATE_MIRROR=" \
   "--dart-define=DSH_UPDATE_FEED=" \
   "--dart-define=DSH_UPDATE_MIRRORS=" \
+  "--dart-define=DSH_ROOT_RUNTIME=true" \
   "${post[@]}"

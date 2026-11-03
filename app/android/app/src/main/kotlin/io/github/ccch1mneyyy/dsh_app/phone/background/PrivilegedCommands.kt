@@ -13,6 +13,10 @@ object PrivilegedCommands {
 
 /** `su -c` takes exactly one shell command on Magisk, KernelSU and APatch. */
 internal object RootCommands {
-    fun appProcess(sourceDir: String, splitSourceDirs: List<String> = emptyList()): List<String> =
-        listOf("su", "-c", PrivilegedCommands.appProcess(sourceDir, splitSourceDirs))
+    val suEntries = listOf("su", "/system/bin/su", "/debug_ramdisk/su")
+
+    fun appProcess(sourceDir: String, splitSourceDirs: List<String> = emptyList()): List<List<String>> =
+        suEntries.map { entry ->
+            listOf(entry, "-c", PrivilegedCommands.appProcess(sourceDir, splitSourceDirs))
+        }
 }

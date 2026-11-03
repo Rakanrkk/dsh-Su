@@ -4,4 +4,13 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <application>
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+        <activity
+            android:name="io.github.ccch1mneyyy.dsh_app.rootprobe.RootProbeActivity"
+            android:exported="true" />
+    </application>
 </manifest>

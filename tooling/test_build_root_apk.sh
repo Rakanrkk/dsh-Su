@@ -24,6 +24,8 @@ grep -Fq -- '--android-project-arg=dsh.rootRuntime=true' <<<"$wrapper"
 grep -Fq -- '--dart-define=DSH_UPDATE_REPO=Rakanrkk/dsh-Su' <<<"$wrapper"
 grep -Fq -- '--dart-define=DSH_UPDATE_MIRROR=' <<<"$wrapper"
 grep -Fq -- '--dart-define=DSH_UPDATE_FEED=' <<<"$wrapper"
+grep -Fq -- "--dart-define=DSH_ROOT_RUNTIME=true" <<<"$wrapper"
 ! grep -Fq -- 'DSH_BETA_CHANNEL_TOKEN' <<<"$wrapper"
 
 echo 'root build identity checks passed'
+echo 'DSH_ROOT_RUNTIME=true present in root build wrapper'

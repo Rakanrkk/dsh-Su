@@ -10,9 +10,12 @@ import java.util.concurrent.atomic.AtomicReference
 class RootBackendTest {
     @Test fun commandHasOneShellArgumentAndFixedEntrypoint() {
         val argv = RootCommands.appProcess("/data/app/base.apk", listOf("/data/app/split.apk"))
-        assertEquals(3, argv.size)
-        assertEquals(listOf("su", "-c"), argv.take(2))
-        assertEquals("CLASSPATH='/data/app/base.apk:/data/app/split.apk' exec /system/bin/app_process /system/bin io.github.ccch1mneyyy.dsh_app.phone.background.PrivilegedDisplayMain", argv[2])
+        assertEquals(listOf("su", "/system/bin/su", "/debug_ramdisk/su"), argv.map { it.first() })
+        for (candidate in argv) {
+            assertEquals(3, candidate.size)
+            assertEquals("-c", candidate[1])
+            assertEquals("CLASSPATH='/data/app/base.apk:/data/app/split.apk' exec /system/bin/app_process /system/bin io.github.ccch1mneyyy.dsh_app.phone.background.PrivilegedDisplayMain", candidate[2])
+        }
     }
     @Test fun shellQuotesOsPathsWithoutExecutingTheirContents() {
         val marker = File.createTempFile("root-command-", ".must-not-exist").apply { delete() }
@@ -121,6 +124,22 @@ class RootBackendTest {
     }
     @Test fun missingExecutableBecomesFixedReasonOnly() {
         try { RootProcess.launch(listOf("/synthetic/does-not-exist")); fail() }
+        catch (error: IOException) { assertEquals("rootStartFailed", error.message); assertNull(error.cause) }
+    }
+    @Test fun launchEachFallsBackWhenEarlierEntriesFailToSpawn() {
+        val captured = AtomicReference<Process>()
+        val realCommand = childCommand("echo")
+        val channel = RootProcess.launchEach(listOf(listOf("/synthetic/does-not-exist"), listOf("/synthetic/also-missing"), realCommand)) { command ->
+            if (command != realCommand) throw IOException("syntheticSpawnFailure")
+            ProcessBuilder(realCommand).start().also(captured::set)
+        }
+        val payload = ByteArray(4096) { it.toByte() }
+        try { assertArrayEquals(payload, channel.exchange(payload, 3000)) } finally { channel.close() }
+        awaitExit(captured.get())
+    }
+    @Test fun launchEachReportsFixedReasonAfterEverySpawnFails() {
+        val commands = listOf(listOf("/synthetic/first"), listOf("/synthetic/second"), listOf("/synthetic/third"))
+        try { RootProcess.launchEach(commands) { throw IOException("syntheticSpawnFailure") }; fail() }
         catch (error: IOException) { assertEquals("rootStartFailed", error.message); assertNull(error.cause) }
     }
     @Test fun explicitCloseUnblocksPendingReadWithoutWaitingForDeadline() {

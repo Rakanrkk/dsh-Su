@@ -474,6 +474,12 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
      */
     fun grantSecureSettings(): Map<String, Any?> = when (val path = background.grantPath(A11yKeeper.granted(app))) {
         SecureSettingsGrant.GRANTED -> mapOf("ok" to true)
+        SecureSettingsGrant.ROOT -> {
+            val result = background.grantRootSecureSettings()
+            if (result["ok"] == true) ticker.execute(::keep)
+            emitStatus()
+            result
+        }
         SecureSettingsGrant.SHIZUKU, SecureSettingsGrant.ADB -> {
             background.grantSecureSettings(path)
             val ok = A11yKeeper.granted(app)

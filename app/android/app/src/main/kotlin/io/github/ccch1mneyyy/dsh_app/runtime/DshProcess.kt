@@ -5,6 +5,7 @@ import android.os.Process as AndroidProcess
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneGuest
 import java.io.File
 import java.io.IOException
@@ -40,6 +41,12 @@ class DshProcess(
     @Volatile private var readyReported = false
     @Volatile private var waiter: Thread? = null
     @Volatile private var stopper: Thread? = null
+    // Exactly-once exit reporting for the root branch: the waiter and the stop
+    // thread both observe process death; only the first one may report and reset
+    // state, the second sees reported=true and returns without side effects.
+    @Volatile private var rootExitReported = false
+    // Root branch state; the official runc service owns pid files and cleanup.
+    private var runcSession: DshRuncClient.Session? = null
     // Share captured identities across launcher replacement within this app
     // process. Both capture and cleanup use the shared state's monitor.
     private val cleanupState by lazy {
@@ -61,7 +68,11 @@ class DshProcess(
         private set
 
     val launchDiagnostics = LaunchDiagnostics()
-    val executionMode: String? get() = launchDiagnostics.currentMode(process?.isAlive == true)
+    /** App-side engine state: a local OS process, or the remote runc session. */
+    private val engineAlive: Boolean
+        get() = process?.isAlive == true || runcSession?.isAlive == true
+
+    val executionMode: String? get() = launchDiagnostics.currentMode(engineAlive)
 
     var directFallbackReason: String? = null
         private set
@@ -72,6 +83,10 @@ class DshProcess(
      */
     fun start(guestEnv: Map<String, String>, binds: List<String> = emptyList(), safe: Boolean = false, phone: Boolean = false, directEngine: Boolean = false, directFailed: Boolean = false, onLaunchMethod: ((Boolean) -> Unit)? = null) {
         check(process == null) { "already started" }
+        if (BuildConfig.ROOT_RUNTIME) {
+            startRoot(guestEnv, binds, safe, phone, directEngine, directFailed, onLaunchMethod)
+            return
+        }
         var selection = DirectLaunch.select(rootfs, directEngine, safe, directFailed)
         // Only PRoot's fake hard links stand in Direct's way: tidy them once no runtime process is left.
         val tidy = selection.fallbackReason == DirectLaunch.INCOMPATIBLE
@@ -195,6 +210,125 @@ class DshProcess(
     }
 
     /**
+     * Root branch: reuses the composed guest argv and caller binds, and starts
+     * the official runc service.
+     */
+    private fun startRoot(guestEnv: Map<String, String>, binds: List<String>, safe: Boolean, phone: Boolean, directEngine: Boolean, directFailed: Boolean, onLaunchMethod: ((Boolean) -> Unit)?) {
+        check(BuildConfig.ROOT_RUNTIME) { "root launch requires the ROOT_RUNTIME build" }
+        if (directEngine || directFailed) {
+            listener.onLog("[dsh-app] root runtime ignores direct launch overrides", "system")
+        }
+        launchDiagnostics.selectedRoot(if (directEngine || directFailed) "rootOverridesIgnored" else null)
+        port = pickPort()
+        val tmp = File(context.cacheDir, "root-tmp").apply { mkdirs() }
+        val vars = mapOf(
+            "{NATIVE_LIB_DIR}" to context.applicationInfo.nativeLibraryDir,
+            "{ROOTFS}" to rootfs.canonicalPath,
+            "{TMP}" to tmp.absolutePath,
+            "{FILES_DIR}" to context.filesDir.absolutePath,
+            "{PORT}" to port.toString(),
+        )
+        fun expand(s: String) = vars.entries.fold(s) { acc, (k, v) -> acc.replace(k, v) }
+        val argv = ArrayList<String>()
+        val effectiveGuestEnv = guestEnv + ("DSH_GO_RUNTIME_ROOT" to rootfs.canonicalPath)
+        var guestEnvPlaced = false
+        var profileSelected = false
+        var searchPending = !safe && SessionSearchGuest.file(rootfs).isFile
+        var authPending = !safe && AppAuthGuest.file(rootfs).isFile
+        var speechPending = !safe && SpeechGuest.file(rootfs).isFile
+        check(manifest.launchArgv.isNotEmpty()) { "runtime manifest has no launch.argv" }
+        for (rawArg in manifest.launchArgv) {
+            if (rawArg == GUEST_ENV) {
+                effectiveGuestEnv.forEach { (k, v) -> argv += k + "=" + v }
+                guestEnvPlaced = true
+                continue
+            }
+            val selected = SafeMode.profileArg(rawArg, safe)
+            if (selected != null) profileSelected = true
+            val withPhone = if (phone && !safe && !phoneMounted) PhoneGuest.launchArg(selected ?: rawArg) else null
+            if (withPhone != null) phoneMounted = true
+            val withSearch = if (searchPending) SessionSearchGuest.launchArg(withPhone ?: selected ?: rawArg) else null
+            if (withSearch != null) searchPending = false
+            val withAuth = if (authPending) AppAuthGuest.launchArg(withSearch ?: withPhone ?: selected ?: rawArg) else null
+            if (withAuth != null) authPending = false
+            val withSpeech = if (speechPending) SpeechGuest.launchArg(withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg) else null
+            if (withSpeech != null) speechPending = false
+            argv += expand(withSpeech ?: withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg)
+        }
+        check(!safe || profileSelected) { "safe mode: this runtime launch command has no dsh web to replace" }
+        check(guestEnvPlaced) { "guest env marker missing from manifest launch argv" }
+        val envAt = argv.indexOf("/usr/bin/env")
+        check(envAt >= 0) { "guest argv does not start the engine at /usr/bin/env" }
+        val guestArgv = argv.drop(envAt)
+        val l2sReason = DirectLaunch.compatibilityReason(rootfs)
+        if (l2sReason == "prootLinkStore") {
+            listener.onLog("[dsh-app] root launch blocked: PRoot link store present; run the migration first", "system")
+            failStart("L2S_PRESENT")
+            return
+        }
+        listener.onLog("[dsh-app] launch method: root-chroot", "system")
+        listener.onLog("[dsh-app] launching " + guestArgv.take(3).joinToString(" ") { redact(it) }, "system")
+        if (stopping) {
+            listener.onExit(this, 0, true)
+            return
+        }
+        onLaunchMethod?.invoke(false)
+        val session = DshRuncClient.Session(context, port, onLog = listener::onLog, onStdout = ::detectToken)
+        runcSession = session
+        readyReported = false
+        launchDiagnostics.spawned()
+        listener.onLog("[dsh-app] launch method: runc-mountns", "system")
+        session.bind(
+            onReady = {
+                thread(name = "dsh-runc-start", isDaemon = true) {
+                    try {
+                        session.start(guestArgv, effectiveGuestEnv, binds.map(DshProcessRoot::bind)) { error ->
+                            listener.onLog("[dsh-app] runc launch failed: ${error.message}", "system")
+                            session.onRemoteExit(-1)
+                            failStart(error.message ?: error.javaClass.simpleName)
+                        }
+                    } catch (error: Exception) {
+                        listener.onLog("[dsh-app] runc compose failed: ${error.message}", "system")
+                        session.onRemoteExit(-1)
+                        failStart(error.message ?: error.javaClass.simpleName)
+                    }
+                }
+            },
+            onFailure = { error ->
+                listener.onLog("[dsh-app] runc bind failed: ${error.message}", "system")
+                session.onRemoteExit(-1)
+                failStart(error.message ?: error.javaClass.simpleName)
+            },
+        )
+        thread(name = "dsh-runc-wait", isDaemon = true) {
+            val code = session.awaitRemoteExit()
+            session.onRemoteExit(code)
+            session.release()
+            reportRootExit(code, confirmed = code >= 0, unexpected = !expectedExit)
+        }
+        if (stopping) stop()
+    }
+
+    /**
+     * Single exit path for the root branch: whichever of the waiter and the stop
+     * thread observes the death first reports exactly once and resets state; the
+     * other returns without reporting or clearing anything.
+     */
+    private fun reportRootExit(code: Int, confirmed: Boolean, unexpected: Boolean) {
+        synchronized(this@DshProcess) {
+            if (rootExitReported) return
+            rootExitReported = true
+            process = null
+            runcSession = null
+        }
+        if (!confirmed) {
+            val reason = if (unexpected) "exit" else "stop"
+            listener.onLog("[dsh-app] root $reason not confirmed; exit " + code, "system")
+        }
+        listener.onExit(this, code, !unexpected)
+    }
+
+    /**
      * Direct was asked for and PRoot's fake hard links are the only obstacle: make
      * them real files ([L2sMigration]). Short of room or on an error this start stays
      * on PRoot with every name intact, and the next start carries on from there.
@@ -248,6 +382,24 @@ class DshProcess(
         stopping = true
         if (expected) expectedExit = true
         if (stopper != null) return
+        if (BuildConfig.ROOT_RUNTIME) {
+            val session = runcSession ?: run {
+                if (waiter?.isAlive != true) reportRootExit(-1, confirmed = false, unexpected = false)
+                return
+            }
+            stopper = thread(name = "dsh-stop", isDaemon = true) {
+                val status = try {
+                    session.stopStdin()
+                    session.kill()
+                } catch (error: Exception) {
+                    null
+                }
+                if (status != "ok") {
+                    listener.onLog("[dsh-app] runc stop not confirmed: ${status ?: "remoteError"}", "system")
+                }
+            }
+            return
+        }
         val p = process ?: return
         stopper = thread(name = "dsh-stop", isDaemon = true) {
             try {
@@ -322,14 +474,14 @@ class DshProcess(
         val base = "http://127.0.0.1:$port"
         thread(name = "dsh-ready", isDaemon = true) {
             val deadline = System.currentTimeMillis() + 90_000
-            while (System.currentTimeMillis() < deadline && !stopping && process?.isAlive == true) {
+            while (System.currentTimeMillis() < deadline && !stopping && engineAlive) {
                 if (canConnect(port)) {
                     listener.onReady(this, base, token)
                     return@thread
                 }
                 Thread.sleep(250)
             }
-            if (!stopping && process?.isAlive == true) {
+            if (!stopping && engineAlive) {
                 failStart("token seen but port $port never accepted connections")
             }
         }
@@ -412,6 +564,7 @@ class DshProcess(
 
     companion object {
         const val DEFAULT_PORT = 3080
+        private const val STOP_TIMEOUT_MS = 10_000L
         const val GUEST_ENV = "{GUEST_ENV}"
         private val TOKEN_URL = Regex("""https?://[^\s'"]*[?&#]token=[A-Za-z0-9._~%-]+""")
         private val TOKEN_PARAM = Regex("""[?&#]token=([A-Za-z0-9._~%-]+)""")

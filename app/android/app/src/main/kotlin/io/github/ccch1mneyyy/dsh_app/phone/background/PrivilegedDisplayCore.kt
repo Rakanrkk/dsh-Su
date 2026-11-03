@@ -13,6 +13,7 @@ import android.app.ActivityOptions
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.UiAutomation
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -99,6 +100,12 @@ class PrivilegedDisplayCore(private val context: Context) {
             }
             if (op == Proto.OP_GRANT_SECURE_SETTINGS) {
                 grantSecureSettings(request.getInt(Proto.USER))
+                response.putBoolean(Proto.OK, true)
+                return response
+            }
+            if (op == Proto.OP_GRANT_SELF) {
+                val failed = grantSelf(request.getInt(Proto.USER))
+                if (failed.isNotEmpty()) response.putStringArrayList(Proto.FAILED_PERMISSIONS, failed)
                 response.putBoolean(Proto.OK, true)
                 return response
             }
@@ -718,19 +725,61 @@ class PrivilegedDisplayCore(private val context: Context) {
     }
 
     /**
-     * `pm grant` of WRITE_SECURE_SETTINGS to this app, through the binder `pm` itself uses:
+     * `pm grant` to this app, through the binder `pm` itself uses:
      * IPackageManager up to Android 10, IPermissionManager from 11 (Android 15 added a device id
      * before the user). Fixed permission, fixed package.
      */
     @SuppressLint("PrivateApi")
     private fun grantSecureSettings(userId: Int) {
+        grantRuntimePermission(SecureSettingsGrant.PERMISSION, userId)
+    }
+
+    private fun grantSelf(userId: Int): ArrayList<String> {
+        val failed = ArrayList<String>()
+        for (permission in selfPermissions(Build.VERSION.SDK_INT)) {
+            try {
+                when (permission) {
+                    Manifest.permission.SYSTEM_ALERT_WINDOW, Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
+                        setSpecialAppOp(permission, userId)
+                    else -> grantRuntimePermission(permission, userId)
+                }
+            } catch (e: InvocationTargetException) {
+                val target = e.targetException
+                if (isExpectedPermissionRejection(target)) failed.add(permission) else throw target
+            } catch (e: SecurityException) {
+                failed.add(permission)
+            }
+        }
+        return failed
+    }
+
+    /** System dialogs cannot be raised from this shell-uid process: `cmd appops` is the
+     * system settings page's own backend, reachable from shell or root uid. */
+    private fun setSpecialAppOp(permission: String, userId: Int) {
+        val op = when (permission) {
+            Manifest.permission.SYSTEM_ALERT_WINDOW -> "android:system_alert_window"
+            Manifest.permission.MANAGE_EXTERNAL_STORAGE -> "android:manage_external_storage"
+            else -> throw SecurityException("unsupported special permission: $permission")
+        }
+        val process = ProcessBuilder(
+            "cmd", "appops", "set", "--user", userId.toString(), Proto.APP_PACKAGE, op, "allow",
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exit = process.waitFor()
+        if (exit != 0) throw SecurityException("appops set $op failed: $output")
+    }
+
+    private fun isExpectedPermissionRejection(e: Throwable): Boolean =
+        e is SecurityException || e.message?.contains("not a changeable permission type", ignoreCase = true) == true
+
+    @SuppressLint("PrivateApi")
+    private fun grantRuntimePermission(permission: String, userId: Int) {
         val (service, type) = if (Build.VERSION.SDK_INT >= 30) "permissionmgr" to "android.permission.IPermissionManager"
             else "package" to "android.content.pm.IPackageManager"
         val binder = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
             .invoke(null, service) as IBinder
         val manager = Class.forName("$type\$Stub").getMethod("asInterface", IBinder::class.java).invoke(null, binder)
         val grant = manager.javaClass.methods.first { it.name == "grantRuntimePermission" }
-        val permission = SecureSettingsGrant.PERMISSION
         val args = when {
             grant.parameterTypes.size == 3 -> arrayOf<Any>(Proto.APP_PACKAGE, permission, userId)
             // VirtualDeviceManager.PERSISTENT_DEVICE_ID_DEFAULT, or Context.DEVICE_ID_DEFAULT.

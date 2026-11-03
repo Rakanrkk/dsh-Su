@@ -16,6 +16,12 @@ class LaunchDiagnostics {
         fallbackReason = fallback
     }
 
+    /** The fixed root-chroot branch chosen before spawn. */
+    fun selectedRoot(fallback: String?) {
+        selectedMode = "root-chroot"
+        fallbackReason = fallback
+    }
+
     fun spawned() { spawned = true }
     fun failed(reason: String) { failureReason = reason }
     fun currentMode(alive: Boolean): String? = if (spawned && alive) selectedMode else null

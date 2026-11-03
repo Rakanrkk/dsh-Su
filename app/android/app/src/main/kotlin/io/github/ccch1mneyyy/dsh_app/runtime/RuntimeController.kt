@@ -1,5 +1,6 @@
 package io.github.ccch1mneyyy.dsh_app.runtime
 
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
 import io.github.ccch1mneyyy.dsh_app.R
 import android.content.Context
@@ -49,7 +50,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     val manifest: RuntimeManifest by lazy { RuntimeManifest.load(app) }
-    private val installer by lazy { RuntimeInstaller(app, manifest, ::note) }
+    private val installer by lazy { RuntimeInstaller(app, manifest, ::note, rootRuntime = BuildConfig.ROOT_RUNTIME) }
     @Volatile private var process: DshProcess? = null
     @Volatile private var lastLaunch: LaunchDiagnostics? = null
     /** The start in progress is turning PRoot's fake hard links into real files (see [L2sMigration]). */
@@ -62,6 +63,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     @Volatile private var error: String? = null
     @Volatile private var pendingEnv: Map<String, String> = emptyMap()
     @Volatile private var pendingPhoneStorage = false
+    @Volatile private var rootSelfGrantsDone = false
     /** Whether the managed AGENTS.md tells the model about ```dsh-ui views (settings, on by default). */
     @Volatile private var pendingVisualReplies = true
 
@@ -155,7 +157,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         failedRuntime = prefs.getString(K_DIRECT_FAILED, null),
         runtime = runCatching { manifest.runtimeVersion }.getOrNull(),
     )
-    private fun directEngineAvailable(): Boolean = runCatching {
+    // Root builds launch through the root backend only: Direct never applies, and with it the
+    // launch-failure fallback back to PRoot is unreachable (SafePolicy.directLaunchFailed).
+    private fun directEngineAvailable(): Boolean = !BuildConfig.ROOT_RUNTIME && runCatching {
         manifest.raw.optJSONObject("directEngine")?.optInt("schema") == 2
     }.getOrDefault(false)
 
@@ -181,6 +185,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         if (phase == Phase.INSTALLING) return onDone(null)
         if (installer.isCurrent() && phase != Phase.ERROR) {
             if (phase == Phase.NOT_INSTALLED) setPhase(Phase.INSTALLED)
+            if (BuildConfig.ROOT_RUNTIME) ensureRootSelfGrants()
             return onDone(null)
         }
         setPhase(Phase.INSTALLING)
@@ -193,6 +198,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     emit(mapOf("type" to "progress", "step" to "extract", "done" to done, "total" to total))
                 }
                 log("[dsh-app] runtime ready in ${(System.currentTimeMillis() - started) / 1000}s", "system")
+                ensureRootSelfGrants()
                 error = null
                 // A new runtime may well fix what failed before.
                 strikes = 0
@@ -229,6 +235,18 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_START)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent) else app.startService(intent)
+    }
+
+    /** A one-shot root self-grant, off the main thread: every first-ready path converges here,
+     *  and plain stop-back-to-INSTALLED phases never touch it. */
+    private fun ensureRootSelfGrants() {
+        if (rootSelfGrantsDone || !BuildConfig.ROOT_RUNTIME) return
+        rootSelfGrantsDone = true
+        worker.execute {
+            if (!PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
+                log("[dsh-app] root self-grant left some permissions ungranted", "system")
+            }
+        }
     }
 
     /**
@@ -308,8 +326,15 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             var launched: DshProcess? = null
             try {
                 noteDns(GuestSetup.writeResolvConf(app, installer.rootfs), DnsConfigSource.START)
+                // Root builds take the fixed self grants first (storage for the output folders),
+                // so 访问手机文件 planned below takes effect on this start, not after a restart.
+                if (BuildConfig.ROOT_RUNTIME && !PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
+                    log("[dsh-app] root self-grant left the storage permission ungranted", "system")
+                }
                 val storage = pendingPhoneStorage && PhoneStorage.isGranted(app) && PhoneStorage.binds().isNotEmpty()
-                PhoneStorage.syncShortcut(installer.rootfs, storage)
+                if (!PhoneStorage.syncShortcut(installer.rootfs, storage)) {
+                    log("[dsh-app] could not ${if (storage) "create" else "remove"} the phone storage shortcut in the guest home; the directory may be root-owned", "system")
+                }
                 // Phone control: bridge up and guest files written before DSH starts; off in safe mode.
                 val phone = PhoneControl.get(app).prepareLaunch(installer.rootfs, safe) { log(it, "system") }
                 if (!safe && !SessionSearchGuest.writeFiles(installer.rootfs)) {
@@ -350,7 +375,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 timeline.spawned()
                 val direct = directEngine()
                 p.start(env, if (storage) PhoneStorage.binds() else emptyList(), safe, phone, direct.requested, direct.failed) { actualDirect ->
-                    GuestSetup.writeAgentsMd(installer.rootfs, storage, phone, pendingVisualReplies, actualDirect)
+                    GuestSetup.writeAgentsMd(installer.rootfs, storage, phone, pendingVisualReplies, actualDirect, BuildConfig.ROOT_RUNTIME)
                 }
                 if (phone) PhoneControl.get(app).launched(p.phoneMounted)
             } catch (e: Throwable) {

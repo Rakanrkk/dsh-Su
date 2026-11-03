@@ -45,18 +45,24 @@ object PhoneStorage {
         return listOf("${hostRoot()}:$GUEST_PATH", "/storage")
     }
 
-    /** `/root/手机存储` → `/sdcard` inside the rootfs, present only while the mode is on. */
-    fun syncShortcut(rootfs: java.io.File, enabled: Boolean) {
+    /** `/root/手机存储` → `/sdcard` inside the rootfs, present only while the mode is on.
+     * False when the state could not be enforced (a root-owned home, for instance). */
+    fun syncShortcut(rootfs: java.io.File, enabled: Boolean): Boolean {
         // l10n:keep guest filesystem path
         val link = java.io.File(rootfs, "root/手机存储")
-        try {
+        val present = try {
             android.system.Os.lstat(link.path)
-            if (!enabled) link.delete()
-            return
+            true
         } catch (_: Exception) {
             // absent
+            false
         }
-        if (enabled) runCatching { android.system.Os.symlink(GUEST_PATH, link.path) }
+        if (present) {
+            if (!enabled) return link.delete()
+            return true
+        }
+        if (!enabled) return true
+        return runCatching { android.system.Os.symlink(GUEST_PATH, link.path) }.isSuccess
     }
 
     /** Opens the system "All files access" page for this app (Android 11+). */

@@ -85,7 +85,9 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
     } else if (features == null || readings == null) {
       page = const OnboardingScaffold(key: ValueKey('loading'), children: [SizedBox.shrink()]);
     } else {
-      final items = accessWalk(features, readings.vendor);
+      final items = accessWalk(features, readings.vendor)
+          .where((item) => item != AccessItem.storage || readings.storage != true)
+          .toList();
       page = _summary
           ? AccessSummaryPage(
               key: const ValueKey('summary'),
