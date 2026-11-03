@@ -51,15 +51,16 @@ flowchart TB
 
 ## 兼容目标与当前验证状态
 
-公开预发布版 `v1.0.9-internal.4` 已发布，Release 仅含 ARM64 APK、`SHA256SUMS` 与 `update.json`。ARM64 包已通过签名、ABI、资源和哈希静态检查，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器调试包，各 Root 框架的证据分别列出：
+公开预发布版 `v1.0.9-internal.4` 已发布，Release 仅含 ARM64 APK、`SHA256SUMS` 与 `update.json`。ARM64 包已通过签名、ABI、资源和哈希静态检查，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器构建，具体构建风味按 Root 框架列出：
 
 ### Root 框架兼容状态
 
 | Root 框架 | 当前状态 | 已验证范围与进展 |
 | --- | --- | --- |
 | **SukiSU Ultra（x86_64）** | 模拟器主链路已验证 | 同源码 x64 debug APK SHA-256 `c77f1a6a25c39705e9d6424d76ac14ccbfaa41114320b13225ccab3659ba1e72`。真实 App 启动后 Node 以 UID 0 监听 `127.0.0.1:3080`；原 UI PTY 与 Phone MCP 13 项工具通过，`apps` / `screen` 调用成功；Android 宿主视图、DNS、无密钥 HTTPS 401、录音权限由首次引擎启动自授予、存储 Off 无挂载、UI Stop/Start 与 force-stop 后重启均通过。 |
-| **KernelSU（标准版，x86_64）** | 同源码模拟器验收通过 | KernelSU `3.3.1` / `32680`，UAPI 5、LKM、SELinux Enforcing。相同 APK SHA 下，真实 App UID 0 主链、PTY、Phone MCP 13 项工具、Android 宿主视图、DNS、无密钥 HTTPS 200、UI Stop/Start 清理均通过。 |
-| **Magisk / KernelSU Next（x86_64）** | 当前版本验收中 | 当前源码版本的对应框架验收尚未完成。 |
+| **KernelSU（标准版，x86_64 debug）** | 同源码模拟器验收通过 | KernelSU `3.3.1` / `32680`，UAPI 5、LKM、SELinux Enforcing。相同调试 APK 下，真实 App UID 0 主链、PTY、Phone MCP 13 项工具、Android 宿主视图、DNS、无密钥 HTTPS 200、UI Stop/Start 清理均通过。 |
+| **Magisk（x86_64 debug）** | 同源码模拟器验收通过 | internal.4 调试包完成 UID 0 Main、Phone MCP 13 项工具、Android 宿主视图、DNS/HTTPS 与通知 Stop 清理。 |
+| **KernelSU Next（x86_64 release）** | 同构建号模拟器验收通过 | internal.4 x86_64 release-flavor 包通过 UID 0 Main、PTY、Phone MCP 13 项工具、Android 宿主视图、DNS/HTTPS、UI Stop/Start。一次 `pm list packages -U` 查询超时且未重试；宿主 PTY 的包路径查询成功。 |
 | **APatch** | App RootService 链未通过 | Android 16 已到 Package Manager 就绪；普通 App 的 `su` 到 `RootService` 主链仍在调通，当前没有 App UID 0 运行证据。 |
 
 ### 功能模块进展

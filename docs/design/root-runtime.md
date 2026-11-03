@@ -105,7 +105,7 @@ Android 真机 `/proc` 通常挂载为 `hidepid=invisible`，普通 App UID 无�
 |---|---|---|
 | **Android 系统命令（Binder / `cmd` / `am` / `pm`）** | 当前 OCI 模板仅挂载 Ubuntu 基础环境与可选共享存储，未将宿主 `/system`、`/apex` 或 `/dev/binder` 注入容器；Android 手机操控继续由宿主侧 App 无障碍 / 特权通道执行。 |
 | **PRoot 伪硬链接迁移（`.l2s`）** | 若已有 rootfs 含 `.l2s` 文件，启动前会被 `DirectLaunch.compatibilityReason` 拦截并报 `L2S_PRESENT`，需先完成链接迁移或重置运行时。 |
-| **Root 框架与架构验证范围** | 公开预发布 `v1.0.9-internal.4` 仅含 ARM64 APK；签名、ABI、资源和 SHA-256 静态检查通过，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器 debug APK，SHA-256 `c77f1a6a25c39705e9d6424d76ac14ccbfaa41114320b13225ccab3659ba1e72`。**SukiSU Ultra**：UID 0 主链、PTY、Phone MCP、宿主视图、网络、权限、存储关闭与生命周期通过；**标准 KernelSU**：同一 APK SHA 下 UID 0 主链、PTY、Phone MCP、宿主视图、网络与清理通过；**Magisk / KernelSU Next**：当前版本验收中；**APatch**：Android 16 已到 Package Manager 就绪，但普通 App `su` 到 `RootService` 主链尚未通过，没有 App UID 0 运行证据。 |
+| **Root 框架与架构验证范围** | 公开预发布 `v1.0.9-internal.4` 仅含 ARM64 APK；签名、ABI、资源和 SHA-256 静态检查通过，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器包。**SukiSU Ultra（debug）**：UID 0 主链、PTY、Phone MCP、宿主视图、网络、权限、存储关闭与生命周期通过；**标准 KernelSU（debug）**：同源码调试 APK 下 UID 0 主链、PTY、Phone MCP、宿主视图、网络与清理通过；**Magisk（debug）**：UID 0 Main、13 项 Phone MCP、宿主视图、DNS/HTTPS 与通知 Stop 清理通过；**KernelSU Next（x86_64 release）**：UID 0 Main、PTY、13 项 Phone MCP、宿主视图、DNS/HTTPS、UI Stop/Start 通过，一次 `pm list packages -U` 查询超时且未重试；**APatch**：Android 16 已到 Package Manager 就绪，但普通 App `su` 到 `RootService` 主链尚未通过，没有 App UID 0 运行证据。 |
 | **文件属主与升级重置** | 容器以 UID 0 写入 rootfs（如 `/root`、`/tmp/dsh-web.pid`）；App 侧跳过启动前 `dsh-web.pid` 删除检查，重置与升级时需确保容器已停止且无残留挂载。 |
 
 ## 参考规范与上游组件

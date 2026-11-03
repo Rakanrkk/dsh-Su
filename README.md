@@ -36,10 +36,11 @@ flowchart LR
 
 - **架构定位**：`RootService` 仅作为 UID 0 进程桥，不重新实现 DSH。通过 `libsu` `6.0.0` 普通非 daemon `RootService` 驱动官方 `runc` `1.4.3`，在原版 Ubuntu rootfs 上开启独立 `mount` 私有命名空间（无 PID namespace，以 `UID/GID 0` 运行并保留继承的 capabilities）。
 - **身份与构建隔离**：构建入口为 `tooling/build-root-apk.sh`（自动通过 `tooling/fetch-runc-assets.sh` 拉取并校验官方 `runc` 1.4.3 双架构二进制），应用包名为 `io.github.rakanrkk.dsh_su`、桌面名称为 `DSH SU`，可与原版 `DSH Go` 并存安装；更新源隔离至 `Rakanrkk/dsh-Su`。
-- **兼容目标与当前验证范围**：公开预发布版本 `v1.0.9-internal.4` 仅提供 ARM64 APK；静态签名、ABI、资源与 SHA-256 校验已通过，尚无 ARM64 设备运行验证。x86_64 验收使用同一源码的模拟器调试包。
+- **兼容目标与当前验证范围**：公开预发布版本 `v1.0.9-internal.4` 仅提供 ARM64 APK；静态签名、ABI、资源与 SHA-256 校验已通过，尚无 ARM64 设备运行验证。x86_64 验收使用同一源码的模拟器构建，各框架的构建风味见下表。
   - **SukiSU Ultra（x86_64）**：已通过真实 App 主界面启动、UID 0 Node 监听、原 UI PTY 与 Phone MCP（13 项工具及 `apps` / `screen` 调用）、Android 宿主视图与 DNS/HTTPS、录音权限启动自授予、存储关闭时无挂载，以及 UI Stop/Start、force-stop 后重启；HTTPS 未配置密钥时返回 401。
   - **KernelSU（标准版，x86_64）**：KernelSU `3.3.1`（版本 `32680`、UAPI 5、LKM、SELinux Enforcing）通过同一 APK SHA 的真实 App 主链、UID 0 PTY、13 项 Phone MCP 工具、Android 宿主视图、DNS/HTTPS 200，以及 UI Stop/Start 清理。
-  - **Magisk / KernelSU Next（x86_64）**：当前版本验收仍在进行。
+  - **Magisk（x86_64 debug）**：internal.4 同源码调试包通过 UID 0 Main、13 项 Phone MCP、Android 宿主视图、DNS/HTTPS 及通知 Stop 回收。
+  - **KernelSU Next（x86_64 release）**：internal.4 同构建号发布风味包通过 UID 0 Main、PTY、13 项 Phone MCP、Android 宿主视图、DNS/HTTPS 与 UI Stop/Start；一次 `pm list packages -U` 查询超时且未重试，宿主 PTY 的包路径查询成功。
   - **APatch**：Android 16 已启动至 Package Manager 就绪；普通 App 的 `su` 到 `RootService` 主链仍未通过，尚无 App UID 0 运行验证。
 
 <br>
@@ -61,7 +62,7 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">下载与构建</h3>
 
-<p align="center"><code>dsh-Su</code> 已发布 ARM64 公开预发布版 <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4"><code>v1.0.9-internal.4</code></a>，可从 Releases 下载 APK；该版本尚未在 ARM64 设备上运行验证。x86_64 用于模拟器验证的调试包不在 Release 资产中。如需稳定的免 Root（PRoot）客户端，请从上游下载原版 <b>DSH Go</b>。</p>
+<p align="center"><code>dsh-Su</code> 已发布 ARM64 公开预发布版 <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4"><code>v1.0.9-internal.4</code></a>，可从 Releases 下载 APK；该版本尚未在 ARM64 设备上运行验证。x86_64 模拟器验收包不在 Release 资产中。如需稳定的免 Root（PRoot）客户端，请从上游下载原版 <b>DSH Go</b>。</p>
 
 <p align="center">
   <a href="#build-from-source"><img alt="从源码构建 dsh-Su" src="https://img.shields.io/badge/dsh--Su-%E4%BB%8E%E6%BA%90%E7%A0%81%E6%9E%84%E5%BB%BA-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="上游 DSH Go Releases" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="从官网下载页下载" src="https://img.shields.io/badge/go.dshtui.com-%E4%B8%8A%E6%B8%B8%E5%AE%98%E7%BD%91-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
@@ -197,7 +198,7 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 
 ## 安装
 
-安装要求为 Android 8.0（API 26）及以上。当前 `v1.0.9-internal.4` 预发布仅提供适用于 64 位 Android 手机的 **arm64** APK；x86_64 模拟器调试包不属于 Release 资产。仓库没有 32 位 ARM 构建。
+安装要求为 Android 8.0（API 26）及以上。当前 `v1.0.9-internal.4` 预发布仅提供适用于 64 位 Android 手机的 **arm64** APK；x86_64 模拟器验收包不属于 Release 资产。仓库没有 32 位 ARM 构建。
 
 1. 从 [dsh-Su `v1.0.9-internal.4` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4) 下载 ARM64 APK 并按系统提示允许该安装来源；它是预发布版本，尚无 ARM64 设备运行验证。上游原版免 Root 安装包见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)。
 2. 首次启动时，选择在本机安装运行环境，或连接远程主机。
