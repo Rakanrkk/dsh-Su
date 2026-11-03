@@ -11,7 +11,6 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
-import io.github.ccch1mneyyy.dsh_app.phone.background.RootCommands
 import io.github.ccch1mneyyy.dsh_app.rootprobe.IRootProbe
 import java.io.File
 import kotlin.concurrent.thread
@@ -56,6 +55,53 @@ internal object DshRuncClient {
   }
 }
 """.trimIndent()
+
+    internal class RootStartGate {
+        enum class CancelResult { NOT_SUBMITTED, SUBMISSION_ATTEMPTED }
+
+        private val lock = Any()
+        private var cancelled = false
+        private var submissionAttempted = false
+
+        fun submit(canSubmit: () -> Boolean, action: () -> Unit): Boolean = synchronized(lock) {
+            if (cancelled || !canSubmit()) return@synchronized false
+            submissionAttempted = true
+            action()
+            true
+        }
+
+        fun cancel(): CancelResult = synchronized(lock) {
+            cancelled = true
+            if (submissionAttempted) CancelResult.SUBMISSION_ATTEMPTED else CancelResult.NOT_SUBMITTED
+        }
+
+        fun cleanupStatus(cancelResult: CancelResult): String =
+            if (cancelResult == CancelResult.NOT_SUBMITTED) "notSubmitted" else "notBound"
+    }
+
+    internal fun stopAndConfirmCleanup(
+        containerId: String,
+        stateRoot: String,
+        stop: (String, String) -> String,
+        waitExit: (String, String, Long) -> String,
+    ): String {
+        val stopStatus = try {
+            stop(containerId, stateRoot)
+        } catch (_: Exception) {
+            "remoteError"
+        }
+        if (stopStatus.startsWith("ok:")) {
+            val code = stopStatus.substringAfter(':').toIntOrNull()
+            return if (code != null) "ok:$code" else "unknown"
+        }
+        val waitStatus = try {
+            waitExit(containerId, stateRoot, 1000)
+        } catch (_: Exception) {
+            return stopStatus
+        }
+        val code = waitStatus.takeIf { it.startsWith("ok:") }?.substringAfter(':')?.toIntOrNull()
+        return if (code != null) "ok:$code" else stopStatus
+    }
 
     /** One bound DSH instance; kept until stop()/App death releases the RootService. */
     internal class Session(
@@ -108,16 +154,13 @@ internal object DshRuncClient {
         private val mainHandler = Handler(Looper.getMainLooper())
         // Guards only the remote p.start submission+publication window against kill();
         // never hold it across binder waits, prepare work or file IO.
-        private val startGate = Any()
-        private var startCancelled = false
+        private val startGate = RootStartGate()
         @Volatile private var started = false
         @Volatile private var exited = false
         @Volatile private var disconnected = false
         @Volatile private var remoteExitCode: Int? = null
         private var appStdin: ParcelFileDescriptor? = null
         @Volatile private var connection: ServiceConnection? = null
-
-        private data class RootShellSelection(val shell: Shell, val useDefaultBinding: Boolean)
 
         /** Takes the fallback shell ownership once; the caller that gets non-null must close it. */
         private fun reclaimFallbackShell(): Shell? {
@@ -128,12 +171,7 @@ internal object DshRuncClient {
 
         // Never on the main thread: waitAndClose waits for pending shell tasks.
         private fun closeRootShell(shell: Shell) {
-            Shell.EXECUTOR.execute {
-                runCatching { shell.waitAndClose() }.onFailure {
-                    Log.w(TAG, "root shell close failed: ${it.javaClass.simpleName}")
-                    runCatching { shell.close() }
-                }
-            }
+            RootShellSelector.close(shell)
         }
 
         private fun cancelPendingStart() {
@@ -142,41 +180,13 @@ internal object DshRuncClient {
             bound.countDown()
         }
 
-        private fun selectRootShell(): RootShellSelection? {
-            // Only a normally returned non-root main shell may fall back to candidates. If
-            // getShell() throws, MainShell.isInitMain stays true and a private Builder.build()
-            // would cache its shell as the global main shell (MainShell.setCached guards on
-            // isInitMain), so any further shell work here is a terminal error.
-            val shell = Shell.getShell()
-            if (shell.isRoot()) return RootShellSelection(shell, true)
-            Log.i(TAG, "default root shell status=${shell.status}; trying absolute su candidates")
-            for (path in RootCommands.suEntries.filter { it.startsWith('/') }) {
-                val candidate = try {
-                    Shell.Builder.create()
-                        .setContext(context.applicationContext)
-                        .setCommands(path)
-                        .build()
-                } catch (error: Exception) {
-                    Log.w(TAG, "root shell candidate failed path=$path error=${error.javaClass.simpleName}")
-                    continue
-                }
-                if (candidate.isRoot()) {
-                    Log.i(TAG, "root shell candidate selected path=$path status=${candidate.status}")
-                    return RootShellSelection(candidate, false)
-                }
-                Log.w(TAG, "root shell candidate is not root path=$path status=${candidate.status}")
-                closeRootShell(candidate)
-            }
-            return null
-        }
-
         fun bind(onReady: () -> Unit, onFailure: (Throwable) -> Unit) {
             var staged = true
             stageRuncIfNeeded { staged = false; cancelPendingStart(); onFailure(it) }
             if (!staged) return
             check(runc.isFile && runc.canExecute()) { "runc missing at ${runc.path}" }
             val selection = try {
-                selectRootShell()
+                RootShellSelector.select(context)
             } catch (error: Exception) {
                 Log.w(TAG, "default root shell initialization failed: ${error.javaClass.simpleName}")
                 cancelPendingStart()
@@ -269,7 +279,7 @@ internal object DshRuncClient {
             // rbind keeps /storage's FUSE submounts visible; rprivate stops the
             // container's mounts from propagating back to the host.
             val mounts = config.getJSONArray("mounts")
-            for (source in listOf("/system", "/apex")) {
+            for (source in listOf("/system", "/apex", "/linkerconfig")) {
                 if (!File(source).exists()) continue
                 mounts.put(
                     JSONObject()
@@ -310,18 +320,17 @@ internal object DshRuncClient {
             val appStdin = ParcelFileDescriptor.createPipe()
             val appStdout = ParcelFileDescriptor.createPipe()
             val appStderr = ParcelFileDescriptor.createPipe()
-            synchronized(startGate) {
-                if (released || startCancelled) {
-                    runCatching { appStdin[0].close() }; runCatching { appStdin[1].close() }
-                    runCatching { appStdout[0].close() }; runCatching { appStdout[1].close() }
-                    runCatching { appStderr[0].close() }; runCatching { appStderr[1].close() }
-                    onFailure(IllegalStateException("rootCancelled"))
-                    return
-                }
+            val submitted = startGate.submit(canSubmit = { !released }) {
                 p.start(runcArgv, containerId, stateRoot.canonicalPath, appStdin[0], appStdout[1], appStderr[1])
-                // Publish stdin together with started so kill() gating on started sees both.
                 this.appStdin = appStdin[1]
                 started = true
+            }
+            if (!submitted) {
+                runCatching { appStdin[0].close() }; runCatching { appStdin[1].close() }
+                runCatching { appStdout[0].close() }; runCatching { appStdout[1].close() }
+                runCatching { appStderr[0].close() }; runCatching { appStderr[1].close() }
+                onFailure(IllegalStateException("rootCancelled"))
+                return
             }
             appStdin[0].close(); appStdout[1].close(); appStderr[1].close()
             thread(name = "runc-stdout-pump", isDaemon = true) {
@@ -421,25 +430,29 @@ internal object DshRuncClient {
         /** runc kill + delete; the result is the Service's stop status. */
         fun kill(): String {
             val active: IRootProbe?
-            synchronized(startGate) {
-                startCancelled = true
-                val current = probe
-                active = if (current != null && started) current else {
-                    // Nothing submitted remotely yet: cancel the waiters and tear down
-                    // what exists (posted unbind + orphan shell close); the status stays
-                    // "notBound" honestly, and start() aborts at its gated submit check.
-                    cancelPendingStart()
-                    release()
-                    null
-                }
+            val cancelResult = startGate.cancel()
+            val current = probe
+            active = if (current != null && (started || cancelResult == RootStartGate.CancelResult.SUBMISSION_ATTEMPTED)) {
+                current
+            } else {
+                cancelPendingStart()
+                release()
+                null
             }
-            val probe = active ?: return "notBound"
-            val status = try {
-                probe.stop(containerId, stateRoot.canonicalPath)
-            } catch (error: Exception) {
-                onLog("[dsh-app] runc stop failed: ${error.message}", "system")
-                "remoteError"
-            }
+            val probe = active ?: return startGate.cleanupStatus(cancelResult)
+            val status = stopAndConfirmCleanup(
+                containerId = containerId,
+                stateRoot = stateRoot.canonicalPath,
+                stop = { id, root ->
+                    try {
+                        probe.stop(id, root)
+                    } catch (error: Exception) {
+                        onLog("[dsh-app] runc stop failed: ${error.message}", "system")
+                        throw error
+                    }
+                },
+                waitExit = { id, root, timeoutMs -> probe.waitExit(id, root, timeoutMs) },
+            )
             stopStdin()
             if (status.startsWith("ok:")) {
                 val code = status.substringAfter(':').toIntOrNull()

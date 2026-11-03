@@ -1,6 +1,7 @@
 package io.github.ccch1mneyyy.dsh_app.phone
 
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import android.app.Application
 import android.app.KeyguardManager
 import android.app.Notification
@@ -434,6 +435,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     }
 
     fun status(): Map<String, Any?> = linkedMapOf(
+        "rootRuntime" to BuildConfig.ROOT_RUNTIME,
         "enabled" to isEnabled(),
         "bridgeListening" to bridge.listening,
         "a11y" to linkedMapOf("enabled" to a11yEnabledInSettings(), "serviceConnected" to (PhoneRegistry.mainDriver != null)),

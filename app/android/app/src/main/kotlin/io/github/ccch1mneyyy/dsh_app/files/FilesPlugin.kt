@@ -24,6 +24,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
 import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
+import io.github.ccch1mneyyy.dsh_app.runtime.RootShellSelector
 import java.io.File
 import java.io.IOException
 import kotlin.concurrent.thread
@@ -84,7 +85,17 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "resolveGuest" -> background(result) {
-                GuestFiles.resolve(context, call.argument<String>("path") ?: "")?.absolutePath
+                val path = call.argument<String>("path") ?: ""
+                GuestFiles.resolve(context, path)?.absolutePath ?: run {
+                    if (!GuestFiles.isRootfsPath(path)) return@background null
+                    val selection = RootShellSelector.select(context)
+                        ?: throw IllegalStateException("no root shell")
+                    try {
+                        GuestFiles.resolveRoot(context, path, selection.shell)?.absolutePath
+                    } finally {
+                        selection.close()
+                    }
+                }
             }
             "listOutputs" -> background(result) { listOutputs(call.argument<Int>("depth") ?: 3) }
             "open" -> open(call, result)

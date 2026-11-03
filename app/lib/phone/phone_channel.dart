@@ -379,6 +379,7 @@ class PhoneStatus {
   const PhoneStatus({
     this.ready = true,
     this.error,
+    this.rootRuntime = false,
     this.enabled = false,
     this.bridgeListening = false,
     this.a11y = const PhoneA11yStatus(),
@@ -393,7 +394,8 @@ class PhoneStatus {
 
   /// The native module isn't there (or failed to answer): "未就绪".
   const PhoneStatus.notReady([this.error])
-    : ready = false,
+    : rootRuntime = false,
+      ready = false,
       enabled = false,
       bridgeListening = false,
       a11y = const PhoneA11yStatus(),
@@ -406,6 +408,7 @@ class PhoneStatus {
       device = const PhoneDevice();
 
   factory PhoneStatus.fromMap(Map<Object?, Object?> m) => PhoneStatus(
+    rootRuntime: _flag(m['rootRuntime']),
     enabled: _flag(m['enabled']),
     bridgeListening: _flag(m['bridgeListening']),
     a11y: PhoneA11yStatus.fromMap(_map(m['a11y'])),
@@ -423,6 +426,9 @@ class PhoneStatus {
 
   /// Why it didn't, when it said.
   final String? error;
+
+  /// Whether this APK was built with root runtime support.
+  final bool rootRuntime;
 
   /// The master switch 「手机操控」.
   final bool enabled;
@@ -444,6 +450,7 @@ class PhoneStatus {
   PhoneStatus copyWith({bool? enabled}) => PhoneStatus(
     ready: ready,
     error: error,
+    rootRuntime: rootRuntime,
     enabled: enabled ?? this.enabled,
     bridgeListening: bridgeListening,
     a11y: a11y,

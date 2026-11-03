@@ -56,11 +56,21 @@ class LauncherManifestTest {
         assertTrue(mainActivity.children("meta-data").any { it.getAttribute("android:name") == "flutter_deeplinking_enabled" })
     }
 
-    @Test fun thePhoneShowsTheAppAsDshGo() {
+    @Test fun theAppLabelResolvesForRootAndDefaultBuilds() {
         val app = manifest().children("application").single()
-        assertEquals("DSH Go", app.getAttribute("android:label"))
-        // Notification titles say the same name.
-        assertEquals(app.getAttribute("android:label"), AppStrings.APP_NAME)
+        assertEquals("\${dshAppLabel}", app.getAttribute("android:label"))
+        val gradle = File("build.gradle.kts").readText()
+        assertTrue(
+            gradle.contains(
+                "val rootRuntime = (project.findProperty(\"dsh.rootRuntime\") as? String) == \"true\"",
+            ),
+        )
+        assertTrue(
+            gradle.contains(
+                "manifestPlaceholders[\"dshAppLabel\"] = if (rootRuntime) \"DSH SU\" else \"DSH Go\"",
+            ),
+        )
+        assertEquals("DSH Go", AppStrings.APP_NAME)
         // Launcher entries, Recents and the share sheet all take the application's label.
         for (element in app.children("activity") + app.children("activity-alias")) {
             assertEquals(element.getAttribute("android:name"), "", element.getAttribute("android:label"))

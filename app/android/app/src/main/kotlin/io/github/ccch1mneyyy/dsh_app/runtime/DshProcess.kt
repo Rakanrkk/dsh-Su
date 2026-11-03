@@ -41,6 +41,7 @@ class DshProcess(
     @Volatile private var readyReported = false
     @Volatile private var waiter: Thread? = null
     @Volatile private var stopper: Thread? = null
+    private val rootCleanup = RootCleanupConfirmation()
     // Exactly-once exit reporting for the root branch: the waiter and the stop
     // thread both observe process death; only the first one may report and reset
     // state, the second sees reported=true and returns without side effects.
@@ -68,6 +69,7 @@ class DshProcess(
         private set
 
     val launchDiagnostics = LaunchDiagnostics()
+    val rootCleanupConfirmed: Boolean get() = !BuildConfig.ROOT_RUNTIME || rootCleanup.confirmed
     /** App-side engine state: a local OS process, or the remote runc session. */
     private val engineAlive: Boolean
         get() = process?.isAlive == true || runcSession?.isAlive == true
@@ -269,14 +271,27 @@ class DshProcess(
         listener.onLog("[dsh-app] launch method: root-chroot", "system")
         listener.onLog("[dsh-app] launching " + guestArgv.take(3).joinToString(" ") { redact(it) }, "system")
         if (stopping) {
+            rootCleanup.recordExit(0)
             listener.onExit(this, 0, true)
             return
         }
         onLaunchMethod?.invoke(false)
         val session = DshRuncClient.Session(context, port, onLog = listener::onLog, onStdout = ::detectToken)
-        runcSession = session
-        readyReported = false
-        launchDiagnostics.spawned()
+        val published = synchronized(this@DshProcess) {
+            if (stopping) {
+                false
+            } else {
+                runcSession = session
+                readyReported = false
+                launchDiagnostics.spawned()
+                true
+            }
+        }
+        if (!published) {
+            rootCleanup.recordStop("notSubmitted")
+            reportRootExit(0, confirmed = true, unexpected = !expectedExit)
+            return
+        }
         listener.onLog("[dsh-app] launch method: runc-mountns", "system")
         session.bind(
             onReady = {
@@ -300,26 +315,25 @@ class DshProcess(
                 failStart(error.message ?: error.javaClass.simpleName)
             },
         )
-        thread(name = "dsh-runc-wait", isDaemon = true) {
+        waiter = thread(name = "dsh-runc-wait", isDaemon = true) {
             val code = session.awaitRemoteExit()
             session.onRemoteExit(code)
-            session.release()
             reportRootExit(code, confirmed = code >= 0, unexpected = !expectedExit)
         }
         if (stopping) stop()
     }
 
-    /**
-     * Single exit path for the root branch: whichever of the waiter and the stop
-     * thread observes the death first reports exactly once and resets state; the
-     * other returns without reporting or clearing anything.
-     */
+    /** Reports root exit once and retains its session when cleanup is unconfirmed. */
     private fun reportRootExit(code: Int, confirmed: Boolean, unexpected: Boolean) {
+        rootCleanup.recordExit(code)
         synchronized(this@DshProcess) {
             if (rootExitReported) return
             rootExitReported = true
             process = null
-            runcSession = null
+            if (rootCleanup.confirmed) {
+                runcSession?.release()
+                runcSession = null
+            }
         }
         if (!confirmed) {
             val reason = if (unexpected) "exit" else "stop"
@@ -359,11 +373,21 @@ class DshProcess(
 
     /** Waits for cleanup and exit reporting; zero waits until completion. */
     fun awaitExit(millis: Long = 0): Boolean {
-        // The waiter joins the stopper before reporting exit. Startup can fail
-        // after spawning but before allocating it, so await the stopper then.
-        val ending = waiter ?: stopper
-        ending?.join(millis)
-        return ending?.isAlive != true
+        val ending = if (BuildConfig.ROOT_RUNTIME) {
+            listOfNotNull(waiter, stopper).distinct()
+        } else {
+            listOfNotNull(waiter ?: stopper)
+        }
+        val deadline = if (millis > 0) System.nanoTime() + millis * 1_000_000L else 0L
+        ending.forEach { thread ->
+            if (millis <= 0) {
+                thread.join()
+            } else {
+                val remaining = deadline - System.nanoTime()
+                if (remaining > 0) thread.join(remaining / 1_000_000L, (remaining % 1_000_000L).toInt())
+            }
+        }
+        return ending.none { it.isAlive } && rootCleanupConfirmed
     }
 
     /** Preserve a startup failure through cleanup and the service's later STOP. */
@@ -381,9 +405,10 @@ class DshProcess(
     @Synchronized fun stop(expected: Boolean = true) {
         stopping = true
         if (expected) expectedExit = true
-        if (stopper != null) return
         if (BuildConfig.ROOT_RUNTIME) {
+            if (stopper?.isAlive == true || rootCleanup.confirmed) return
             val session = runcSession ?: run {
+                rootCleanup.recordStop("notSubmitted")
                 if (waiter?.isAlive != true) reportRootExit(-1, confirmed = false, unexpected = false)
                 return
             }
@@ -394,12 +419,20 @@ class DshProcess(
                 } catch (error: Exception) {
                     null
                 }
+                rootCleanup.recordStop(status)
+                if (rootCleanup.confirmed) {
+                    session.release()
+                    synchronized(this@DshProcess) {
+                        if (runcSession === session) runcSession = null
+                    }
+                }
                 if (status != "ok") {
                     listener.onLog("[dsh-app] runc stop not confirmed: ${status ?: "remoteError"}", "system")
                 }
             }
             return
         }
+        if (stopper != null) return
         val p = process ?: return
         stopper = thread(name = "dsh-stop", isDaemon = true) {
             try {
@@ -586,6 +619,19 @@ class DshProcess(
             }
             return ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
         }
+    }
+}
+
+internal class RootCleanupConfirmation {
+    @Volatile var confirmed = false
+        private set
+
+    fun recordExit(code: Int) {
+        if (code >= 0) confirmed = true
+    }
+
+    fun recordStop(status: String?) {
+        if (status == "ok" || status == "notSubmitted") confirmed = true
     }
 }
 
