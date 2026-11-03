@@ -77,6 +77,9 @@ android {
             assets.srcDir(File(runtimeOut, "x86_64/assets"))
             jniLibs.srcDir(File(runtimeOut, "x86_64/jniLibs"))
         }
+        if (rootRuntime) {
+            maybeCreate("x64Release").manifest.srcFile("src/rootX64Release/AndroidManifest.xml")
+        }
     }
 
     packaging {
