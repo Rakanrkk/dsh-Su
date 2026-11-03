@@ -14,6 +14,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.provider.Settings
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
+import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
@@ -260,6 +261,17 @@ class BackgroundControl private constructor(context: Context) {
         if (root.status().connected) return grantRootSecureSettings()
         val prepared = prepareRoot(mayStart)
         return if (prepared["ok"] == true) grantRootSecureSettings() else prepared
+    }
+
+    /**
+     * Root builds' fixed self grants through the root backend: one `grantSelf` before the storage
+     * binds are planned (output folders, Downloads, WRITE_SECURE_SETTINGS). The RPC result is not
+     * the answer: the storage permission itself is. Blocks; the caller's worker thread.
+     */
+    fun autoGrantSelfPermissionsWithRoot(mayStart: () -> Boolean): Boolean {
+        if (PhoneStorage.isGranted(app)) return true
+        if (root.status().connected || root.start(mayStart) != null) root.grantSelf()
+        return PhoneStorage.isGranted(app)
     }
 
     /**

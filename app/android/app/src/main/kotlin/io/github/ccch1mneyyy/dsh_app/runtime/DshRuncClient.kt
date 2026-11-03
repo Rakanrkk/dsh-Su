@@ -135,7 +135,7 @@ internal object DshRuncClient {
         }
 
         /** Composes the OCI config and starts runc; blocks until the runc process spawns. */
-        fun start(engineArgv: List<String>, env: Map<String, String>, onFailure: (Throwable) -> Unit) {
+        fun start(engineArgv: List<String>, env: Map<String, String>, binds: List<RootLaunch.Bind> = emptyList(), onFailure: (Throwable) -> Unit) {
             bound.await()
             val p = probe ?: run { onFailure(IllegalStateException("root service not bound")); return }
             bundle.mkdirs(); stateRoot.mkdirs()
@@ -149,6 +149,18 @@ internal object DshRuncClient {
             val rootfs = File(files, "runtime/rootfs")
             config.getJSONObject("root").put("path", rootfs.canonicalPath)
             config.getJSONObject("linux").put("cgroupsPath", containerId)
+            // rbind keeps /storage's FUSE submounts visible; rprivate stops the
+            // container's mounts from propagating back to the host.
+            val mounts = config.getJSONArray("mounts")
+            for (entry in binds) {
+                mounts.put(
+                    JSONObject()
+                        .put("destination", entry.guest)
+                        .put("type", "bind")
+                        .put("source", entry.host)
+                        .put("options", JSONArray().put("rbind").put("rprivate")),
+                )
+            }
             File(bundle, "config.json").writeText(config.toString(2))
             val runcArgv = listOf(
                 runc.canonicalPath,

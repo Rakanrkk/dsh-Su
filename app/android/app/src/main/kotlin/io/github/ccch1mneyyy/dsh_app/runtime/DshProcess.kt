@@ -260,8 +260,7 @@ class DshProcess(
         val envAt = argv.indexOf("/usr/bin/env")
         check(envAt >= 0) { "guest argv does not start the engine at /usr/bin/env" }
         val guestArgv = argv.drop(envAt)
-        val extraBinds = PhoneStorage.binds() + binds
-        val plan = DshProcessRoot.plan(context, manifest, rootfs, guestArgv, extraBinds)
+        val plan = DshProcessRoot.plan(context, manifest, rootfs, guestArgv, binds)
         val l2sReason = DirectLaunch.compatibilityReason(rootfs)
         if (l2sReason == "prootLinkStore") {
             listener.onLog("[dsh-app] root launch blocked: PRoot link store present; run the migration first", "system")
@@ -284,7 +283,7 @@ class DshProcess(
             onReady = {
                 thread(name = "dsh-runc-start", isDaemon = true) {
                     try {
-                        session.start(guestArgv, effectiveGuestEnv) { error ->
+                        session.start(guestArgv, effectiveGuestEnv, plan.binds) { error ->
                             listener.onLog("[dsh-app] runc launch failed: ${error.message}", "system")
                             session.onRemoteExit(-1)
                             failStart(error.message ?: error.javaClass.simpleName)

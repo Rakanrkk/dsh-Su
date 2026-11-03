@@ -96,6 +96,20 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
         return ok
     }
 
+    /** The fixed self grants over the connected root process; the permissions themselves are the answer. */
+    fun grantSelf(): Boolean {
+        val current = connect() ?: return false
+        val ok = current.execute(Bundle().apply {
+            putString(Proto.OP, Proto.OP_GRANT_SELF)
+            putInt(Proto.USER, Process.myUid() / 100000)
+        }).getBoolean(Proto.OK)
+        if (!ok) synchronized(guard) {
+            if (channel === current) state.note("rootGrantFailed")
+        }
+        onChanged()
+        return ok
+    }
+
     /** Revokes only a still-pending attempt whose own caller no longer wants it. */
     fun cancelUnwantedPending() {
         val cancelled = synchronized(guard) {

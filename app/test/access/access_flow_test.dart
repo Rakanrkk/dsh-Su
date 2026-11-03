@@ -68,7 +68,7 @@ void main() {
     testWidgets('nothing picked to begin with; 跳过 goes on and writes nothing', (tester) async {
       var done = 0;
       await _pump(tester, AccessStepPage(onDone: () => done++), FakeAccessDriver(offPhone));
-      expect(find.text('想让 DSH Go 帮你做哪些事'), findsOneWidget);
+      expect(find.text('想让 dsh-Su 帮你做哪些事'), findsOneWidget);
       for (final name in ['读写手机里的文件', '桌宠与悬浮窗', '手机操控', '后台持续运行', '语音输入']) {
         expect(find.text(name), findsOneWidget);
         expect(tester.getSemantics(find.text(name)), isSemantics(isChecked: false, hasCheckedState: true));

@@ -48,9 +48,9 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('root runtime', () {
-    testWidgets('files needs no storage step; another item still asks', skip: !_rootRuntime, (tester) async {
+    testWidgets('storage granted at start needs no step; another item still asks', skip: !_rootRuntime, (tester) async {
       final driver = FakeAccessDriver(
-        offPhone,
+        readingsWith(offPhone, storage: true),
         answer: (item, readings) => item == AccessItem.mic ? readingsWith(readings, mic: true) : readings,
       );
       await _pump(tester, AccessStepPage(onDone: () {}), driver);
@@ -68,6 +68,18 @@ void main() {
       await _tapPrimary(tester);
       expect(driver.opened, ['mic']);
       expect(find.text('都开好了'), findsOneWidget);
+    });
+
+    testWidgets('storage not granted still asks; nothing reports granted early', skip: !_rootRuntime, (tester) async {
+      final driver = FakeAccessDriver(offPhone);
+      await _pump(tester, AccessStepPage(onDone: () {}), driver);
+      await _tapText(tester, '读写手机里的文件');
+      await tester.tap(find.byKey(const ValueKey('risk-confirm')));
+      await _frames(tester);
+      await _tapPrimary(tester);
+
+      expect(find.text('允许访问文件'), findsOneWidget);
+      expect(driver.opened, isEmpty);
     });
 
     // 默认非 root：存储步骤与授权由 access_flow_test.dart 覆盖。

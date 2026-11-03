@@ -311,6 +311,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             var launched: DshProcess? = null
             try {
                 noteDns(GuestSetup.writeResolvConf(app, installer.rootfs), DnsConfigSource.START)
+                // Root builds take the fixed self grants first (storage for the output folders),
+                // so 访问手机文件 planned below takes effect on this start, not after a restart.
+                if (BuildConfig.ROOT_RUNTIME && !PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
+                    log("[dsh-app] root self-grant left the storage permission ungranted", "system")
+                }
                 val storage = pendingPhoneStorage && PhoneStorage.isGranted(app) && PhoneStorage.binds().isNotEmpty()
                 if (!PhoneStorage.syncShortcut(installer.rootfs, storage)) {
                     log("[dsh-app] could not ${if (storage) "create" else "remove"} the phone storage shortcut in the guest home; the directory may be root-owned", "system")

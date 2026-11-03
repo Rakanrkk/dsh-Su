@@ -14,8 +14,6 @@ import '../access/access_summary_page.dart';
 import '../access/access_walk.dart';
 import 'onboarding_scaffold.dart';
 
-const _rootRuntime = bool.fromEnvironment('DSH_ROOT_RUNTIME');
-
 /// 想让 DSH Go 帮你做哪些事 → 逐项开启 → 汇总. 跳过 on the first page goes on
 /// with nothing changed. The picks are kept until the step is over, so a
 /// launch after the app was killed in system settings comes back to the walk.
@@ -75,28 +73,6 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
     final setup = ref.watch(accessSetupProvider);
     final readings = ref.watch(accessReadingsProvider).value;
     final features = setup.features;
-    final rootStorageReady = readings != null &&
-        features != null &&
-        features.contains(AccessFeature.files) &&
-        _rootRuntime;
-    final effectiveReadings = rootStorageReady
-        ? AccessReadings(
-            vendor: readings.vendor,
-            appLabel: readings.appLabel,
-            mic: readings.mic,
-            storage: true,
-            notifications: readings.notifications,
-            battery: readings.battery,
-            accessibility: readings.accessibility,
-            overlay: readings.overlay,
-            overlayBlocked: readings.overlayBlocked,
-            restricted: readings.restricted,
-            sdk: readings.sdk,
-            manufacturer: readings.manufacturer,
-            sideloaded: readings.sideloaded,
-            metered: readings.metered,
-          )
-        : readings;
     final Widget page;
     if (setup.loaded && features == null) {
       // The pick needs nothing from the phone (mobile data, if known, shows when read).
@@ -109,8 +85,8 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
     } else if (features == null || readings == null) {
       page = const OnboardingScaffold(key: ValueKey('loading'), children: [SizedBox.shrink()]);
     } else {
-      final items = accessWalk(features, effectiveReadings?.vendor)
-          .where((item) => item != AccessItem.storage || effectiveReadings?.storage != true)
+      final items = accessWalk(features, readings.vendor)
+          .where((item) => item != AccessItem.storage || readings.storage != true)
           .toList();
       page = _summary
           ? AccessSummaryPage(
