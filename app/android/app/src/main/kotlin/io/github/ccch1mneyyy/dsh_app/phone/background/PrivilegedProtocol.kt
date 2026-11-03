@@ -110,7 +110,14 @@ fun selfPermissions(sdkInt: Int): List<String> {
         Manifest.permission.SYSTEM_ALERT_WINDOW,
     )
     if (sdkInt >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+    if (sdkInt >= 30) permissions.add(Manifest.permission.MANAGE_EXTERNAL_STORAGE)
     return permissions
+}
+
+/** Only a complete fixed set counts; the response's [Proto.OK] alone can hide partial failures. */
+fun selfGrantComplete(ok: Boolean, failedPermissions: List<String>, permissions: List<String>): Boolean {
+    if (!ok) return false
+    return failedPermissions.none { it in permissions }
 }
 
 /** Stable reason codes → one short Chinese sentence for the model (after Phase's set). */
