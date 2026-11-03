@@ -1,3 +1,4 @@
+import 'package:dsh_app/l10n/l10n.dart';
 import 'package:dsh_app/state/media_generation.dart';
 import 'package:dsh_app/state/plugins_state.dart';
 import 'package:dsh_app/ui/plugins/plugin_detail_sheet.dart';
@@ -79,7 +80,12 @@ void main() {
     await tester.tap(find.text('在此主机上安装'));
     await tester.pumpAndSettle();
     expect(find.byType(MarketPluginSheet), findsOneWidget);
-    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, '需要 DSH Go 1.0.2 或更高版本')).onPressed, isNull);
+    final requiredVersion = find.text(lookupL10n(AppLocale.zhCN).marketNeedsApp('1.0.2'));
+    expect(requiredVersion, findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.ancestor(of: requiredVersion, matching: find.byType(FilledButton))).onPressed,
+      isNull,
+    );
     expect(carrier.argsOf('pluginManager/installBundle'), isEmpty);
   });
 

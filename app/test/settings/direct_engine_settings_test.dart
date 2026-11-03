@@ -256,7 +256,7 @@ void main() {
     final runtime = _Runtime(const RuntimeStatus(phase: RuntimePhase.installed));
     final bridge = _Bridge();
     await show(tester, runtime, bridge);
-    expect(tile(tester).onChanged, isNull);
+    expect(find.byType(SettingsSwitchTile), findsNothing);
     runtime.update(const RuntimeStatus(phase: RuntimePhase.installed, directEngineEnabled: true));
     await tester.pumpAndSettle();
     expect(tile(tester).onChanged, isNotNull);

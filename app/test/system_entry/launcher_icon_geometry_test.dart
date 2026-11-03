@@ -94,7 +94,6 @@ void main() {
     final xml = readRes('xml/shortcuts.xml');
     final entry = _source('shortcuts/EntryActivity.kt');
     final gradle = File('android/app/build.gradle.kts').readAsStringSync();
-    final applicationId = RegExp(r'applicationId = "([^"]+)"').firstMatch(gradle)!.group(1)!;
     final strings = readRes('values-zh/entry_strings.xml');
 
     final shortcuts = RegExp(r'<shortcut\b([\s\S]*?)</shortcut>').allMatches(xml).map((m) => m.group(1)!).toList();
@@ -121,13 +120,30 @@ void main() {
     });
 
     test('point at EntryActivity with the actions it knows', () {
+      final namespaceMatch = RegExp(r'^\s*namespace\s*=\s*"([^"]+)"\s*$', multiLine: true).firstMatch(gradle);
+      expect(namespaceMatch, isNotNull, reason: 'Android namespace not found in app Gradle file');
+      final namespace = namespaceMatch!.group(1)!;
+      final rootRuntime = RegExp(
+        r'^\s*val rootRuntime\s*=\s*\(project\.findProperty\("dsh\.rootRuntime"\) as\? String\)\s*==\s*"true"\s*$',
+        multiLine: true,
+      ).firstMatch(gradle);
+      expect(rootRuntime, isNotNull, reason: 'root runtime build property not found in app Gradle file');
+      final applicationIds = RegExp(
+        r'^\s*applicationId\s*=\s*if\s*\(rootRuntime\)\s*"([^"]+)"\s*else\s*"([^"]+)"\s*$',
+        multiLine: true,
+      ).firstMatch(gradle);
+      expect(applicationIds, isNotNull, reason: 'conditional applicationId not found in app Gradle file');
+      final rootApplicationId = applicationIds!.group(1)!;
+      final regularApplicationId = applicationIds.group(2)!;
+      expect(regularApplicationId, namespace);
+      expect(rootApplicationId, isNot(namespace));
       expect(
         [for (final s in shortcuts) attr(s, 'action')],
         [_constant(entry, 'ACTION_NEW_CHAT'), _constant(entry, 'ACTION_VOICE')],
       );
       for (final s in shortcuts) {
-        expect(attr(s, 'targetPackage'), applicationId);
-        expect(attr(s, 'targetClass'), '$applicationId.shortcuts.EntryActivity');
+        expect(attr(s, 'targetPackage'), r'${applicationId}');
+        expect(attr(s, 'targetClass'), '$namespace.shortcuts.EntryActivity');
       }
     });
   });
