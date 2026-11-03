@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.provider.Settings
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.MainActivity
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
@@ -76,6 +77,7 @@ object LiveActivity {
     private var portrait: Bitmap? = null
 
     private val applyNow = Runnable { apply() }
+    private val postGate = LivePostGate()
     private val repost = Runnable {
         shown = null
         apply()
@@ -87,16 +89,20 @@ object LiveActivity {
      */
     fun update(context: Context, enabled: Boolean, packId: String?, agent: LiveContent?) {
         val ctx = attach(context)
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(K_ENABLED, true) != enabled) prefs.edit().putBoolean(K_ENABLED, enabled).apply()
-        this.packId = packId?.takeIf { it.isNotEmpty() && it != "none" }
-        this.agent = agent
+        postGate.locked {
+            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(K_ENABLED, true) != enabled) prefs.edit().putBoolean(K_ENABLED, enabled).apply()
+            this.packId = packId?.takeIf { it.isNotEmpty() && it != "none" }
+            this.agent = agent
+            selectLiveTicket(ctx)
+        }
         refresh(ctx)
     }
 
     /** Something it shows changed: post the latest within [MIN_GAP_MS] of the last post. Any thread. */
     fun refresh(context: Context) {
-        attach(context)
+        val ctx = attach(context)
+        postGate.locked { selectLiveTicket(ctx) }
         handler.removeCallbacks(applyNow)
         val wait = (postedAt + MIN_GAP_MS - SystemClock.elapsedRealtime()).coerceAtLeast(0)
         handler.postDelayed(applyNow, wait)
@@ -136,25 +142,42 @@ object LiveActivity {
 
     private fun nm(ctx: Context) = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    private fun selectLiveTicket(ctx: Context): LivePostGate.Ticket? =
+        postGate.select(agent, PhoneControl.peek()?.liveTask()?.id, enabled(ctx))
+
     private fun apply() {
         val ctx = app ?: return
-        val content = if (enabled(ctx) && (canPromote(ctx) || XiaomiFocus.allowed(ctx))) {
-            LiveContent.pick(phoneContent(ctx), agent)
-        } else {
-            null
+        val supported = canPromote(ctx) || XiaomiFocus.allowed(ctx)
+        val (content, ticket) = postGate.locked {
+            val content = if (enabled(ctx) && supported) LiveContent.pick(phoneContent(ctx), agent) else null
+            content to if (content == null) postGate.select(null) else selectLiveTicket(ctx)
         }
-        if (content == null) {
+        if (content == null || ticket == null) {
             handler.removeCallbacks(repost)
             if (posted) nm(ctx).cancel(ID)
             posted = false
             shown = null
             return
         }
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(ctx)) {
+            postGate.prepare(ticket,
+                execute = { action -> Thread({ action() }, "dsh-live-prepare").start() },
+                ensure = { current -> NotifyPostGate.ensure(ctx, current) },
+                deliver = { action -> handler.post { action() } },
+                ready = { apply() },
+            )
+            return
+        }
         if (content == shown) return
-        runCatching { post(ctx, content) }.onFailure { return }
-        posted = true
-        shown = content
-        postedAt = SystemClock.elapsedRealtime()
+        val accepted = postGate.commit(ticket) {
+            if (selectLiveTicket(ctx) !== ticket) return@commit false
+            if (!runCatching { post(ctx, content) }.getOrDefault(false)) return@commit false
+            posted = true
+            shown = content
+            postedAt = SystemClock.elapsedRealtime()
+            true
+        }
+        if (!accepted) return
         handler.removeCallbacks(repost)
         if (!content.ending) handler.postDelayed(repost, REFRESH_MS)
     }
@@ -178,8 +201,9 @@ object LiveActivity {
         )
     }
 
-    private fun post(ctx: Context, c: LiveContent) {
+    private fun post(ctx: Context, c: LiveContent): Boolean {
         val nm = nm(ctx)
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(ctx)) return false
         ensureChannel(ctx, nm)
         val color = ThemeAccent.notificationColor(ctx)
         val picture = c.packId?.let { portraitOf(ctx, it, c.mood) }
@@ -225,6 +249,7 @@ object LiveActivity {
         val icon = picture?.let(Icon::createWithBitmap) ?: Icon.createWithResource(ctx, R.mipmap.ic_launcher)
         XiaomiFocus.apply(ctx, builder, c, icon)
         nm.notify(ID, builder.build())
+        return true
     }
 
     /** The lock screen's version when it hides sensitive content: no title, no line. */

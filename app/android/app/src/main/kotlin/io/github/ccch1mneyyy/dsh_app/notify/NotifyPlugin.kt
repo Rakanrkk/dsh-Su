@@ -5,6 +5,7 @@ import io.github.ccch1mneyyy.dsh_app.R
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import android.os.Looper
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -105,23 +106,38 @@ class NotifyPlugin :
                 if (group.isNullOrEmpty() || key.isNullOrEmpty() || sessionId.isNullOrEmpty()) {
                     return result.error("bad_args", "group, key and sessionId are required", null)
                 }
-                notifier.show(
-                    ChatNotifier.Post(
-                        group = group,
-                        key = key,
-                        attention = call.argument<Boolean>("attention") == true,
-                        title = call.argument<String>("title") ?: AppStrings.APP_NAME,
-                        text = call.argument<String>("text") ?: "",
-                        publicText = call.argument<String>("publicText") ?: AppStrings.get(appContext, R.string.notify_new_reminder),
-                        sessionId = sessionId,
-                        host = call.argument<String>("host") ?: "",
-                        kind = call.argument<String>("kind") ?: "",
-                        eventId = call.argument<String>("eventId"),
-                        canApprove = call.argument<Boolean>("canApprove") == true,
-                        fullText = call.argument<String>("fullText"),
-                    ),
+                val post = ChatNotifier.Post(
+                    group = group,
+                    key = key,
+                    attention = call.argument<Boolean>("attention") == true,
+                    title = call.argument<String>("title") ?: AppStrings.APP_NAME,
+                    text = call.argument<String>("text") ?: "",
+                    publicText = call.argument<String>("publicText") ?: AppStrings.get(appContext, R.string.notify_new_reminder),
+                    sessionId = sessionId,
+                    host = call.argument<String>("host") ?: "",
+                    kind = call.argument<String>("kind") ?: "",
+                    eventId = call.argument<String>("eventId"),
+                    canApprove = call.argument<Boolean>("canApprove") == true,
+                    fullText = call.argument<String>("fullText"),
                 )
-                result.success(null)
+                if (!BuildConfig.ROOT_RUNTIME) {
+                    notifier.show(post)
+                    result.success(null)
+                    return
+                }
+                val request = notifier.request(post)
+                Thread({
+                    val outcome = runCatching { notifier.showBlocking(request) }.getOrDefault(ShowOutcome.DENIED)
+                    Handler(Looper.getMainLooper()).post {
+                        result.success(
+                            when (outcome) {
+                                ShowOutcome.DELIVERED -> mapOf("delivered" to true)
+                                ShowOutcome.CANCELLED -> mapOf("delivered" to false, "reason" to "cancelled")
+                                ShowOutcome.DENIED -> mapOf("delivered" to false, "reason" to "denied")
+                            },
+                        )
+                    }
+                }, "dsh-notify-show").start()
             }
             "actionResult" -> {
                 val group = call.argument<String>("group")

@@ -441,7 +441,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         "a11y" to linkedMapOf("enabled" to a11yEnabledInSettings(), "serviceConnected" to (PhoneRegistry.mainDriver != null)),
         "overlay" to (PhoneRegistry.overlayGate != null),
         "notifications" to nm.areNotificationsEnabled(),
-        "confirmationNotifications" to notificationGate.available(),
+        "confirmationNotifications" to if (BuildConfig.ROOT_RUNTIME) notificationGate.readAvailable() else notificationGate.available(),
         "background" to backgroundStatus(),
         "a11yKeeper" to keeperStatus(),
         "task" to tasks.snapshot().toMap(),
@@ -531,13 +531,18 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     private fun pushIfChanged(force: Boolean) {
         if (sinks.isEmpty()) return
         val s = try {
-            status()
+            passiveStatus()
         } catch (_: Exception) {
             return
         }
         if (!force && s == lastStatus) return
         lastStatus = s
         main.post { sinks.forEach { runCatching { it(s) } } }
+    }
+
+    /** The event-map variant of [status] with the same pure notification readback. */
+    private fun passiveStatus(): Map<String, Any?> = status().toMutableMap().apply {
+        this["confirmationNotifications"] = if (BuildConfig.ROOT_RUNTIME) notificationGate.readAvailable() else notificationGate.available()
     }
 
     /** Every 2 s: end idle tasks; 自动恢复无障碍; push status changes we can't observe (accessibility connecting). */

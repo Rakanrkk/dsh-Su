@@ -282,6 +282,23 @@ class BackgroundControl private constructor(context: Context) {
         }
     }
 
+    /** Root startup preflight: the real root backend this call prepared, else null. */
+    fun prepareRootForStartup(mayStart: () -> Boolean): PrivilegedChannel? {
+        if (!BuildConfig.ROOT_RUNTIME) return null
+        return RootStartupPreparation.prepare(
+            mayStart = mayStart,
+            connect = root::start,
+            grantSelf = root::grantSelf,
+            alive = { it.alive() },
+            notificationsGranted = ::notificationsGranted,
+        )
+    }
+
+    /** POST_NOTIFICATIONS readback, the one hard startup gate on Android 13+. */
+    fun notificationsGranted(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            app.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
     private fun selfPermissionsGranted(): Boolean {
         val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
         return selfGrantStateComplete(

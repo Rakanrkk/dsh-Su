@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.MainActivity
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.theme.ThemeAccent
@@ -63,10 +64,17 @@ class ChatNotifier(private val app: Context) {
 
     private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val keyguard = app.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+    internal data class ShowRequest(
+        val post: Post,
+        val postedAt: Long,
+        val ticket: NotificationPosts.Ticket<Pair<String, String>>,
+    )
 
-    /** Whether notifications can show at all, per channel. Creates the channels first. */
-    fun status(): Map<String, Any> {
-        ensureChannels()
+    internal fun request(post: Post, postedAt: Long = System.currentTimeMillis()): ShowRequest =
+        ShowRequest(post, postedAt, posts.begin(post.group to post.key))
+
+    /** Whether notifications can show at all, per channel. No side effects. */
+    fun readStatus(): Map<String, Any> {
         val groupBlocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
             nm.getNotificationChannelGroup(GROUP_ID)?.isBlocked == true
         fun open(id: String) = !groupBlocked &&
@@ -79,9 +87,27 @@ class ChatNotifier(private val app: Context) {
         )
     }
 
+    /** Flutter's status read. Root: always passive; normal: the original eager path. */
+    fun status(): Map<String, Any> {
+        if (!BuildConfig.ROOT_RUNTIME) ensureChannels()
+        return readStatus()
+    }
+
     fun show(post: Post) = show(post, System.currentTimeMillis())
 
     private fun show(post: Post, postedAt: Long) {
+        val request = request(post, postedAt)
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) {
+            Thread({ showBlocking(request) }, "dsh-notify-prepare").start()
+        } else {
+            posts.finish(request.ticket, true) { postNow(request) }
+        }
+    }
+
+    private fun postNow(request: ShowRequest): Boolean {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return false
+        val post = request.post
+        val postedAt = request.postedAt
         ensureChannels()
         val tag = tagOf(post.group)
         val id = idOf(post.key)
@@ -113,7 +139,7 @@ class ChatNotifier(private val app: Context) {
         // The floating pet is out and its bubble says 做完了 / 出错了: posted, but no banner, no sound.
         io.github.ccch1mneyyy.dsh_app.pet.ResultSilence.apply(builder, tag, post.attention)
         // Approval buttons, in the approval card's order; not on the lock screen.
-        if (post.canApprove) actions[tag to id] = ActionEntry(post, postedAt) else actions.remove(tag to id)
+        if (post.canApprove) actions[tag to id] = ActionEntry(request) else actions.remove(tag to id)
         if (post.canApprove && !locked) {
             for ((label, decision) in listOf(AppStrings.get(app, R.string.notify_decline) to "rejected", AppStrings.get(app, R.string.notify_allow_once) to "allowed-once")) {
                 val action = Notification.Action.Builder(null, label, actionIntent(post, decision))
@@ -123,26 +149,33 @@ class ChatNotifier(private val app: Context) {
         }
         nm.notify(tag, id, builder.build())
         synchronized(deferred) {
-            if (locked) deferred[tag to id] = post to postedAt else deferred.remove(tag to id)
+            if (locked) deferred[tag to id] = request else deferred.remove(tag to id)
         }
         if (locked) watchUnlock()
         summaries[tag] = (if (locked) AppStrings.APP_NAME else post.title) to channel
         // The new child may not be listed yet: count it explicitly.
         updateSummary(tag, children(tag, exclude = id) + 1)
+        return true
     }
 
-    fun cancel(group: String, key: String) {
+    /** Called off the platform thread, with identity registered before the worker is queued. */
+    internal fun showBlocking(request: ShowRequest): ShowOutcome {
+        return posts.awaitAndPost(request.ticket,
+            prepare = { current -> NotifyPostGate.ensure(app, current) && NotifyPostGate.ready(app) },
+            post = { postNow(request) },
+        )
+    }
+
+    fun cancel(group: String, key: String) = posts.cancel(group to key) {
         val tag = tagOf(group)
         val id = idOf(key)
-        // Answered from its own buttons: the result replaces it (finishAction).
-        if (actions[tag to id]?.decision != null) return
         actions.remove(tag to id)
         nm.cancel(tag, id)
         synchronized(deferred) { deferred.remove(tag to id) }
         updateSummary(tag, children(tag, exclude = id))
     }
 
-    fun cancelGroup(group: String) {
+    fun cancelGroup(group: String) = posts.cancelWhere({ it.first == group }) {
         val tag = tagOf(group)
         for (n in nm.activeNotifications) if (n.tag == tag) nm.cancel(tag, n.id)
         actions.keys.removeAll { it.first == tag }
@@ -151,13 +184,20 @@ class ChatNotifier(private val app: Context) {
         synchronized(deferred) { deferred.keys.removeAll { it.first == tag } }
     }
 
-    /** Unlocked: give the notifications posted while locked their real content (no sound). */
+    /** USER_PRESENT never starts SU: only still-active notifications with POST may be revealed. */
     private fun reveal() {
-        val pending = synchronized(deferred) { deferred.values.toList().also { deferred.clear() } }
-        if (pending.isEmpty()) return
-        val active = nm.activeNotifications.map { it.tag to it.id }.toSet()
-        for ((post, postedAt) in pending) {
-            if ((tagOf(post.group) to idOf(post.key)) in active) show(post, postedAt)
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return
+        posts.locked {
+            val waiting = synchronized(deferred) { deferred.values.toList() }
+            val active = nm.activeNotifications.map { it.tag to it.id }.toSet()
+            for (request in waiting) {
+                val post = request.post
+                posts.repost(request.ticket,
+                    allowed = { !BuildConfig.ROOT_RUNTIME || NotifyPostGate.ready(app) },
+                    active = { (tagOf(post.group) to idOf(post.key)) in active },
+                    post = { postNow(request) },
+                )
+            }
         }
     }
 
@@ -175,7 +215,7 @@ class ChatNotifier(private val app: Context) {
         }
     }
 
-    fun cancelAll() {
+    fun cancelAll() = posts.cancelAll {
         for (n in nm.activeNotifications) if (n.tag?.startsWith(TAG_PREFIX) == true) nm.cancel(n.tag, n.id)
         summaries.clear()
         actions.clear()
@@ -189,7 +229,7 @@ class ChatNotifier(private val app: Context) {
             "attention" -> CHANNEL_ATTENTION
             else -> null
         }
-        val intent = if (id != null && nm.areNotificationsEnabled()) {
+        val intent = if (id != null && nm.areNotificationsEnabled() && (!BuildConfig.ROOT_RUNTIME || NotifyPostGate.ready(app))) {
             ensureChannels()
             Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_CHANNEL_ID, id)
         } else {
@@ -222,6 +262,7 @@ class ChatNotifier(private val app: Context) {
     }
 
     fun ensureChannels() {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return
         if (nm.getNotificationChannel(CHANNEL_DONE) != null && nm.getNotificationChannel(CHANNEL_ATTENTION) != null) return
         // An app can't raise a channel's importance once created: the old IMPORTANCE_DEFAULT
         // "一轮结束" channel goes, and the heads-up one lives under a new id.
@@ -248,6 +289,7 @@ class ChatNotifier(private val app: Context) {
 
     /** Posts, refreshes or removes the group's summary for [count] children. */
     private fun updateSummary(tag: String, count: Int) {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return
         val (title, channel) = summaries[tag] ?: (null to CHANNEL_DONE)
         if (count < 2 || title == null) {
             nm.cancel(tag, SUMMARY_ID)
@@ -311,32 +353,34 @@ class ChatNotifier(private val app: Context) {
      * reports back through [finishAction]. Buttons of a notification posted by an earlier process
      * find no entry and do nothing.
      */
-    fun receiveAction(intent: Intent) {
-        val group = intent.getStringExtra("group") ?: return
-        val key = intent.getStringExtra("key") ?: return
-        val decision = intent.getStringExtra("decision") ?: return
+    fun receiveAction(intent: Intent) = posts.locked {
+        val group = intent.getStringExtra("group") ?: return@locked
+        val key = intent.getStringExtra("key") ?: return@locked
+        val decision = intent.getStringExtra("decision") ?: return@locked
         val identity = tagOf(group) to idOf(key)
-        val entry = actions[identity] ?: return actionStatus(identity, null, AppStrings.get(app, R.string.notify_action_failed))
-        if (entry.decision != null) return
+        val entry = actions[identity] ?: return@locked
+        if (!posts.current(entry.request.ticket)) return@locked
+        if (entry.decision != null) return@locked
         if (keyguard.isKeyguardLocked) {
             // Before Android 12 a button can't ask for the unlock: post it again without buttons until then.
-            show(entry.post, entry.postedAt)
-            return
+            posts.finish(entry.request.ticket, true) { postNow(entry.request) }
+            return@locked
         }
         entry.decision = decision
         actionStatus(identity, entry.post, AppStrings.get(app, R.string.notify_action_processing))
         val sent = NotifyPlugin.dispatchAction(
             mapOf("host" to entry.post.host, "group" to group, "key" to key, "eventId" to entry.post.eventId, "decision" to decision),
         )
-        if (!sent) return finishAction(group, key, "failed")
+        if (!sent) return@locked finishAction(group, key, "failed")
         Handler(Looper.getMainLooper()).postDelayed({ if (actions[identity] === entry) finishAction(group, key, "failed") }, 20_000)
     }
 
     /** Flutter's answer for a tapped button: `handled`, `gone` (no longer pending) or `failed`. */
-    fun finishAction(group: String, key: String, result: String) {
+    fun finishAction(group: String, key: String, result: String) = posts.locked {
         val identity = tagOf(group) to idOf(key)
-        val entry = actions[identity]?.takeIf { it.decision != null } ?: return
+        val entry = actions[identity]?.takeIf { it.decision != null } ?: return@locked
         actions.remove(identity)
+        if (!posts.current(entry.request.ticket)) return@locked
         val text = when (result) {
             "handled" -> if (entry.decision == "allowed-once") AppStrings.get(app, R.string.notify_action_allowed) else AppStrings.get(app, R.string.notify_action_declined)
             "gone" -> AppStrings.get(app, R.string.notify_action_expired)
@@ -347,6 +391,7 @@ class ChatNotifier(private val app: Context) {
 
     /** Replaces an approval notification with a short, silent status; tapping it opens the conversation. */
     private fun actionStatus(identity: Pair<String, Int>, post: Post?, text: String, expire: Boolean = false) {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return
         ensureChannels()
         val builder = Notification.Builder(app, CHANNEL_ATTENTION)
             .setSmallIcon(R.drawable.ic_stat_dsh)
@@ -381,11 +426,13 @@ class ChatNotifier(private val app: Context) {
         private const val SUMMARY_ID = 0
 
         /** An approval notification with buttons; [decision] is set once one was tapped. */
-        private class ActionEntry(val post: Post, val postedAt: Long) {
+        private class ActionEntry(val request: ShowRequest) {
+            val post get() = request.post
+            val postedAt get() = request.postedAt
             var decision: String? = null
         }
 
-        /** Approval notifications of this process, by (tag, id). Main thread only. */
+        /** Approval notifications of this process; protected by posts. */
         private val actions = HashMap<Pair<String, Int>, ActionEntry>()
 
         const val ACTION_OPEN = "io.github.ccch1mneyyy.dsh_app.OPEN_SESSION"
@@ -404,7 +451,8 @@ class ChatNotifier(private val app: Context) {
         private val summaries = HashMap<String, Pair<String, String>>()
 
         /** Posted while locked, shown redacted: (tag, id) → the post and its time. */
-        private val deferred = HashMap<Pair<String, Int>, Pair<Post, Long>>()
+        private val deferred = HashMap<Pair<String, Int>, ShowRequest>()
+        private val posts = NotificationPosts<Pair<String, String>>()
 
         /** Process-wide USER_PRESENT receiver, registered on the first locked post. */
         @Volatile private var unlockReceiver: BroadcastReceiver? = null

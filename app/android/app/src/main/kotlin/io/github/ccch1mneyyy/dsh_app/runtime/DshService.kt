@@ -15,6 +15,7 @@ import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.MainActivity
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
@@ -27,6 +28,7 @@ class DshService : Service() {
     private var installSink: RuntimeController.EventSink? = null
     private var installPercent = -1
     private var installUpgrade = false
+    private val installation = InstallServiceLifecycle()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -34,40 +36,47 @@ class DshService : Service() {
         val controller = RuntimeController.get(this)
         when (intent?.action) {
             ACTION_INSTALL -> {
-                // First unpack or an upgrade: keep the process (and the CPU) up until it is done.
-                ensureChannel(this)
-                installUpgrade = intent.getBooleanExtra("upgrade", false)
-                installPercent = -1
-                // The last unpack's "ready" / "stopped" is old news now.
-                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(INSTALL_ALERT_ID)
-                foreground(buildInstallNotification(this, installUpgrade, installPercent))
-                acquireWakeLock()
-                if (installSink == null) {
-                    val sink = RuntimeController.EventSink { event ->
-                        if (event["type"] == "progress") {
-                            val done = (event["done"] as? Number)?.toLong() ?: 0L
-                            val total = (event["total"] as? Number)?.toLong() ?: 0L
-                            val percent = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else -1
-                            if (percent != installPercent) {
-                                installPercent = percent
-                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                                nm.notify(NOTIFICATION_ID, buildInstallNotification(this, installUpgrade, percent))
+                val ticket = intent.getLongExtra(EXTRA_TICKET, 0L)
+                if (!controller.acceptService(ticket, install = true)) { rejectStaleStart(startId); return START_NOT_STICKY }
+                installation.begin(ticket, foreground = {
+                    // First unpack or an upgrade: keep the process (and the CPU) up until it is done.
+                    ensureChannel(this)
+                    installUpgrade = intent.getBooleanExtra("upgrade", false)
+                    installPercent = -1
+                    // The last unpack's "ready" / "stopped" is old news now.
+                    (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(INSTALL_ALERT_ID)
+                    foreground(buildInstallNotification(this, installUpgrade, installPercent))
+                    acquireWakeLock()
+                    if (installSink == null) {
+                        val sink = RuntimeController.EventSink { event ->
+                            if (event["type"] == "progress") {
+                                val done = (event["done"] as? Number)?.toLong() ?: 0L
+                                val total = (event["total"] as? Number)?.toLong() ?: 0L
+                                val percent = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else -1
+                                if (percent != installPercent) {
+                                    installPercent = percent
+                                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                    nm.notify(NOTIFICATION_ID, buildInstallNotification(this, installUpgrade, percent))
+                                }
                             }
                         }
+                        installSink = sink
+                        controller.addSink(sink)
                     }
-                    installSink = sink
-                    controller.addSink(sink)
-                }
+                }, ready = { controller.installServiceReady(ticket) })
                 return START_NOT_STICKY
             }
             ACTION_INSTALL_DONE -> {
-                installSink?.let { controller.removeSink(it) }
-                installSink = null
-                if (controller.phase != RuntimeController.Phase.STARTING && controller.phase != RuntimeController.Phase.RUNNING) {
-                    stopForegroundCompat()
-                    stopSelf(startId)
+                val finished = installation.finish(intent.getLongExtra(EXTRA_TICKET, 0L)) {
+                    installSink?.let { controller.removeSink(it) }
+                    installSink = null
+                    if (controller.phase != RuntimeController.Phase.STARTING && controller.phase != RuntimeController.Phase.RUNNING) {
+                        stopForegroundCompat()
+                        stopSelf(startId)
+                    }
+                    postInstallAlert(this, intent.getBooleanExtra(EXTRA_INSTALL_OK, true))
                 }
-                postInstallAlert(this, intent.getBooleanExtra(EXTRA_INSTALL_OK, true))
+                if (!finished) rejectStaleStart(startId)
                 return START_NOT_STICKY
             }
             ACTION_PHONE_STOP -> {
@@ -85,6 +94,8 @@ class DshService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
+                val ticket = intent?.getLongExtra(EXTRA_TICKET, 0L) ?: 0L
+                if (!controller.acceptService(ticket, install = false)) { rejectStaleStart(startId); return START_NOT_STICKY }
                 ensureChannel(this)
                 val notification = buildNotification(this, controller)
                 foreground(notification)
@@ -96,6 +107,10 @@ class DshService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private fun rejectStaleStart(startId: Int) {
+        if (!running && !installation.hasActive) stopSelf(startId)
     }
 
     override fun onDestroy() {
@@ -174,6 +189,8 @@ class DshService : Service() {
 
         /** With [ACTION_INSTALL_DONE]: the unpack finished (true) or stopped. */
         const val EXTRA_INSTALL_OK = "ok"
+        /** The one-shot ticket the controller stamped on install/start intents. */
+        const val EXTRA_TICKET = "ticket"
         private const val CHANNEL_ID = "dsh-runtime"
         private const val NOTIFICATION_ID = 3080
         private const val ALERT_ID = 3081
@@ -188,6 +205,7 @@ class DshService : Service() {
 
         /** The unpack ended while the app was away: ready, or stopped (see [InstallAlert]). */
         private fun postInstallAlert(context: Context, ok: Boolean) {
+            if (BuildConfig.ROOT_RUNTIME && !io.github.ccch1mneyyy.dsh_app.notify.NotifyPostGate.ready(context)) return
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val alert = InstallAlert.choose(ok, MainActivity.inForeground, nm.areNotificationsEnabled()) ?: return
             nm.createNotificationChannel(

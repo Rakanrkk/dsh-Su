@@ -91,15 +91,7 @@ class RuntimePlugin :
             "install" -> {
                 // A second call must not end the running unpack's foreground service.
                 if (controller.phase == RuntimeController.Phase.INSTALLING) return result.error("install_busy", null, null)
-                val intent = Intent(appContext, DshService::class.java).setAction(DshService.ACTION_INSTALL)
-                    .putExtra("upgrade", controller.status()["installedVersion"] != null)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) appContext.startForegroundService(intent)
-                else appContext.startService(intent)
                 controller.install(dropKept = call.argument<Boolean>("dropKept") == true) { error ->
-                    appContext.startService(
-                        Intent(appContext, DshService::class.java).setAction(DshService.ACTION_INSTALL_DONE)
-                            .putExtra(DshService.EXTRA_INSTALL_OK, error == null),
-                    )
                     if (error == null) result.success(null) else result.error("install_failed", error.message, null)
                 }
             }

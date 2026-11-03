@@ -12,6 +12,8 @@ import android.content.IntentFilter
 import android.os.Build
 import android.net.Uri
 import io.github.ccch1mneyyy.dsh_app.R
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
+import io.github.ccch1mneyyy.dsh_app.notify.NotifyPostGate
 import io.github.ccch1mneyyy.dsh_app.shortcuts.EntryActivity
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -36,7 +38,14 @@ class NotificationGate(
     private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val ids = AtomicInteger(4200)
 
+    /** Readback only: reports what the OS would show without creating anything. */
+    fun readAvailable(): Boolean = runCatching {
+        channelAvailable(CHANNEL_CONFIRM, NotificationManager.IMPORTANCE_HIGH)
+    }.getOrDefault(false)
+
+    /** Active prompt path: prepare the channel when it is allowed, then report. */
     fun available(): Boolean = runCatching {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return@runCatching false
         ensureChannel()
         channelAvailable(CHANNEL_CONFIRM, NotificationManager.IMPORTANCE_HIGH)
     }.getOrDefault(false)
@@ -161,6 +170,7 @@ class NotificationGate(
 
     /** A distinct result notification, independent of ordinary chat notification preferences. */
     fun notifyFinished(taskId: Long, sessionId: String?, host: String?): Boolean = runCatching {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return false
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL_RESULT,
             AppStrings.get(app, R.string.phone_prompt_result_channel), NotificationManager.IMPORTANCE_HIGH))
         if (!channelAvailable(CHANNEL_RESULT, NotificationManager.IMPORTANCE_MIN)) return false
@@ -188,6 +198,7 @@ class NotificationGate(
         channel: String,
         ongoing: Boolean = false,
     ): String? {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return null
         ensureChannel()
         val id = ids.incrementAndGet()
         val action = "${app.packageName}.PHONE_GATE." + PhoneBridge.hex(16)
@@ -244,6 +255,7 @@ class NotificationGate(
     }
 
     private fun ensureChannel() {
+        if (BuildConfig.ROOT_RUNTIME && !NotifyPostGate.ready(app)) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_CONFIRM, AppStrings.get(app, R.string.overlay_channel), NotificationManager.IMPORTANCE_HIGH).apply {

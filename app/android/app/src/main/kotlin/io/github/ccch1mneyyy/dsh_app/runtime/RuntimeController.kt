@@ -63,7 +63,17 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     @Volatile private var error: String? = null
     @Volatile private var pendingEnv: Map<String, String> = emptyMap()
     @Volatile private var pendingPhoneStorage = false
-    @Volatile private var rootSelfGrantsDone = false
+    internal val rootStartupGate = RootStartupGate()
+    private class PendingInstall(
+        val ticket: RootStartupGate.Ticket,
+        val dropKept: Boolean,
+        val unpack: Boolean,
+        private val onDone: (Throwable?) -> Unit,
+    ) {
+        private val finished = java.util.concurrent.atomic.AtomicBoolean()
+        fun finish(error: Throwable?) { if (finished.compareAndSet(false, true)) onDone(error) }
+    }
+    private var pendingInstall: PendingInstall? = null
     /** Whether the managed AGENTS.md tells the model about ```dsh-ui views (settings, on by default). */
     @Volatile private var pendingVisualReplies = true
 
@@ -150,6 +160,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         "launchSpawned" to (lastLaunch?.spawned == true),
         "launchFailureReason" to lastLaunch?.failureReason,
         "tidyingFiles" to tidyingFiles,
+        "rootRuntime" to BuildConfig.ROOT_RUNTIME,
     )
 
     private fun directEngine() = DirectLaunch.Preference(
@@ -182,44 +193,113 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     /** [dropKept]: give up what a reset kept but cannot be put back (see [KeepFailed]). */
-    fun install(dropKept: Boolean = false, onDone: (Throwable?) -> Unit) {
-        if (phase == Phase.INSTALLING) return onDone(null)
+    @Synchronized fun install(dropKept: Boolean = false, onDone: (Throwable?) -> Unit) {
+        if (phase == Phase.INSTALLING || resetting) {
+            onDone(IllegalStateException("install busy"))
+            return
+        }
         if (installer.isCurrent() && phase != Phase.ERROR) {
             if (phase == Phase.NOT_INSTALLED) setPhase(Phase.INSTALLED)
-            if (BuildConfig.ROOT_RUNTIME) ensureRootSelfGrants()
-            return onDone(null)
+            onDone(null)
+            return
         }
+        val upgrade = installer.installedVersion() != null
+        val ticket = rootStartupGate.begin(RootStartupGate.Kind.INSTALL)
+        val request = PendingInstall(ticket, dropKept, true, onDone)
+        pendingInstall = request
         setPhase(Phase.INSTALLING)
-        worker.execute {
-            try {
-                log("[dsh-app] unpacking runtime ${manifest.runtimeVersion} (${manifest.abi})", "system")
-                val started = System.currentTimeMillis()
-                if (dropKept) log("[dsh-app] installing without what could not be kept", "system")
-                installer.install(dropKept) { done, total ->
-                    emit(mapOf("type" to "progress", "step" to "extract", "done" to done, "total" to total))
+        prepareRootRun(ticket) { accepted ->
+            if (!accepted) {
+                if (pendingInstall?.ticket == ticket) pendingInstall = null
+                if (rootStartupGate.current(ticket)) {
+                    error = "root unavailable"
+                    setPhase(Phase.ERROR)
                 }
-                log("[dsh-app] runtime ready in ${(System.currentTimeMillis() - started) / 1000}s", "system")
-                ensureRootSelfGrants()
-                error = null
-                // A new runtime may well fix what failed before.
-                strikes = 0
-                failure = null
-                prefs.edit().putInt(K_STRIKES, 0).remove(K_FAILURE).apply()
-                setPhase(Phase.INSTALLED)
-                main.post { onDone(null) }
-            } catch (e: Throwable) {
-                error = "install failed: ${e.message}"
-                log("[dsh-app] ${error}", "system")
+                request.finish(IllegalStateException(if (rootStartupGate.current(ticket)) "root unavailable" else "cancelled"))
+                return@prepareRootRun
+            }
+            runCatching {
+                rootStartupGate.dispatch(ticket) {
+                    val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_INSTALL)
+                        .putExtra("upgrade", upgrade).putExtra(DshService.EXTRA_TICKET, ticket.id)
+                    sendForegroundService(intent)
+                }
+            }.onFailure { failure ->
+                if (pendingInstall?.ticket == ticket) pendingInstall = null
+                error = "install failed: ${failure.message}"
                 setPhase(Phase.ERROR)
-                main.post { onDone(e) }
+                rootStartupGate.invalidate()
+                request.finish(failure)
             }
         }
     }
 
-    /**
-     * Starts the foreground service, which calls [startProcess]. [mode] is "safe", "normal"
-     * (leaving safe mode starts a two-minute trial) or null to keep the current mode.
-     */
+    internal fun acceptService(ticket: Long, install: Boolean): Boolean {
+        if (!rootStartupGate.consume(ticket, if (install) RootStartupGate.Kind.INSTALL else RootStartupGate.Kind.START)) return false
+        if (BuildConfig.ROOT_RUNTIME && !io.github.ccch1mneyyy.dsh_app.notify.NotifyPostGate.ready(app)) {
+            error = "notification permission unavailable"
+            setPhase(Phase.ERROR)
+            val request = pendingInstall?.takeIf { it.ticket.id == ticket }
+            if (request != null) pendingInstall = null
+            request?.finish(IllegalStateException(error))
+            return false
+        }
+        return true
+    }
+
+    private fun cancelPendingInstall() {
+        val request = pendingInstall ?: return
+        pendingInstall = null
+        request.finish(IllegalStateException("cancelled"))
+    }
+
+    /** Called only after the matching service has entered foreground and acquired its wake lock. */
+    internal fun installServiceReady(id: Long) {
+        val request = pendingInstall?.takeIf { it.ticket.id == id } ?: return
+        pendingInstall = null
+        startInstall(request)
+    }
+
+    private fun startInstall(request: PendingInstall) {
+        worker.execute {
+            var installError: Throwable? = null
+            try {
+                check(rootStartupGate.current(request.ticket)) { "cancelled" }
+                if (request.unpack) {
+                    log("[dsh-app] unpacking runtime ${manifest.runtimeVersion} (${manifest.abi})", "system")
+                    val started = System.currentTimeMillis()
+                    installer.install(request.dropKept) { done, total ->
+                        check(rootStartupGate.current(request.ticket)) { "cancelled" }
+                        emit(mapOf("type" to "progress", "step" to "extract", "done" to done, "total" to total))
+                    }
+                    log("[dsh-app] runtime ready in ${(System.currentTimeMillis() - started) / 1000}s", "system")
+                }
+                if (rootStartupGate.current(request.ticket)) {
+                    error = null
+                    strikes = 0
+                    failure = null
+                    prefs.edit().putInt(K_STRIKES, 0).remove(K_FAILURE).apply()
+                    setPhase(Phase.INSTALLED)
+                }
+            } catch (e: Throwable) {
+                installError = e
+                if (rootStartupGate.current(request.ticket)) {
+                    error = "install failed: ${e.message}"
+                    log("[dsh-app] $error", "system")
+                    setPhase(Phase.ERROR)
+                }
+            }
+            val outcome = installError
+            main.post {
+                // This request reached foreground; only its service may finish its notification.
+                app.startService(Intent(app, DshService::class.java).setAction(DshService.ACTION_INSTALL_DONE)
+                    .putExtra(DshService.EXTRA_TICKET, request.ticket.id)
+                    .putExtra(DshService.EXTRA_INSTALL_OK, outcome == null))
+                request.finish(outcome)
+            }
+        }
+    }
+
     fun start(
         env: Map<String, String>,
         phoneStorage: Boolean = false,
@@ -228,26 +308,47 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     ) {
         pendingPhoneStorage = phoneStorage
         pendingVisualReplies = visualReplies
-        if (phase == Phase.RUNNING || phase == Phase.STARTING) return
+        if (phase in setOf(Phase.RUNNING, Phase.STARTING, Phase.INSTALLING, Phase.STOPPING) || resetting) return
         pendingEnv = env
         val next = SafePolicy.onStartRequest(safeState, mode)
-        if (next != safeState) {
-            setSafeState(next, if (next == SafeState.ON) SafePolicy.REASON_MANUAL else safeReason)
+        if (next != safeState) setSafeState(next, if (next == SafeState.ON) SafePolicy.REASON_MANUAL else safeReason)
+        val ticket = rootStartupGate.begin(RootStartupGate.Kind.START)
+        setPhase(Phase.STARTING)
+        prepareRootRun(ticket) { accepted ->
+            if (!accepted) {
+                if (rootStartupGate.current(ticket)) {
+                    error = "root unavailable"
+                    setPhase(Phase.ERROR)
+                }
+                return@prepareRootRun
+            }
+            runCatching {
+                rootStartupGate.dispatch(ticket) {
+                    sendForegroundService(Intent(app, DshService::class.java).setAction(DshService.ACTION_START)
+                        .putExtra(DshService.EXTRA_TICKET, ticket.id))
+                }
+            }.onFailure {
+                error = "start failed: ${it.message}"
+                setPhase(Phase.ERROR)
+            }
         }
-        val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_START)
+    }
+
+    private fun sendForegroundService(intent: Intent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent) else app.startService(intent)
     }
 
-    /** A one-shot root self-grant, off the main thread: every first-ready path converges here,
-     *  and plain stop-back-to-INSTALLED phases never touch it. */
-    private fun ensureRootSelfGrants() {
-        if (rootSelfGrantsDone || !BuildConfig.ROOT_RUNTIME) return
-        rootSelfGrantsDone = true
-        worker.execute {
-            if (!PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
-                log("[dsh-app] root self-grant left some permissions ungranted", "system")
-            }
+    private fun prepareRootRun(ticket: RootStartupGate.Ticket, ready: (Boolean) -> Unit) {
+        if (!BuildConfig.ROOT_RUNTIME) {
+            rootStartupGate.prepare(ticket, { it() }, { it() }, { true }, ready)
+            return
         }
+        rootStartupGate.prepare(ticket,
+            execute = { action -> Thread({ action() }, "dsh-root-startup").start() },
+            deliver = { action -> main.post { action() } },
+            preparation = { current -> PhoneControl.get(app).background.prepareRootForStartup(current) != null },
+            ready = ready,
+        )
     }
 
     /**
@@ -267,7 +368,14 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     fun stop() {
+        stopGen = runGen
         managedSkillGate.stop(runGen)
+        rootStartupGate.invalidate()
+        if (phase == Phase.INSTALLING) {
+            setPhase(if (installer.isCurrent()) Phase.INSTALLED else Phase.NOT_INSTALLED)
+        }
+        cancelPendingInstall()
+        Thread({ PhoneControl.get(app).background.cancelUnwantedPending() }, "dsh-root-cancel").start()
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_STOP)
         app.startService(intent)
     }
@@ -338,11 +446,6 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             var launched: DshProcess? = null
             try {
                 noteDns(GuestSetup.writeResolvConf(app, installer.rootfs), DnsConfigSource.START)
-                // Root builds take the fixed self grants first (storage for the output folders),
-                // so 访问手机文件 planned below takes effect on this start, not after a restart.
-                if (BuildConfig.ROOT_RUNTIME && !PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
-                    log("[dsh-app] root self-grant left the storage permission ungranted", "system")
-                }
                 val storage = pendingPhoneStorage && PhoneStorage.isGranted(app) && PhoneStorage.binds().isNotEmpty()
                 if (!PhoneStorage.syncShortcut(installer.rootfs, storage)) {
                     log("[dsh-app] could not ${if (storage) "create" else "remove"} the phone storage shortcut in the guest home; the directory may be root-owned", "system")
@@ -412,6 +515,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     @Synchronized internal fun stopProcess() {
+        rootStartupGate.invalidate()
         if (phase == Phase.INSTALLING) return
         stopGen = runGen
         val p = process
@@ -478,7 +582,10 @@ class RuntimeController private constructor(private val app: Context) : DshProce
      */
     fun reset(keep: Set<ResetKeep> = emptySet(), onDone: (Throwable?) -> Unit) {
         stopGen = runGen
+        rootStartupGate.invalidate()
         resetting = true
+        cancelPendingInstall()
+        Thread({ PhoneControl.get(app).background.cancelUnwantedPending() }, "dsh-root-cancel").start()
         setPhase(Phase.STOPPING)
         worker.execute {
             try {
