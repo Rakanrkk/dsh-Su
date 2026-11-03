@@ -15,6 +15,7 @@ import '../ui/chat/secret_mask.dart';
 import 'app_info.dart';
 import 'connection_state.dart';
 import 'hosts_state.dart';
+import '../runtime/runtime_state.dart' show localRuntimeProvider;
 import 'notify_state.dart';
 
 // ── The plugin on the active host ────────────────────────────────────────────
@@ -534,23 +535,54 @@ class DsBotInbox {
   int get total => unread.values.fold(0, (a, b) => a + b);
 }
 
+typedef _BotPostKey = ({HostRef host, String conversationId});
+
 /// Counts notices per conversation while it is not on screen, posts system
 /// notifications while the app is in the background, and clears both when
 /// the conversation opens.
 class DsBotInboxController extends Notifier<DsBotInbox> {
   StreamSubscription<({DsBotNotice notice, bool caughtUp})>? _sub;
+  HostRef? _inboxHost;
+  final Map<_BotPostKey, DsBotNotice> _failedPosts = {};
+  final Map<_BotPostKey, Object> _postTokens = {};
+  final Map<_BotPostKey, Object> _postInFlight = {};
 
   NotifyChannel get _channel => ref.read(notifyChannelProvider);
 
   @override
   DsBotInbox build() {
     final hub = ref.watch(dsBotProvider.notifier);
-    // A new host starts with an empty inbox: watching it rebuilds this.
-    ref.watch(dsBotProvider.select((s) => s.host));
+    final host = ref.watch(dsBotProvider.select((s) => s.host));
+    if (_inboxHost != null && _inboxHost != host) {
+      for (final key in _postTokens.keys.toList()) {
+        _invalidateBotPost(key);
+      }
+    }
+    _inboxHost = host;
     _sub = hub.notices.listen((entry) => _onNotice(entry.notice));
-    ref.onDispose(() => unawaited(_sub?.cancel()));
+    ref.onDispose(() {
+      unawaited(_sub?.cancel());
+      for (final key in _postTokens.keys.toList()) {
+        unawaited(_channel.cancelGroup(dsBotNotifyGroup(key.host, key.conversationId)));
+      }
+      _failedPosts.clear();
+      _postTokens.clear();
+      _postInFlight.clear();
+    });
     ref.listen(dsBotViewingProvider, (_, id) {
       if (id != null) seen(id);
+    });
+    ref.listen(notifyPrefsProvider, (_, prefs) {
+      for (final key in _failedPosts.keys.toList()) {
+        final notice = _failedPosts[key];
+        if (notice != null && !prefs.allows(_alertKind(notice.kind))) _invalidateBotPost(key);
+      }
+      for (final entry in _postTokens.entries.toList()) {
+        final notice = state.latest[entry.key.conversationId];
+        if (notice != null && !prefs.allows(_alertKind(notice.kind))) {
+          _invalidateBotPost(entry.key);
+        }
+      }
     });
     return const DsBotInbox();
   }
@@ -569,7 +601,67 @@ class DsBotInboxController extends Notifier<DsBotInbox> {
     if (foreground) return;
     final prefs = ref.read(notifyPrefsProvider);
     if (!prefs.allows(_alertKind(notice.kind))) return;
-    unawaited(_channel.show(dsBotPost(ref.read(dsBotProvider).host, notice)));
+    unawaited(_postBotNotice(ref.read(dsBotProvider).host, notice));
+  }
+
+  Future<bool> retryFailedNotifications() async {
+    var delivered = false;
+    for (final entry in _failedPosts.entries.toList()) {
+      if (_postInFlight.containsKey(entry.key)) continue;
+      if (!_botNoticeCurrent(entry.key, entry.value)) {
+        _invalidateBotPost(entry.key);
+        continue;
+      }
+      final result = await _postBotNotice(entry.key.host, entry.value);
+      if (!result.delivered && result.reason != 'cancelled') return false;
+      delivered = result.delivered || delivered;
+    }
+    return delivered;
+  }
+
+  bool _botNoticeCurrent(_BotPostKey key, DsBotNotice notice) =>
+      ref.mounted &&
+      _inboxHost == key.host &&
+      state.unreadOf(key.conversationId) > 0 &&
+      identical(state.latest[key.conversationId], notice) &&
+      ref.read(dsBotViewingProvider) != key.conversationId &&
+      ref.read(notifyPrefsProvider).allows(_alertKind(notice.kind));
+
+  Future<NotifyShowResult> _postBotNotice(HostRef host, DsBotNotice notice) async {
+    final key = (host: host, conversationId: notice.conversationId);
+    final prior = _postTokens[key];
+    if (prior != null) unawaited(_channel.cancel(dsBotNotifyGroup(host, notice.conversationId), 'dsbot'));
+    final token = Object();
+    _postTokens[key] = token;
+    _postInFlight[key] = token;
+    bool current() => identical(_postTokens[key], token) && _botNoticeCurrent(key, notice);
+    NotifyShowResult result;
+    try {
+      result = await _channel.show(dsBotPost(host, notice), stillCurrent: current);
+    } catch (_) {
+      result = const NotifyShowResult(delivered: false);
+    } finally {
+      if (identical(_postInFlight[key], token)) _postInFlight.remove(key);
+    }
+    if (!current()) {
+      if (identical(_postTokens[key], token)) _invalidateBotPost(key);
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    final rootRuntime = ref.read(localRuntimeProvider).status.rootRuntime;
+    if (rootRuntime && !result.delivered && result.reason != 'cancelled') {
+      _failedPosts[key] = notice;
+    } else {
+      _failedPosts.remove(key);
+      _postTokens.remove(key);
+    }
+    return result;
+  }
+
+  void _invalidateBotPost(_BotPostKey key) {
+    _failedPosts.remove(key);
+    _postTokens.remove(key);
+    _postInFlight.remove(key);
+    unawaited(_channel.cancelGroup(dsBotNotifyGroup(key.host, key.conversationId)));
   }
 
   /// The person opened [id]: no unread, no notification.
@@ -577,7 +669,7 @@ class DsBotInboxController extends Notifier<DsBotInbox> {
     if (state.unread.containsKey(id)) {
       state = DsBotInbox(unread: {...state.unread}..remove(id), latest: state.latest);
     }
-    unawaited(_channel.cancelGroup(dsBotNotifyGroup(ref.read(dsBotProvider).host, id)));
+    _invalidateBotPost((host: ref.read(dsBotProvider).host, conversationId: id));
   }
 }
 

@@ -112,9 +112,16 @@ class FakeDsBotTransport implements DsBotTransport {
 class RecordingNotifyChannel extends NotifyChannel {
   final List<NotifyPost> shown = [];
   final List<String> cancelledGroups = [];
+  Future<NotifyShowResult> Function(NotifyPost post)? showReply;
 
   @override
-  Future<void> show(NotifyPost post) async => shown.add(post);
+  Future<NotifyShowResult> show(NotifyPost post, {bool Function()? stillCurrent}) async {
+    if (stillCurrent?.call() == false) return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    shown.add(post);
+    final reply = showReply;
+    if (reply != null) return reply(post);
+    return const NotifyShowResult.success();
+  }
 
   @override
   Future<void> cancelGroup(String group) async => cancelledGroups.add(group);

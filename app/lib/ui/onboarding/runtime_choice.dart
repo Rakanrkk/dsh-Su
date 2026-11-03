@@ -34,11 +34,18 @@ enum RuntimeOption { local, remote }
 /// ```
 ///
 /// The figures come from the device and the bundled manifest
-/// ([localFootprintProvider]). The suggested card starts chosen until the
-/// person picks one.
+/// ([localFootprintProvider]). Root builds default to this phone; otherwise
+/// the resource recommendation starts selected until the person picks one.
 class RuntimeChoiceView extends ConsumerStatefulWidget {
-  const RuntimeChoiceView({super.key, required this.onLocal, required this.onRemote, this.leading});
+  const RuntimeChoiceView({
+    super.key,
+    required this.onLocal,
+    required this.onRemote,
+    this.leading,
+    this.rootRuntime = false,
+  });
 
+  final bool rootRuntime;
   final VoidCallback onLocal;
   final VoidCallback onRemote;
 
@@ -57,7 +64,12 @@ class _RuntimeChoiceViewState extends ConsumerState<RuntimeChoiceView> {
     final l10n = context.l10n;
     final footprint = ref.watch(localFootprintProvider).value;
     final light = ref.watch(performanceDefaultsProvider).recommendRemote;
-    final suggested = light || footprint?.suggestRemote == true ? RuntimeOption.remote : RuntimeOption.local;
+    final recommendsRemote = light || footprint?.suggestRemote == true;
+    final suggested = widget.rootRuntime
+        ? RuntimeOption.local
+        : recommendsRemote
+        ? RuntimeOption.remote
+        : RuntimeOption.local;
     final selected = _picked ?? suggested;
     final colors = DshColors.of(context);
 
@@ -97,7 +109,7 @@ class _RuntimeChoiceViewState extends ConsumerState<RuntimeChoiceView> {
           icon: AppIcons.computer,
           title: l10n.commonRemoteHost,
           detail: light ? l10n.performanceRemoteHint : l10n.localEnvRemoteDetail,
-          recommended: suggested == RuntimeOption.remote,
+          recommended: recommendsRemote,
           selected: selected == RuntimeOption.remote,
           onTap: () => setState(() => _picked = RuntimeOption.remote),
         ),

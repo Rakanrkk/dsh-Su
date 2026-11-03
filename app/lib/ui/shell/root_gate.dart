@@ -150,8 +150,8 @@ class _RootGateState extends ConsumerState<RootGate> {
     // Time left is estimated from the first progress report on.
     ref.read(installEtaProvider);
     unawaited(ref.read(runtimeInstallProvider.notifier).install());
-    // Android 13 asks about notifications once the channels exist: now, as the
-    // unpack (and its notification) starts, not over a later step.
+    // In the ordinary build Android 13 asks once the channels exist; Root's
+    // passive status read does not create them.
     unawaited(ref.read(notifyChannelProvider).status().then<void>((_) {}, onError: (_) {}));
   }
 
@@ -224,8 +224,8 @@ class _RootGateState extends ConsumerState<RootGate> {
     if (!mounted || ref.read(activeHostProvider).isLocal) return;
     if (_beside) _leaveBeside();
     await ref.read(onboardingPrefsProvider.notifier).setLocalDeclined(true);
-    // What installing does on the other path: Android 13 asks about
-    // notifications once the channels exist, before the first reply lands.
+    // The ordinary build creates its first channels before the first reply;
+    // Root's passive status read leaves that decision to an active post.
     unawaited(ref.read(notifyChannelProvider).status().then<void>((_) {}, onError: (_) {}));
     _autoStartDone = true;
     _goTo(null);

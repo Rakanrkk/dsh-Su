@@ -12,6 +12,29 @@ import 'package:flutter/services.dart';
 import '../state/hosts_state.dart';
 import 'live_activity.dart';
 
+/// Whether a notification post reached the native notification manager.
+class NotifyShowResult {
+  const NotifyShowResult({required this.delivered, this.reason});
+
+  const NotifyShowResult.success() : this(delivered: true);
+
+  factory NotifyShowResult.fromPlatform(Object? raw) {
+    if (raw == null) return const NotifyShowResult.success();
+    if (raw is! Map) return const NotifyShowResult(delivered: false);
+    return NotifyShowResult(
+      delivered: raw['delivered'] == true,
+      reason: switch (raw['reason']) {
+        'denied' => 'denied',
+        'cancelled' => 'cancelled',
+        _ => null,
+      },
+    );
+  }
+
+  final bool delivered;
+  final String? reason;
+}
+
 /// Whether the system lets DSH's chat notifications through.
 class NotifySystemStatus {
   const NotifySystemStatus({this.native = true, this.enabled = true, this.done = true, this.attention = true});
@@ -262,18 +285,41 @@ class NotifyChannel {
     }
   }
 
-  Future<void> show(NotifyPost post) => _call('show', post.toMap());
+  /// Posts a notification. Root builds may wait here for the Root manager; callers
+  /// decide how a failed delivery remains available in the app.
+  Future<NotifyShowResult> show(NotifyPost post, {bool Function()? stillCurrent}) async {
+    if (stillCurrent?.call() == false) {
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    try {
+      final raw = await _methods.invokeMethod<Object?>('show', post.toMap());
+      if (stillCurrent?.call() == false) {
+        return const NotifyShowResult(delivered: false, reason: 'cancelled');
+      }
+      return NotifyShowResult.fromPlatform(raw);
+    } on MissingPluginException {
+      return const NotifyShowResult(delivered: false);
+    } on PlatformException {
+      return const NotifyShowResult(delivered: false);
+    }
+  }
 
   /// An operational return path: report whether the native post was accepted.
   /// This cannot prove that an OEM actually displayed the notification.
-  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent}) async {
+  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent, bool rootRuntime = false}) async {
     try {
-      if (stillCurrent?.call() == false) return false;
+      if (stillCurrent?.call() == false) {
+        return false;
+      }
+      if (rootRuntime) {
+        return (await show(post, stillCurrent: stillCurrent)).delivered;
+      }
       final system = await status().timeout(const Duration(seconds: 2));
-      if (stillCurrent?.call() == false) return false;
+      if (stillCurrent?.call() == false) {
+        return false;
+      }
       if (!system.native || !system.enabled || !(post.attention ? system.attention : system.done)) return false;
-      await _methods.invokeMethod<void>('show', post.toMap()).timeout(const Duration(seconds: 3));
-      return true;
+      return (await show(post, stillCurrent: stillCurrent).timeout(const Duration(seconds: 3))).delivered;
     } on MissingPluginException {
       return false;
     } on PlatformException {

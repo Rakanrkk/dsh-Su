@@ -2,8 +2,11 @@
 // unread counts and notifications, the chat and group chat controllers, and
 // the small pure helpers the pages lean on.
 
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:dsh_app/runtime/runtime_bridge.dart';
+import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/bots_state.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
@@ -20,12 +23,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../chat/support/harness.dart' show fakeConnection;
 import 'support.dart';
 
+class _RootRuntime extends LocalRuntimeController {
+  @override
+  LocalRuntimeState build() => LocalRuntimeState(
+    loaded: true,
+    status: RuntimeStatus(phase: RuntimePhase.installed, rootRuntime: true),
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  Future<ProviderContainer> start(FakeDsBotTransport transport, {NotifyChannel? notify}) async {
-    final container = dsBotContainer(transport, notify: notify);
+  Future<ProviderContainer> start(
+    FakeDsBotTransport transport, {
+    NotifyChannel? notify,
+    bool rootRuntime = false,
+  }) async {
+    final container = ProviderContainer(
+      overrides: [
+        ...dsBotOverrides(transport, notify: notify),
+        if (rootRuntime) localRuntimeProvider.overrideWith(_RootRuntime.new),
+      ],
+    );
     addTearDown(container.dispose);
     container.listen(dsBotProvider, (_, _) {});
     container.listen(dsBotInboxProvider, (_, _) {});
@@ -125,7 +145,7 @@ void main() {
     test('in the background a notice becomes a notification and an unread count', () async {
       final transport = FakeDsBotTransport();
       final notify = RecordingNotifyChannel();
-      final container = await start(transport, notify: notify);
+      final container = await start(transport, notify: notify, rootRuntime: true);
       container.read(appForegroundProvider.notifier).set(false);
 
       transport.emit('notice', notice(1, roomId: 'r1'));
@@ -146,7 +166,7 @@ void main() {
     test('in the app only the unread count moves; the conversation on screen stays read', () async {
       final transport = FakeDsBotTransport();
       final notify = RecordingNotifyChannel();
-      final container = await start(transport, notify: notify);
+      final container = await start(transport, notify: notify, rootRuntime: true);
       container.read(dsBotViewingProvider.notifier).set('b2');
       transport.emit('notice', notice(1));
       transport.emit('notice', notice(2, roomId: 'r1'));
@@ -165,13 +185,52 @@ void main() {
     test('the notification switches decide, by kind', () async {
       final transport = FakeDsBotTransport();
       final notify = RecordingNotifyChannel();
-      final container = await start(transport, notify: notify);
+      final container = await start(transport, notify: notify, rootRuntime: true);
       container.read(appForegroundProvider.notifier).set(false);
       await container.read(notifyPrefsProvider.notifier).setDone(false);
       transport.emit('notice', notice(1));
       transport.emit('notice', notice(2, kind: 'approval', text: 'bash'));
       await settle();
       expect(notify.shown.map((p) => p.text), ['Writer 等你批准：bash']);
+    });
+
+    test('a Root denial retains the unread notice for explicit retry', () async {
+      final transport = FakeDsBotTransport();
+      final notify = RecordingNotifyChannel()
+        ..showReply = (_) async => const NotifyShowResult(delivered: false, reason: 'denied');
+      final container = await start(transport, notify: notify, rootRuntime: true);
+      container.read(appForegroundProvider.notifier).set(false);
+      transport.emit('notice', notice(1, kind: 'question'));
+      await settle();
+      expect(container.read(dsBotInboxProvider).unreadOf('b2'), 1);
+      expect(container.read(dsBotInboxProvider).latest['b2']?.seq, 1);
+      expect(notify.shown, hasLength(1));
+
+      notify.showReply = null;
+      expect(await container.read(dsBotInboxProvider.notifier).retryFailedNotifications(), isTrue);
+      expect(notify.shown, hasLength(2));
+      expect(notify.shown.last.key, 'dsbot');
+      expect(notify.shown.last.sessionId, 'b2');
+      expect(await container.read(dsBotInboxProvider.notifier).retryFailedNotifications(), isFalse);
+    });
+
+    test('seen while the Root post waits prevents a late repost', () async {
+      final pending = Completer<NotifyShowResult>();
+      final transport = FakeDsBotTransport();
+      final notify = RecordingNotifyChannel()..showReply = (_) => pending.future;
+      final container = await start(transport, notify: notify, rootRuntime: true);
+      container.read(appForegroundProvider.notifier).set(false);
+      transport.emit('notice', notice(1, kind: 'question'));
+      await settle();
+      expect(notify.shown, hasLength(1));
+      container.read(dsBotViewingProvider.notifier).set('b2');
+      await settle();
+      pending.complete(const NotifyShowResult(delivered: false, reason: 'denied'));
+      await settle();
+      notify.showReply = null;
+      expect(await container.read(dsBotInboxProvider.notifier).retryFailedNotifications(), isFalse);
+      expect(container.read(dsBotInboxProvider).unreadOf('b2'), 0);
+      expect(notify.shown, hasLength(1));
     });
 
     test('after a reconnect, notices since the last one read are caught up', () async {

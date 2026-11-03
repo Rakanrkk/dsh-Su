@@ -20,6 +20,7 @@ import 'hosts_state.dart';
 import 'phone_turn_end.dart';
 import 'phone_state.dart' show phoneChannelProvider;
 import 'sessions_state.dart';
+import '../runtime/runtime_state.dart' show localRuntimeProvider;
 
 export '../notify/chat_alerts.dart';
 export '../notify/notify_channel.dart';
@@ -247,6 +248,7 @@ class _PhoneAlertPrompt {
     required this.tracker,
     required this.requestScope,
     required this.channel,
+    required this.notifyChannel,
   });
 
   final Ref scope;
@@ -258,9 +260,11 @@ class _PhoneAlertPrompt {
   final HostAlertTracker tracker;
   final Object requestScope;
   final PhoneChannel channel;
+  final NotifyChannel notifyChannel;
   StreamSubscription<DshConnectionState>? mux;
   StreamSubscription<PhoneStatus>? status;
   bool submitted = false;
+  bool fallbackNotificationInFlight = false;
 
   void retire() {
     unawaited(mux?.cancel());
@@ -268,6 +272,8 @@ class _PhoneAlertPrompt {
     if (submitted) unawaited(channel.cancelPrompt(requestId));
   }
 }
+
+typedef _PostKey = ({HostRef host, String sessionId, String key});
 
 /// Watches the on-device engine and the active remote host for alerts, posts
 /// system notifications or raises the in-app banner (the state: the banner on
@@ -279,6 +285,10 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
   final Map<HostRef, (HostConnection, HostAlertTracker)> _trackers = {};
   Object _lifetime = Object();
   _PhoneAlertPrompt? _phonePrompt;
+  final Map<_PostKey, ChatAlert> _pendingSystemPosts = {};
+  final Set<_PostKey> _forcedSystemPosts = {};
+  final Set<_PostKey> _systemPostInFlight = {};
+  final Set<_PostKey> _invalidatedSystemPosts = {};
 
   /// False while [build] runs (listeners fire immediately, before there is a
   /// state to read or replace).
@@ -307,6 +317,10 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
     ref.onDispose(() {
       _lifetime = Object();
       _cancelPhonePrompt();
+      for (final key in _pendingSystemPosts.keys) {
+        unawaited(channel.cancel(notifyGroup(key.host, key.sessionId), key.key));
+      }
+      _pendingSystemPosts.clear();
       unawaited(_actions?.cancel());
       for (final (_, tracker) in _trackers.values) {
         unawaited(tracker.dispose());
@@ -330,19 +344,39 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
     ref.listen(viewedChatProvider, (_, viewed) {
       if (viewed != null) _seen(viewed);
     }, fireImmediately: true);
-    ref.listen(notifyPrefsProvider.select((p) => p.enabled), (was, enabled) {
-      // Switched off: what is already in the shade goes too.
-      if (was == true && !enabled) {
+    ref.listen(notifyPrefsProvider, (was, next) {
+      if (was?.enabled == true && !next.enabled) {
+        // Switched off: what is already in the shade goes too.
         _banner = null;
+        for (final key in _pendingSystemPosts.keys.toList()) {
+          if (!_forcedSystemPosts.contains(key)) _removePendingSystemPost(key);
+        }
         unawaited(_channel.cancelAll());
+        return;
+      }
+      for (final entry in _pendingSystemPosts.entries.toList()) {
+        if (!next.allows(entry.value.kind) && !_forcedSystemPosts.contains(entry.key)) {
+          _removePendingSystemPost(entry.key);
+        }
       }
     });
     ref.listen(appForegroundProvider, (_, foreground) {
+      if (foreground) {
+        final prompt = _phonePrompt;
+        if (prompt?.fallbackNotificationInFlight == true) {
+          _cancelPhonePrompt();
+          _deliver(prompt!.alert);
+        }
+        if (ref.read(localRuntimeProvider).status.rootRuntime) {
+          _restoreInFlightSystemPostBanners();
+        }
+        _restorePendingSystemPostBanner();
+      }
       // Leaving the app with a banner up: keep it as a notification.
       final banner = _banner;
       if (!foreground && banner != null) {
         _banner = null;
-        if (!banner.kind.attention || !banner.host.isLocal) unawaited(_channel.show(postFor(banner)));
+        if (!banner.kind.attention || !banner.host.isLocal) _queueSystemPost(banner);
       }
       if (!foreground) {
         // An approval can already be visible in the chat when the person
@@ -448,11 +482,20 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
     };
   }
 
+  void _cancelPendingSystemWaits(HostRef host, {bool includeTurnEnds = false}) {
+    for (final entry in _pendingSystemPosts.entries.toList()) {
+      if (entry.key.host == host && (includeTurnEnds || entry.value.eventId != null)) {
+        _removePendingSystemPost(entry.key);
+      }
+    }
+  }
+
   void _attach(HostRef host, HostConnection? connection) {
     final current = _trackers[host];
     if (current != null && identical(current.$1.client, connection?.client)) return;
     if (current != null) {
       _cancelPhonePrompt(host: host);
+      _cancelPendingSystemWaits(host, includeTurnEnds: true);
       _trackers.remove(host);
       unawaited(current.$2.dispose());
     }
@@ -464,14 +507,30 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
       onAlert: _onAlert,
       onWithdraw: _onWithdraw,
       onSessionGone: _onSessionGone,
-      onReannounce: (alert) => _offerPhonePrompt(alert),
-      onRequestEpochChanged: (host) => _cancelPhonePrompt(host: host),
+      onReannounce: _onReannounce,
+      onRequestEpochChanged: (host) {
+        _cancelPhonePrompt(host: host);
+        _cancelPendingSystemWaits(host);
+      },
       skipApproval: (sessionId) => ref.exists(chatProvider(sessionId)) && ref.read(chatProvider(sessionId)).autoApprove,
       announceDelay: timing.announce,
       reconcileDelay: timing.reconcile,
     );
     _trackers[host] = (connection, tracker);
     tracker.start();
+  }
+
+  void _onReannounce(ChatAlert alert) {
+    if (_offerPhonePrompt(alert)) return;
+    final key = _postKey(alert);
+    if (!_pendingSystemPosts.containsKey(key)) return;
+    final force = _forcedSystemPosts.contains(key);
+    if (!_notificationPostRelevant(alert, force: force)) {
+      _removePendingSystemPost(key);
+      return;
+    }
+    _pendingSystemPosts[key] = alert;
+    if (ref.read(appForegroundProvider)) _banner = alert;
   }
 
   void _onAlert(ChatAlert alert, {bool ownerWaited = false}) {
@@ -507,6 +566,27 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
     );
   }
 
+  /// Retries Root notification posts that failed while waiting for Root.
+  Future<bool> retryFailedNotifications() async {
+    var delivered = false;
+    for (final entry in _pendingSystemPosts.entries.toList()) {
+      if (_systemPostInFlight.contains(entry.key)) {
+        return false;
+      }
+      if (!_notificationPostRelevant(entry.value, force: _forcedSystemPosts.contains(entry.key))) {
+        _removePendingSystemPost(entry.key);
+        continue;
+      }
+      final result = await _postSystem(entry.value);
+      if (!result.delivered && result.reason != 'cancelled') {
+        return false;
+      }
+      delivered = result.delivered || delivered;
+    }
+    final botDelivered = await ref.read(dsBotInboxProvider.notifier).retryFailedNotifications();
+    return delivered || botDelivered;
+  }
+
   bool _phoneCurrent(_PhoneAlertPrompt prompt) =>
       prompt.scope.mounted &&
       identical(_lifetime, prompt.lifetime) &&
@@ -525,6 +605,9 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
       return;
     }
     _phonePrompt = null;
+    if (prompt.fallbackNotificationInFlight) {
+      unawaited(prompt.notifyChannel.cancel(notifyGroup(prompt.alert.host, prompt.alert.sessionId), prompt.alert.key));
+    }
     prompt.retire();
   }
 
@@ -551,6 +634,7 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
       tracker: attached.$2,
       requestScope: requestScope,
       channel: ref.read(phoneChannelProvider),
+      notifyChannel: ref.read(notifyChannelProvider),
     );
     _phonePrompt = prompt;
     prompt.mux = prompt.client.mux.states.listen((_) {
@@ -571,23 +655,30 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
     // A phone operation waiting on a person remains accessible even when
     // ordinary chat notifications are off. This last fallback only opens the
     // exact conversation; it never offers a truncated approval action.
-    await prompt.scope
-        .read(notifyChannelProvider)
-        .tryShow(
-          NotifyPost(
-            group: notifyGroup(prompt.alert.host, prompt.alert.sessionId),
-            key: prompt.alert.key,
-            attention: true,
-            title: AppInfo.name,
-            text: prompt.alert.text,
-            publicText: prompt.alert.kind.publicText,
-            sessionId: prompt.alert.sessionId,
-            host: prompt.alert.host,
-            kind: prompt.alert.kind.name,
-            eventId: prompt.alert.eventId,
-          ),
-          stillCurrent: () => _phoneCurrent(prompt) && !prompt.scope.read(appForegroundProvider),
-        );
+    final rootRuntime = prompt.scope.read(localRuntimeProvider).status.rootRuntime;
+    prompt.fallbackNotificationInFlight = true;
+    final bool delivered;
+    try {
+      delivered = await prompt.notifyChannel.tryShow(
+        NotifyPost(
+          group: notifyGroup(prompt.alert.host, prompt.alert.sessionId),
+          key: prompt.alert.key,
+          attention: true,
+          title: AppInfo.name,
+          text: prompt.alert.text,
+          publicText: prompt.alert.kind.publicText,
+          sessionId: prompt.alert.sessionId,
+          host: prompt.alert.host,
+          kind: prompt.alert.kind.name,
+          eventId: prompt.alert.eventId,
+        ),
+        stillCurrent: () => _phoneCurrent(prompt) && !prompt.scope.read(appForegroundProvider),
+        rootRuntime: rootRuntime,
+      );
+    } finally {
+      prompt.fallbackNotificationInFlight = false;
+    }
+    if (!delivered && rootRuntime && _phoneCurrent(prompt)) _retainFailedSystemPost(prompt.alert, force: true);
   }
 
   Future<void> _runPhonePrompt(_PhoneAlertPrompt prompt) async {
@@ -687,15 +778,149 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
       case AlertDelivery.banner:
         _banner = alert;
       case AlertDelivery.system:
-        unawaited(_channel.show(postFor(alert)));
+        _queueSystemPost(alert);
+    }
+  }
+
+  _PostKey _postKey(ChatAlert alert) => (host: alert.host, sessionId: alert.sessionId, key: alert.key);
+
+  bool _notificationPostRelevant(ChatAlert alert, {bool force = false}) {
+    if (!ref.mounted || (!force && !ref.read(notifyPrefsProvider).allows(alert.kind))) {
+      return false;
+    }
+    final tracker = _trackers[alert.host]?.$2;
+    if (tracker == null) return false;
+    if (ref.read(dsBotSessionFilterProvider)(alert.host, alert.sessionId)) {
+      return false;
+    }
+    final viewed = ref.read(viewedChatProvider);
+    if (viewed != null && viewed.host == alert.host && viewed.sessionId == alert.sessionId) {
+      return false;
+    }
+    if (alert.eventId == null) {
+      return true;
+    }
+    return tracker.requestScope(alert.eventId!) != null;
+  }
+
+  bool _pendingSystemPostCurrent(_PostKey key, ChatAlert alert) =>
+      ref.mounted &&
+      !_invalidatedSystemPosts.contains(key) &&
+      identical(_pendingSystemPosts[key], alert) &&
+      _notificationPostRelevant(alert, force: _forcedSystemPosts.contains(key));
+
+  void _queueSystemPost(ChatAlert alert) {
+    final key = _postKey(alert);
+    if (!_notificationPostRelevant(alert)) {
+      return;
+    }
+    final previous = _pendingSystemPosts[key];
+    if (identical(previous, alert)) {
+      return;
+    }
+    _pendingSystemPosts[key] = alert;
+    if (previous != null) {
+      unawaited(_channel.cancel(notifyGroup(key.host, key.sessionId), key.key));
+      if (_systemPostInFlight.contains(key)) {
+        return;
+      }
+    }
+    unawaited(_postSystem(alert));
+  }
+
+  void _retainFailedSystemPost(ChatAlert alert, {bool force = false}) {
+    if (!_notificationPostRelevant(alert, force: force)) return;
+    final key = _postKey(alert);
+    _pendingSystemPosts[key] = alert;
+    if (force) _forcedSystemPosts.add(key);
+  }
+
+  Future<NotifyShowResult> _postSystem(ChatAlert alert) async {
+    final key = _postKey(alert);
+    if (!_pendingSystemPosts.containsKey(key)) _pendingSystemPosts[key] = alert;
+    if (_systemPostInFlight.contains(key)) {
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    bool current() => _pendingSystemPostCurrent(key, alert);
+    if (!current()) {
+      if (identical(_pendingSystemPosts[key], alert)) {
+        _pendingSystemPosts.remove(key);
+        _forcedSystemPosts.remove(key);
+      }
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    _systemPostInFlight.add(key);
+    NotifyShowResult result;
+    try {
+      result = await _channel.show(postFor(alert), stillCurrent: current);
+    } catch (_) {
+      result = const NotifyShowResult(delivered: false);
+    } finally {
+      _systemPostInFlight.remove(key);
+    }
+    if (!current()) {
+      final invalidated = _invalidatedSystemPosts.remove(key);
+      final latest = _pendingSystemPosts[key];
+      if (latest != null && (!identical(latest, alert) || invalidated)) {
+        if (ref.read(appForegroundProvider)) {
+          _banner = latest;
+        } else {
+          unawaited(_postSystem(latest));
+        }
+      }
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    final rootRuntime = ref.read(localRuntimeProvider).status.rootRuntime;
+    if (result.delivered || result.reason == 'cancelled' || !rootRuntime) {
+      _pendingSystemPosts.remove(key);
+      _forcedSystemPosts.remove(key);
+    } else if (ref.read(appForegroundProvider)) {
+      _banner = alert;
+    }
+    final latest = _pendingSystemPosts[key];
+    if (latest != null && !identical(latest, alert)) {
+      unawaited(_postSystem(latest));
+    }
+    return result;
+  }
+
+  void _restoreInFlightSystemPostBanners() {
+    for (final entry in _pendingSystemPosts.entries.toList().reversed) {
+      if (!_systemPostInFlight.contains(entry.key) || !_pendingSystemPostCurrent(entry.key, entry.value)) {
+        continue;
+      }
+      _banner = entry.value;
+      _removePendingSystemPost(entry.key);
+    }
+  }
+
+  void _restorePendingSystemPostBanner() {
+    for (final entry in _pendingSystemPosts.entries.toList().reversed) {
+      if (_systemPostInFlight.contains(entry.key) || !_pendingSystemPostCurrent(entry.key, entry.value)) {
+        continue;
+      }
+      _banner = entry.value;
+      return;
+    }
+  }
+
+  void _removePendingSystemPost(_PostKey key, {bool cancelIfMissing = false}) {
+    final removed = _pendingSystemPosts.remove(key);
+    _forcedSystemPosts.remove(key);
+    if (_systemPostInFlight.contains(key)) _invalidatedSystemPosts.add(key);
+    if (removed != null || cancelIfMissing) {
+      unawaited(_channel.cancel(notifyGroup(key.host, key.sessionId), key.key));
     }
   }
 
   void _onWithdraw(HostRef host, String sessionId, String key) {
     _cancelPhonePrompt(host: host, eventId: key);
-    unawaited(_channel.cancel(notifyGroup(host, sessionId), key));
+    final postKey = (host: host, sessionId: sessionId, key: key);
+    _removePendingSystemPost(postKey, cancelIfMissing: true);
     final banner = _banner;
-    if (banner != null && banner.host == host && banner.sessionId == sessionId && banner.key == key) _banner = null;
+    if (banner != null && banner.host == host && banner.sessionId == sessionId && banner.key == key) {
+      _banner = null;
+    }
   }
 
   void _onSessionGone(HostRef host, String sessionId) {
@@ -704,9 +929,14 @@ class ChatAlertsController extends Notifier<ChatAlert?> {
   }
 
   void _clearSessionNotifications(HostRef host, String sessionId) {
+    for (final key in _pendingSystemPosts.keys.toList()) {
+      if (key.host == host && key.sessionId == sessionId) _removePendingSystemPost(key);
+    }
     unawaited(_channel.cancelGroup(notifyGroup(host, sessionId)));
     final banner = _banner;
-    if (banner != null && banner.host == host && banner.sessionId == sessionId) _banner = null;
+    if (banner != null && banner.host == host && banner.sessionId == sessionId) {
+      _banner = null;
+    }
   }
 
   /// The person is looking at [chat]: its notifications and banner are moot.

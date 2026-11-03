@@ -171,6 +171,7 @@ class RuntimeStatus {
     this.launchSpawned = false,
     this.launchFailureReason,
     this.tidyingFiles = false,
+    this.rootRuntime = false,
   });
 
   const RuntimeStatus.unknown() : this(phase: RuntimePhase.notInstalled);
@@ -231,6 +232,9 @@ class RuntimeStatus {
   final String? launchSelectedMode;
   final bool launchSpawned;
   final String? launchFailureReason;
+
+  /// The Android app was built with the Root runtime variant.
+  final bool rootRuntime;
 
   /// The start in progress has been turning PRoot's fake hard links into real
   /// files for more than a moment (once per install, before Direct launch).
@@ -298,6 +302,7 @@ class RuntimeStatus {
     launchSpawned: map['launchSpawned'] == true,
     launchFailureReason: map['launchFailureReason'] as String?,
     tidyingFiles: map['tidyingFiles'] == true,
+    rootRuntime: map['rootRuntime'] == true,
   );
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 // First run on this phone sets up while the runtime unpacks
 // (docs/design/onboarding-parallel-setup.md): 本机 starts the unpack once and
 // moves on; 外观 and 连接 DeepSeek follow with the unpack in a capsule; done
@@ -23,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../shell/golden_harness.dart' show goldenApp, usePhoneSurface;
 import '../performance/support.dart';
 import 'local_optional_support.dart';
 import 'parallel_setup_support.dart';
@@ -447,6 +450,80 @@ void main() {
   });
 
   group('the other ways are as they were', () {
+    testWidgets('Root stays on 本机 through a status refresh, an explicit Remote still goes there', (tester) async {
+      final rig = await pumpGate(
+        tester,
+        runtime: const LocalRuntimeState(
+          loaded: true,
+          status: RuntimeStatus(phase: RuntimePhase.notInstalled, bundledVersion: bundled, rootRuntime: true),
+        ),
+      );
+      expect(tester.getSemantics(find.byKey(const ValueKey('runtime-option-local'))), isSemantics(isSelected: true));
+      expect(find.text('推荐'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('runtime-option-remote')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getSemantics(find.byKey(const ValueKey('runtime-option-remote'))), isSemantics(isSelected: true));
+      rig.runtime.emit(
+        const RuntimeStatus(phase: RuntimePhase.notInstalled, bundledVersion: bundled, rootRuntime: true),
+      );
+      await frames(tester);
+      expect(tester.getSemantics(find.byKey(const ValueKey('runtime-option-remote'))), isSemantics(isSelected: true));
+      await tester.tap(find.widgetWithText(FilledButton, '继续'));
+      await frames(tester);
+      expect(find.byType(RemoteScreen), findsOneWidget);
+      expect(rig.runtime.calls, isEmpty);
+    });
+
+    testWidgets('Root keeps Local on a small or full phone and keeps the resource warning', (tester) async {
+      final rig = await pumpGateWithFootprint(
+        tester,
+        runtime: const LocalRuntimeState(
+          loaded: true,
+          status: RuntimeStatus(phase: RuntimePhase.notInstalled, bundledVersion: bundled, rootRuntime: true),
+        ),
+        footprintValue: fullPhone,
+      );
+      expect(find.text('推荐'), findsOneWidget);
+      expect(find.text('存储空间不足，需要约 900 MB'), findsOneWidget);
+      expect(tester.getSemantics(find.byKey(const ValueKey('runtime-option-local'))), isSemantics(isSelected: true));
+      await tester.tap(find.widgetWithText(FilledButton, '继续'));
+      await frames(tester);
+      expect(rig.runtime.calls, ['install']);
+    });
+
+    testWidgets('a normal build keeps the remote suggestion on a small phone', (tester) async {
+      await pumpGateWithFootprint(
+        tester,
+        runtime: const LocalRuntimeState(
+          loaded: true,
+          status: RuntimeStatus(phase: RuntimePhase.notInstalled, bundledVersion: bundled),
+        ),
+        footprintValue: smallPhone,
+      );
+      expect(find.text('推荐'), findsOneWidget);
+      expect(tester.getSemantics(find.byKey(const ValueKey('runtime-option-remote'))), isSemantics(isSelected: true));
+    });
+
+    testWidgets('an independent setup page waits for loaded before it installs', (tester) async {
+      final runtime = UnpackingRuntime(const LocalRuntimeState());
+      runtime.installGate = Completer<void>();
+      usePhoneSurface(tester);
+      await tester.pumpWidget(
+        goldenApp(
+          home: RuntimeSetupPage(onDone: () {}),
+          brightness: Brightness.light,
+          overrides: [localRuntimeProvider.overrideWith(() => runtime)],
+        ),
+      );
+      await frames(tester, 3);
+      expect(runtime.calls, isEmpty);
+
+      runtime.state = const LocalRuntimeState(loaded: true, status: missingStatus);
+      await frames(tester, 3);
+      expect(runtime.calls, ['install']);
+    });
+
     testWidgets('远程主机: no unpack, no setup step', (tester) async {
       final rig = await pumpGate(tester);
       await tester.tap(find.byKey(const ValueKey('runtime-option-remote')));

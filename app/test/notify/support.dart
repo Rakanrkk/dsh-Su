@@ -87,9 +87,10 @@ class FakeAlertSource implements AlertSource {
 
 /// Records what would reach the native side.
 class FakeNotifyChannel extends NotifyChannel {
-  FakeNotifyChannel({this.system = const NotifySystemStatus()});
+  FakeNotifyChannel({this.system = const NotifySystemStatus(), this.showReply});
 
   NotifySystemStatus system;
+  Future<NotifyShowResult> Function(NotifyPost post)? showReply;
   final List<NotifyPost> shown = [];
   final List<(String, String)> cancelled = [];
   final List<String> cancelledGroups = [];
@@ -103,14 +104,27 @@ class FakeNotifyChannel extends NotifyChannel {
   Future<NotifySystemStatus> status() async => system;
 
   @override
-  Future<void> show(NotifyPost post) async => shown.add(post);
+  Future<NotifyShowResult> show(NotifyPost post, {bool Function()? stillCurrent}) async {
+    if (stillCurrent?.call() == false) return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    shown.add(post);
+    final reply = showReply;
+    if (reply != null) return reply(post);
+    return const NotifyShowResult.success();
+  }
 
   @override
-  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent}) async {
+  Future<bool> tryShow(
+    NotifyPost post, {
+    bool Function()? stillCurrent,
+    bool rootRuntime = false,
+  }) async {
     if (stillCurrent?.call() == false) return false;
+    if (rootRuntime) {
+      return (await show(post)).delivered;
+    }
     if (!system.native || !system.enabled || !(post.attention ? system.attention : system.done)) return false;
-    await show(post);
-    return true;
+    final result = await show(post);
+    return result.delivered;
   }
 
   @override

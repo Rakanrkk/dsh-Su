@@ -206,8 +206,8 @@ class AccessReadings {
   };
 
   /// Android's 「受限制的设置」 may stand in front of the accessibility switch.
-  bool get mayNeedRestricted => PhoneDevice(sdkInt: sdk, sideloaded: sideloaded, restricted: restricted)
-      .mayNeedRestrictedSettings;
+  bool get mayNeedRestricted =>
+      PhoneDevice(sdkInt: sdk, sideloaded: sideloaded, restricted: restricted).mayNeedRestrictedSettings;
 }
 
 /// [item]'s state from [readings]; null when this phone can't tell (the
@@ -287,11 +287,13 @@ class SystemAccessDriver implements AccessDriver {
     final phone = ref.read(phoneProvider.notifier);
     final pet = ref.read(petOverlayProvider.notifier);
     final info = _safe(() => ref.read(backgroundSettingsProvider.future));
-    final mic = _safe(() async => switch (await _voice.invokeMethod<String>('permission')) {
-      'granted' => true,
-      'denied' => false,
-      _ => null,
-    });
+    final mic = _safe(
+      () async => switch (await _voice.invokeMethod<String>('permission')) {
+        'granted' => true,
+        'denied' => false,
+        _ => null,
+      },
+    );
     final storage = _safe(() async => (await bridge.storageStatus()).granted);
     final notify = _safe(() async {
       final s = await ref.read(notifyChannelProvider).status();
@@ -314,7 +316,7 @@ class SystemAccessDriver implements AccessDriver {
     return AccessReadings(
       vendor: settings?.vendor,
       appLabel: settings?.label,
-      rootRuntime: status.rootRuntime,
+      rootRuntime: ref.read(localRuntimeProvider).status.rootRuntime,
       mic: await mic,
       storage: await storage,
       notifications: await notify,
@@ -349,6 +351,10 @@ class SystemAccessDriver implements AccessDriver {
           if (again) return ref.read(phoneProvider.notifier).openAppDetails();
           return true;
         case AccessItem.notifications:
+          if (ref.read(localRuntimeProvider).status.rootRuntime &&
+              await ref.read(chatAlertsProvider.notifier).retryFailedNotifications()) {
+            return true;
+          }
           return ref.read(notifyChannelProvider).openSettings();
         case AccessItem.battery:
           return await bridge.requestBatteryExempt() ?? false;
@@ -392,9 +398,7 @@ class AccessReadingsController extends AsyncNotifier<AccessReadings> {
 
 /// The makers' switches the person went to and said are set: no API reports
 /// them, so this is the only record (`system_access_visited`).
-final accessVisitedProvider = NotifierProvider<AccessVisitedController, Set<AccessItem>>(
-  AccessVisitedController.new,
-);
+final accessVisitedProvider = NotifierProvider<AccessVisitedController, Set<AccessItem>>(AccessVisitedController.new);
 
 class AccessVisitedController extends Notifier<Set<AccessItem>> {
   static const prefsKey = 'system_access_visited';

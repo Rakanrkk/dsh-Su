@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:dsh_app/remote/secret_store.dart';
 import 'package:dsh_app/runtime/runtime_bridge.dart';
 import 'package:dsh_app/runtime/runtime_state.dart';
+import 'package:dsh_app/runtime/local_footprint.dart';
 import 'package:dsh_app/state/account_state.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
@@ -55,10 +56,14 @@ class UnpackingRuntime extends RecordingLocalRuntime {
   UnpackingRuntime(super.initial);
 
   Completer<void>? _unpack;
+  Completer<void>? installGate;
 
   @override
   Future<void> install() {
     calls.add('install');
+    if (installGate case final gate?) {
+      return gate.future;
+    }
     return (_unpack = Completer<void>()).future;
   }
 
@@ -166,6 +171,29 @@ Future<GateRig> pumpGate(
   );
   await frames(tester);
   return GateRig(fake, account, ProviderScope.containerOf(tester.element(find.byType(RootGate))), starts);
+}
+
+Future<GateRig> pumpGateWithFootprint(
+  WidgetTester tester, {
+  required LocalRuntimeState runtime,
+  required LocalFootprint footprintValue,
+}) async {
+  final fake = UnpackingRuntime(runtime);
+  final starts = <int>[];
+  usePhoneSurface(tester);
+  await tester.pumpWidget(
+    goldenApp(
+      home: const RootGate(home: Scaffold(body: Text('home'))),
+      brightness: Brightness.light,
+      overrides: [
+        localRuntimeProvider.overrideWith(() => fake),
+        footprint(footprintValue),
+        settingsProvider.overrideWith(() => FakeSettings(const AppSettings(loaded: true))),
+      ],
+    ),
+  );
+  await frames(tester);
+  return GateRig(fake, RecordingAccount(), ProviderScope.containerOf(tester.element(find.byType(RootGate))), starts);
 }
 
 /// 外观's 继续, then 跳过 on 想让 DSH Go 帮你做哪些事: on to what comes next.

@@ -76,6 +76,7 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
   bool _finishing = false;
   Timer? _finishTimer;
   bool _notifyPrimed = false;
+  bool _initialStatusHandled = false;
 
   /// The person picked 「本机」 (or nothing was asked): leaves the choice.
   bool _installRequested = false;
@@ -86,12 +87,26 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
   @override
   void initState() {
     super.initState();
-    final status = ref.read(localRuntimeProvider).status;
-    _upgrade = status.phase == RuntimePhase.notInstalled && status.installedVersion != null;
+  }
+
+  void _handleInitialStatus() {
+    if (_initialStatusHandled) {
+      return;
+    }
+    final initial = ref.read(localRuntimeProvider);
+    if (!initial.loaded) {
+      return;
+    }
+    _initialStatusHandled = true;
+    _upgrade = initial.status.phase == RuntimePhase.notInstalled && initial.status.installedVersion != null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final phase = ref.read(localRuntimeProvider).status.phase;
-      if (phase == RuntimePhase.notInstalled && !_asks) _install();
+      if (!mounted) {
+        return;
+      }
+      final current = ref.read(localRuntimeProvider);
+      if (current.loaded && current.status.phase == RuntimePhase.notInstalled && !_asks) {
+        _install();
+      }
     });
   }
 
@@ -125,9 +140,8 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
 
   void _primeNotifications(RuntimeProgressEvent? progress) {
     if (progress == null || _notifyPrimed) return;
-    // Reading the status creates the notification channels, which is what
-    // raises Android 13's permission prompt: let it come while this page
-    // waits rather than over the connect step.
+    // The ordinary build creates channels from this status read, so its Android
+    // 13 prompt still arrives while this page waits rather than over connect.
     _notifyPrimed = true;
     unawaited(ref.read(notifyChannelProvider).status());
   }
@@ -149,9 +163,15 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(localRuntimeProvider.select((s) => s.loaded), (_, loaded) {
+      if (loaded) {
+        _handleInitialStatus();
+      }
+    });
     ref.listen(localRuntimeProvider.select((s) => s.progress), (_, next) => _primeNotifications(next));
     final state = ref.watch(localRuntimeProvider);
-    final view = _viewFor(state, launchFailed: ref.watch(runtimeInstallProvider));
+    if (state.loaded) _handleInitialStatus();
+    final view = state.loaded ? _viewFor(state, launchFailed: ref.watch(runtimeInstallProvider)) : _SetupView.waiting;
     if (view == _SetupView.done) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _scheduleFinish());
     }
@@ -161,6 +181,7 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
           ? RuntimeChoiceView(
               key: const ValueKey('choose'),
               leading: widget.leading,
+              rootRuntime: state.status.rootRuntime,
               onLocal: widget.onLocal ?? () => _install(),
               onRemote: widget.onRemote!,
             )
@@ -197,9 +218,7 @@ class _RuntimeSetupPageState extends ConsumerState<RuntimeSetupPage> {
       _SetupView.failed when state.status.keepFailed => l10n.shellRuntimeRestoreFailed,
       _SetupView.failed => humanizeRuntimeError(state.status.error) ?? l10n.shellRuntimeExtractFailed,
     };
-    final meta = view == _SetupView.installing
-        ? installMetaLine(l10n, progress, ref.watch(installEtaProvider))
-        : null;
+    final meta = view == _SetupView.installing ? installMetaLine(l10n, progress, ref.watch(installEtaProvider)) : null;
     // Set up and waiting: when a notification can say it's done, say so.
     final notifies =
         widget.waiting &&
