@@ -795,7 +795,7 @@
       }
     }
   },
-  "viewContinueHeader": "> 分享的 DSH Go 对话 · {value}\n",
+  "viewContinueHeader": "> 分享的 dsh-Su 对话 · {value}\n",
   "@viewContinueHeader": {
     "placeholders": {
       "value": {
@@ -832,7 +832,7 @@
   "viewShareNoPermission": "没有存储权限，没能保存",
   "viewShareOpenFailed": "没能打开分享",
   "viewShareLinkFailed": "没能生成链接，稍后再试",
-  "viewShareLinkText": "「{first}」· DSH Go 对话\n{second}",
+  "viewShareLinkText": "「{first}」· dsh-Su 对话\n{second}",
   "@viewShareLinkText": {
     "placeholders": {
       "first": {
@@ -860,7 +860,7 @@
       }
     }
   },
-  "viewShareFileHint": "在 DSH Go 里回放、接着聊",
+  "viewShareFileHint": "在 dsh-Su 里回放、接着聊",
   "viewShareWebHint": "任何浏览器都能打开，不用联网",
   "viewShareMarkdownHint": "纯文本，随处可读",
   "viewShareLinkHint": "端到端加密，服务器看不到内容",

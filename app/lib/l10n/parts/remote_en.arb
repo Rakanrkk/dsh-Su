@@ -22,7 +22,7 @@
   "remoteErrConnectionReplaced": "Remote connection was replaced",
   "remoteErrHostRejected": "Host declined the connection",
   "remoteErrHostNotOwned": "Host isn’t in your DSH Remote account",
-  "remoteErrUpdateNeeded": "Version mismatch. Update DSH Go and the host’s remote plugin",
+  "remoteErrUpdateNeeded": "Version mismatch. Update dsh-Su and the host’s remote plugin",
   "remoteErrVersionIncompatible": "Update DSH or the remote plugin on the host",
   "remoteErrSignInTimeout": "Sign-in timed out",
   "remoteSignInCancelled": "Sign-in cancelled",

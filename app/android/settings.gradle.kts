@@ -28,3 +28,10 @@ plugins {
 }
 
 include(":app")
+
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.PREFER_PROJECT
+    repositories {
+        maven { url = uri("https://jitpack.io") }
+    }
+}

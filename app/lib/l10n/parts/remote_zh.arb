@@ -36,7 +36,7 @@
   "remoteErrConnectionReplaced": "远程连接已被替换",
   "remoteErrHostRejected": "主机拒绝了连接",
   "remoteErrHostNotOwned": "主机不在你的 DSH Remote 账号下",
-  "remoteErrUpdateNeeded": "版本不匹配，请更新 DSH Go 和主机上的远程插件",
+  "remoteErrUpdateNeeded": "版本不匹配，请更新 dsh-Su 和主机上的远程插件",
   "remoteErrVersionIncompatible": "主机上的 DSH 或远程插件需要更新",
   "remoteErrSignInTimeout": "登录超时",
   "remoteSignInCancelled": "已取消登录",

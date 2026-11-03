@@ -30,3 +30,6 @@ APK 构建走 `tooling/build-apk.sh`；Flutter widget 测试需要对应架构�
 
 ## 10. 范围纪律｜⚠️/❌
 一 PR 一主题；不夹带无关格式化、依赖升级、上游同步树、本地配置；越界到不可可靠审查/回滚按 ❌，少量可独立剔除 churn 按 ⚠️。
+
+## 11. 上游补丁集｜⚠️/❌
+上游同步是开发要求。root 专有行为必须集中在少数独立模块，共享 argv/patch/token ready/log/chat/plugins 逻辑直接复用上游实现；复制上游流程形成第二套实现、把 root 行为散入不必要的共享文件、无关重构/重命名/格式化或破坏可导出的清晰提交序列按 ⚠️，阻碍后续上游合并按 ❌。每次变更评估 `git format-patch` 导出与后续 merge 的影响；定向验证按 CONTRIBUTING.md。
