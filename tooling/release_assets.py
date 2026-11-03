@@ -59,16 +59,24 @@ def check_abis(flavor: str, entries: list[str]) -> None:
         raise ReleaseError(f"{flavor} APK has native libraries for {sorted(abis)}, expected only {FLAVOR_ABI[flavor]}")
 
 
-def check_root_runtime(aapt2: str, path: pathlib.Path) -> None:
+def check_root_runtime(aapt2: str, flavor: str, path: pathlib.Path) -> None:
     """The package is dsh-Su and its Dart code uses the fork update repo injected
     by tooling/build-root-apk.sh; this keeps an ordinary DSH Go APK off this feed."""
     out = subprocess.run([aapt2, "dump", "badging", str(path)], capture_output=True, text=True).stdout
     if f"name={chr(39)}{ROOT_APPLICATION_ID}{chr(39)}" not in out:
         raise ReleaseError(f"{path}: expected dsh-Su package {ROOT_APPLICATION_ID}; build with tooling/build-root-apk.sh")
     with zipfile.ZipFile(path) as apk:
-        libapp = apk.read("lib/arm64-v8a/libapp.so")
+        libapp = apk.read(f"lib/{FLAVOR_ABI[flavor]}/libapp.so")
     if b"Rakanrkk/dsh-Su" not in libapp:
         raise ReleaseError(f"{path}: lacks --dart-define=DSH_UPDATE_REPO=Rakanrkk/dsh-Su; build with tooling/build-root-apk.sh")
+
+
+def check_source_apks(aapt2: str, sources: dict[str, pathlib.Path]) -> None:
+    """Check each supplied APK's package, compiled update repository, and ABI."""
+    for flavor, path in sources.items():
+        with zipfile.ZipFile(path) as apk:
+            check_abis(flavor, apk.namelist())
+        check_root_runtime(aapt2, flavor, path)
 
 
 def pubspec_version() -> str:
@@ -236,10 +244,7 @@ def main() -> None:
         sys.exit("aapt2 not found (Android SDK build-tools): it reads versionName and versionCode from the APKs")
     try:
         build = release_build(name, expected, {flavor: apk_version(aapt2, path) for flavor, path in sources.items()})
-        for flavor, path in sources.items():
-            with zipfile.ZipFile(path) as apk:
-                check_abis(flavor, apk.namelist())
-        check_root_runtime(aapt2, sources["arm64"])
+        check_source_apks(aapt2, sources)
     except ReleaseError as e:
         sys.exit(str(e))
 

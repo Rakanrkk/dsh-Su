@@ -16,11 +16,24 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from types import SimpleNamespace
 from unittest import mock
 
 import apk_delta
 from build_number import MAX_VERSION_CODE
-from release_assets import BADGING_RE, ReleaseError, check_abis, patch_from, previous_releases, published_apk, release_build
+from release_assets import (
+    BADGING_RE,
+    FLAVOR_ABI,
+    REPO,
+    ROOT_APPLICATION_ID,
+    ReleaseError,
+    check_abis,
+    check_source_apks,
+    patch_from,
+    previous_releases,
+    published_apk,
+    release_build,
+)
 
 # Stands in for gh: `release list` prints $FAKE_RELEASES, `release download`
 # copies the asset files from $FAKE_ASSETS/<tag>/; every call goes to $FAKE_LOG.
@@ -28,7 +41,7 @@ FAKE_GH = """#!{python}
 import json, os, shutil, sys
 args = sys.argv[1:]
 open(os.environ["FAKE_LOG"], "a").write(" ".join(args) + "\\n")
-assert args[:1] == ["release"] and args[args.index("--repo") + 1] == "ccch1mneyyy/dsh-go", args
+assert args[:1] == ["release"] and args[args.index("--repo") + 1] == os.environ["FAKE_REPO"], args
 if args[1] == "list":
     print(os.environ["FAKE_RELEASES"])
 elif args[1] == "download":
@@ -59,6 +72,16 @@ def apk(path, seed, *, libapp_seed=None):
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def root_apk(path, flavor, *, app_id=ROOT_APPLICATION_ID, update_repo=REPO):
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(f"lib/{FLAVOR_ABI[flavor]}/libapp.so", f"update repo: {update_repo}".encode())
+    return path
+
+
+def badging(app_id):
+    return f"package: name='{app_id}' versionCode='11031062' versionName='1.0.9-internal.4'\n"
 
 
 class ReleaseBuildTest(unittest.TestCase):
@@ -103,6 +126,51 @@ class ReleaseBuildTest(unittest.TestCase):
                 "platformBuildVersionName='16'\nminSdkVersion:'26'\n")
         m = BADGING_RE.search(line)
         self.assertEqual((m.group(1), m.group(2)), ("10251234", "1.2.0-beta.1"))
+
+
+class RootApkCheckTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.arm64 = root_apk(self.dir / "arm64.apk", "arm64")
+        self.x64 = root_apk(self.dir / "x64.apk", "x64")
+
+    def test_each_flavor_checks_its_package_and_compiled_update_repository(self):
+        with mock.patch(
+            "release_assets.subprocess.run",
+            side_effect=[
+                SimpleNamespace(stdout=badging(ROOT_APPLICATION_ID)),
+                SimpleNamespace(stdout=badging(ROOT_APPLICATION_ID)),
+            ],
+        ) as run:
+            check_source_apks("aapt2", {"arm64": self.arm64, "x64": self.x64})
+
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[0].args[0][-1], str(self.arm64))
+        self.assertEqual(run.call_args_list[1].args[0][-1], str(self.x64))
+
+    def test_wrong_x64_package_is_refused_even_when_arm64_is_valid(self):
+        with mock.patch(
+            "release_assets.subprocess.run",
+            side_effect=[
+                SimpleNamespace(stdout=badging(ROOT_APPLICATION_ID)),
+                SimpleNamespace(stdout=badging("io.github.ccch1mneyyy.dsh_app")),
+            ],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "expected dsh-Su package"):
+                check_source_apks("aapt2", {"arm64": self.arm64, "x64": self.x64})
+
+    def test_wrong_x64_compiled_repository_is_refused_even_when_arm64_is_valid(self):
+        wrong_x64 = root_apk(self.dir / "wrong-x64.apk", "x64", update_repo="ccch1mneyyy/dsh-Go")
+        with mock.patch(
+            "release_assets.subprocess.run",
+            side_effect=[
+                SimpleNamespace(stdout=badging(ROOT_APPLICATION_ID)),
+                SimpleNamespace(stdout=badging(ROOT_APPLICATION_ID)),
+            ],
+        ):
+            with self.assertRaisesRegex(ReleaseError, "lacks --dart-define=DSH_UPDATE_REPO"):
+                check_source_apks("aapt2", {"arm64": self.arm64, "x64": wrong_x64})
 
 
 class DeltaTest(unittest.TestCase):
@@ -154,7 +222,7 @@ class PublishedTest(unittest.TestCase):
             {"tagName": "v1.0.5", "publishedAt": "2026-10-31T07:11:50Z"},
         ]
         env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "FAKE_LOG": str(self.log),
-               "FAKE_ASSETS": str(self.assets), "FAKE_RELEASES": json.dumps(releases)}
+               "FAKE_ASSETS": str(self.assets), "FAKE_RELEASES": json.dumps(releases), "FAKE_REPO": REPO}
         patcher = mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
