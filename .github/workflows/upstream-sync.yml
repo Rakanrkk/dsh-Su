@@ -75,6 +75,7 @@ jobs:
             BRANCH="$OPEN_BRANCH"
             git fetch origin "$BRANCH"
             git checkout -B "$BRANCH" "origin/$BRANCH"
+            git merge --no-ff main -m "Merge dsh-Su main into upstream sync branch"
           else
             DATE=$(date +%Y%m%d)
             BRANCH="chore/upstream-sync-$DATE"
