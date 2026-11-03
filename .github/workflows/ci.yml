@@ -110,6 +110,8 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
     steps:
       - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
@@ -117,6 +119,10 @@ jobs:
           flutter-version: '3.47.7'
           channel: stable
           cache: true
+      - name: Install CJK test fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk-extra
       - name: flutter pub get / analyze / test (app)
         working-directory: app
         run: |
@@ -176,6 +182,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install the locked patched DSH test candidate
+        run: |
+          prefix="$RUNNER_TEMP/dsh-prefix"
+          mkdir -p "$prefix"
+          cp runtime/locks/dsh-0.2.1-rc.4/package.json runtime/locks/dsh-0.2.1-rc.4/package-lock.json "$prefix/"
+          (cd "$prefix" && npm ci --ignore-scripts --no-audit --no-fund)
+          python3 -I runtime/lib/rtbuild.py patch-dsh --prefix "$prefix" --dsh-version 0.2.1-rc.4
+          echo "DSH_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "DSH_TEST_PREFIX=$prefix" >> "$GITHUB_ENV"
       - run: node --test runtime/tests/*.test.mjs
 
   guide:

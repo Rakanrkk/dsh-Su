@@ -88,17 +88,22 @@ test('deferred results: pending at once, done later, only the deferred whitelist
 
 test('deferred results: timeout aborts the work; at most 2 pending', async () => {
   const host = createTestHost({ pkg: pkg(manifest), dir: '/nonexistent' })
+  const keepAlive = setTimeout(() => {}, 1100)
   let aborted = 0
-  host.ctx.inject(['dshGo'], (ctx) => ctx.dshGo.on('dyn', () => ({
-    pending: { timeoutMs: 1000 },
-    result: (signal) => new Promise((resolve) => signal.addEventListener('abort', () => { aborted++; resolve({ toast: 'late' }) })),
-  })))
-  const a = await host.invoke('dyn')
-  await host.invoke('dyn')
-  await assert.rejects(host.invoke('dyn'), { status: 429, code: 'too-many-pending' })
-  assert.deepEqual(await a.settled, { t: 'void', reason: 'timeout' })
-  host.dispose()
-  assert.equal(aborted, 2)
+  try {
+    host.ctx.inject(['dshGo'], (ctx) => ctx.dshGo.on('dyn', () => ({
+      pending: { timeoutMs: 1000 },
+      result: (signal) => new Promise((resolve) => signal.addEventListener('abort', () => { aborted++; resolve({ toast: 'late' }) })),
+    })))
+    const a = await host.invoke('dyn')
+    await host.invoke('dyn')
+    await assert.rejects(host.invoke('dyn'), { status: 429, code: 'too-many-pending' })
+    assert.deepEqual(await a.settled, { t: 'void', reason: 'timeout' })
+    host.dispose()
+    assert.equal(aborted, 2)
+  } finally {
+    clearTimeout(keepAlive)
+  }
 })
 
 test('strip and panel data functions get caps with the locale', () => {
