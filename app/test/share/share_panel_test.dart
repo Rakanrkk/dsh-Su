@@ -528,7 +528,7 @@ void main() {
     expect(pageFormat, ConversationFormat.page);
     expect(page.uri.pathSegments.last, '修复登录重复提交.html');
     final html = page.readAsStringSync();
-    expect(html, contains('<title>修复登录重复提交 · DSH Go</title>'));
+    expect(html, contains('<title>修复登录重复提交 · dsh-Su</title>'));
     expect(html, contains("connect-src 'none'"));
 
     await _tap(tester, find.text('Markdown'));

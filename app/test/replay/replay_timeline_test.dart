@@ -155,7 +155,7 @@ void main() {
     final text = richFileText();
     final html = conversationHtml(text, title: '修复登录重复提交');
     expect(decodeConversationFile(text).assets, hasLength(1));
-    expect(html, contains('<title>修复登录重复提交 · DSH Go</title>'));
+    expect(html, contains('<title>修复登录重复提交 · dsh-Su</title>'));
     final dir = Platform.environment['WRITE_PREVIEW'];
     if (dir != null && dir.isNotEmpty) {
       Directory(dir).createSync(recursive: true);
