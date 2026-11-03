@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import android.net.ConnectivityManager
@@ -15,6 +16,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Environment
 import android.provider.Settings
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -37,6 +39,7 @@ class BackgroundControl private constructor(context: Context) {
 
     private val keepGuard = Any()
     private val preferenceGuard = Any()
+    private val selfGrantGuard = Any()
     private val keepPrefs = app.getSharedPreferences("phone-privileged-keep", Context.MODE_PRIVATE)
     private val keep = PrivilegedKeepState(keepPrefs.getString("keptMode", "off") ?: "off",
         PhoneControl.switchedOn(app), Build.VERSION.SDK_INT >= BackgroundPolicy.MIN_SDK)
@@ -271,20 +274,32 @@ class BackgroundControl private constructor(context: Context) {
      * worker thread.
      */
     fun autoGrantSelfPermissionsWithRoot(mayStart: () -> Boolean): Boolean {
-        if (selfPermissionsGranted()) return true
-        if (root.status().connected || root.start(mayStart) != null) root.grantSelf()
-        return selfPermissionsGranted()
+        return synchronized(selfGrantGuard) {
+            val stateComplete = selfPermissionsGranted()
+            if (!shouldAutoGrantRootSelf(BuildConfig.ROOT_RUNTIME, stateComplete)) return@synchronized stateComplete
+            if (root.status().connected || root.start(mayStart) != null) root.grantSelf()
+            selfPermissionsGranted()
+        }
     }
 
-    private fun selfPermissionsGranted(): Boolean =
-        selfPermissions(Build.VERSION.SDK_INT).all { permission ->
-            when (permission) {
-                Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
-                    Environment.isExternalStorageManager()
-                Manifest.permission.SYSTEM_ALERT_WINDOW -> Settings.canDrawOverlays(app)
-                else -> app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-            }
-        }
+    private fun selfPermissionsGranted(): Boolean {
+        val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return selfGrantStateComplete(
+            sdkInt = Build.VERSION.SDK_INT,
+            permissionsGranted = { permission ->
+                when (permission) {
+                    Manifest.permission.REQUEST_INSTALL_PACKAGES -> true
+                    Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
+                        Environment.isExternalStorageManager()
+                    Manifest.permission.SYSTEM_ALERT_WINDOW -> Settings.canDrawOverlays(app)
+                    else -> app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+                }
+            },
+            canRequestPackageInstalls = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                app.packageManager.canRequestPackageInstalls(),
+            ignoresBatteryOptimizations = power.isIgnoringBatteryOptimizations(app.packageName),
+        )
+    }
 
     /**
      * Has the engine grant the permission over [via] (`shizuku` / `adb`): 不打扰模式's channel when it

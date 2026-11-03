@@ -739,7 +739,9 @@ class PrivilegedDisplayCore(private val context: Context) {
         for (permission in selfPermissions(Build.VERSION.SDK_INT)) {
             try {
                 when (permission) {
-                    Manifest.permission.SYSTEM_ALERT_WINDOW, Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
+                    Manifest.permission.SYSTEM_ALERT_WINDOW,
+                    Manifest.permission.MANAGE_EXTERNAL_STORAGE,
+                    Manifest.permission.REQUEST_INSTALL_PACKAGES ->
                         setSpecialAppOp(permission, userId)
                     else -> grantRuntimePermission(permission, userId)
                 }
@@ -750,6 +752,11 @@ class PrivilegedDisplayCore(private val context: Context) {
                 failed.add(permission)
             }
         }
+        try {
+            setDeviceIdleWhitelist()
+        } catch (_: SecurityException) {
+            failed.add(SELF_GRANT_DEVICE_IDLE_WHITELIST)
+        }
         return failed
     }
 
@@ -759,6 +766,7 @@ class PrivilegedDisplayCore(private val context: Context) {
         val op = when (permission) {
             Manifest.permission.SYSTEM_ALERT_WINDOW -> "android:system_alert_window"
             Manifest.permission.MANAGE_EXTERNAL_STORAGE -> "android:manage_external_storage"
+            Manifest.permission.REQUEST_INSTALL_PACKAGES -> "android:request_install_packages"
             else -> throw SecurityException("unsupported special permission: $permission")
         }
         val process = ProcessBuilder(
@@ -767,6 +775,15 @@ class PrivilegedDisplayCore(private val context: Context) {
         val output = process.inputStream.bufferedReader().readText().trim()
         val exit = process.waitFor()
         if (exit != 0) throw SecurityException("appops set $op failed: $output")
+    }
+
+    private fun setDeviceIdleWhitelist() {
+        val process = ProcessBuilder(
+            "cmd", "deviceidle", "whitelist", "+${Proto.APP_PACKAGE}",
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exit = process.waitFor()
+        if (exit != 0) throw SecurityException("deviceidle whitelist failed: $output")
     }
 
     private fun isExpectedPermissionRejection(e: Throwable): Boolean =

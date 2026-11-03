@@ -1,6 +1,8 @@
 package io.github.ccch1mneyyy.dsh_app.runtime
 
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -10,6 +12,23 @@ import org.junit.Test
 /** Reset/upgrade/delete paths refuse trees with live mounts instead of deleting through them. */
 class RuntimeResetMountGuardTest {
     private fun tempDir(name: String): File = kotlin.io.path.createTempDirectory(name).toFile()
+
+    private class RecordingFileAccess : RuntimeFileAccess {
+        val touched = mutableListOf<String>()
+        override fun file(file: File): File {
+            touched += file.path
+            return file
+        }
+        override fun isSymlink(file: File): Boolean {
+            touched += file.path
+            return Files.isSymbolicLink(file.toPath())
+        }
+        override fun readText(file: File): String {
+            touched += file.path
+            return file.readText()
+        }
+        override fun close() {}
+    }
 
     @Test fun settleResetKeepsTheRetiredTreeWhenAMountSitsUnderIt() {
         val base = tempDir("settle-mount")
@@ -108,7 +127,112 @@ class RuntimeResetMountGuardTest {
         } finally { base.deleteRecursively() }
     }
 
-    @Test fun keptPathsMoveOutBeforeTheGuardRefusesTheDelete() {
+    @Test fun resetMovesKeptDataOutOfPrivateRootOwnedDirectoriesThroughRootFiles() {
+        val base = tempDir("reset-private")
+        try {
+            val runtime = File(base, "runtime")
+            val private = File(runtime, "rootfs/root/.dsh").apply { mkdirs() }
+            Files.setPosixFilePermissions(File(runtime, "rootfs/root").toPath(), PosixFilePermissions.fromString("rwxr-xr-x"))
+            Files.setPosixFilePermissions(private.toPath(), PosixFilePermissions.fromString("rwx------"))
+            File(private, "dsh-go/ui.json").apply { parentFile!!.mkdirs(); writeText("{}") }
+            val retired = File(base, "runtime.reset")
+            val keep = File(base, "runtime-keep")
+            val files = RecordingFileAccess()
+
+            retireRuntime(
+                runtime, retired, keep, ResetKeep.UI_AND_SKILLS.paths,
+                MountGuard(emptyList(), emptyList()), files,
+            )
+
+            assertFalse(runtime.exists())
+            assertFalse(retired.exists())
+            assertEquals("{}", File(keep, "root/.dsh/dsh-go/ui.json").readText())
+            assertTrue(files.touched.any { it.endsWith("/rootfs/root/.dsh") })
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test fun upgradeCarriesPrivateHomeAndDeletesOldTreeThroughRootFiles() {
+        val base = tempDir("upgrade-private")
+        try {
+            val old = File(base, "rootfs")
+            val private = File(old, "root/.private").apply { mkdirs() }
+            Files.setPosixFilePermissions(File(old, "root").toPath(), PosixFilePermissions.fromString("rwxr-xr-x"))
+            Files.setPosixFilePermissions(private.toPath(), PosixFilePermissions.fromString("rwx------"))
+            File(private, "item").writeText("private")
+            File(base, "staging/root").mkdirs()
+            File(base, "staging/etc/os-release").apply { parentFile!!.mkdirs(); writeText("new") }
+            val files = RecordingFileAccess()
+
+            activateRootfs(base, "r2", sync = {}, mounts = MountGuard(emptyList(), emptyList()), rootRuntime = true, files = files)
+
+            assertEquals("private", File(base, "rootfs/root/.private/item").readText())
+            assertFalse(File(base, "rootfs.old").exists())
+            assertFalse(File(base, "home.carry").exists())
+            assertTrue(files.touched.any { it.endsWith("/rootfs/root") })
+            assertTrue(files.touched.any { it.endsWith("/home.carry") })
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test fun resetRechecksTheCurrentPathAfterRetiringInsteadOfUsingTheOldSnapshot() {
+        val base = tempDir("reset-fresh-mount")
+        try {
+            val runtime = File(base, "runtime")
+            File(runtime, "rootfs/root").mkdirs()
+            File(runtime, "rootfs/root/data").writeText("user data")
+            val retired = File(base, "runtime.reset")
+            val keep = File(base, "runtime-keep")
+            var reads = 0
+            val mounts = MountGuard(emptyList(), emptyList(), strict = true) {
+                reads++
+                if (reads == 1) MountGuard(emptyList(), emptyList(), strict = true)
+                else MountGuard(
+                    emptyList(),
+                    listOf(MountEntry(File(retired, "rootfs/dev").absolutePath)),
+                    strict = true,
+                )
+            }
+
+            assertThrows(IllegalStateException::class.java) {
+                retireRuntime(runtime, retired, keep, emptyList(), mounts)
+            }
+
+            assertFalse(runtime.exists())
+            assertTrue(File(retired, "rootfs/root/data").exists())
+            assertTrue(reads >= 2)
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test fun upgradeRefusesAMountBeforeCarryingHome() {
+        val base = tempDir("upgrade-preflight-mount")
+        try {
+            val rootfs = File(base, "rootfs")
+            File(rootfs, "root/workspace").mkdirs()
+            File(rootfs, "root/workspace/data").writeText("user data")
+            File(base, "staging/root").mkdirs()
+            val mounts = MountGuard(
+                emptyList(),
+                listOf(MountEntry(File(rootfs, "dev").absolutePath)),
+                strict = true,
+            )
+
+            assertThrows(IllegalStateException::class.java) {
+                activateRootfs(base, "r2", sync = {}, mounts = mounts)
+            }
+
+            assertTrue(File(rootfs, "root/workspace/data").exists())
+            assertFalse(File(base, "home.carry").exists())
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
+    @Test fun settleResetRefusesAMountedTreeBeforeMovingKeptPaths() {
         val base = tempDir("settle-keep-first")
         try {
             val retired = File(base, "retired")
@@ -119,8 +243,8 @@ class RuntimeResetMountGuardTest {
             val keep = File(base, "keep")
             val mounts = MountGuard(emptyList(), listOf(MountEntry(File(retired, "rootfs/dev").absolutePath)))
             assertThrows(IllegalStateException::class.java) { settleReset(retired, keep, mounts = mounts) }
-            // What the reset keeps was renamed out before the refused delete.
-            assertTrue(File(keep, "root/.dsh/dsh-go/ui.json").exists())
+            assertFalse(File(keep, "root/.dsh/dsh-go/ui.json").exists())
+            assertTrue(File(retired, "rootfs/root/.dsh/dsh-go/ui.json").exists())
             assertTrue(File(retired, "rootfs/dev").exists())
         } finally { base.deleteRecursively() }
     }

@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/access_state.dart';
+import '../../state/phone_state.dart';
 import '../access/access_pick_page.dart';
 import '../access/access_summary_page.dart';
 import '../access/access_walk.dart';
@@ -30,6 +31,7 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
   bool _summary = false;
   bool _walkedOnce = false;
   bool _finishing = false;
+  bool _choosing = false;
 
   Future<void> _walked() async {
     if (_walkedOnce) return;
@@ -68,36 +70,68 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
     widget.onDone();
   }
 
+  Future<void> _choose(Set<AccessFeature> features, PhoneConfirmMode? phoneMode) async {
+    if (_choosing) return;
+    setState(() => _choosing = true);
+    try {
+      await ref.read(accessSetupProvider.notifier).choose(features, phoneMode: phoneMode);
+      if (features.contains(AccessFeature.phone)) {
+        final readings =
+            ref.read(accessReadingsProvider).value ?? await ref.read(accessReadingsProvider.notifier).refresh();
+        if (readings.rootRuntime) {
+          try {
+            final phone = ref.read(phoneProvider.notifier);
+            await phone.setEnabled(true);
+            await phone.refreshStatus();
+            await ref.read(accessReadingsProvider.notifier).refresh();
+          } catch (_) {
+            // The existing phone-control settings page remains the recovery path.
+          }
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _choosing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final setup = ref.watch(accessSetupProvider);
     final readings = ref.watch(accessReadingsProvider).value;
     final features = setup.features;
     final Widget page;
-    if (setup.loaded && features == null) {
+    if (_choosing) {
+      page = const OnboardingScaffold(key: ValueKey('choosing'), children: [SizedBox.shrink()]);
+    } else if (setup.loaded && features == null) {
       // The pick needs nothing from the phone (mobile data, if known, shows when read).
       page = AccessPickPage(
         key: const ValueKey('pick'),
-        onPicked: (picked, phoneMode) =>
-            unawaited(ref.read(accessSetupProvider.notifier).choose(picked, phoneMode: phoneMode)),
+        onPicked: (picked, phoneMode) => unawaited(_choose(picked, phoneMode)),
         onSkip: widget.onDone,
       );
     } else if (features == null || readings == null) {
       page = const OnboardingScaffold(key: ValueKey('loading'), children: [SizedBox.shrink()]);
     } else {
-      final items = accessWalk(features, readings.vendor)
-          .where((item) => item != AccessItem.storage || readings.storage != true)
-          .toList();
+      final summaryItems = accessWalk(
+        features,
+        readings.vendor,
+      ).where((item) => item != AccessItem.storage || readings.storage != true).toList();
+      final walkItems = accessWalk(
+        features,
+        readings.vendor,
+        rootRuntime: readings.rootRuntime,
+      ).where((item) => item != AccessItem.storage || readings.storage != true).toList();
       page = _summary
           ? AccessSummaryPage(
               key: const ValueKey('summary'),
-              items: items,
+              items: summaryItems,
               voice: features.contains(AccessFeature.voice),
               onDone: () => unawaited(_finish()),
             )
           : AccessWalk(
               key: const ValueKey('walk'),
-              items: items,
+              items: walkItems,
               vendor: readings.vendor,
               skipped: setup.skipped,
               onSkip: (item) => unawaited(ref.read(accessSetupProvider.notifier).skip(item)),

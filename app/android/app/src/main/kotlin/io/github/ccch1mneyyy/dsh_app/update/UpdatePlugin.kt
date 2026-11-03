@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
+import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -49,7 +51,19 @@ class UpdatePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandl
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "info" -> result.success(installer.info())
-            "canRequestInstalls" -> result.success(installer.canRequestInstalls())
+            "canRequestInstalls" -> {
+                if (!BuildConfig.ROOT_RUNTIME) {
+                    result.success(installer.canRequestInstalls())
+                } else {
+                    worker.execute {
+                        runCatching {
+                            PhoneControl.get(appContext).background.autoGrantSelfPermissionsWithRoot { true }
+                        }
+                        val allowed = installer.canRequestInstalls()
+                        main.post { result.success(allowed) }
+                    }
+                }
+            }
             "openInstallPermission" -> result.success(installer.openInstallPermission(activity))
             "inspect" -> {
                 val apk = apkArgument(call, result) ?: return

@@ -82,6 +82,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     @Volatile private var runGen = 0
     @Volatile private var stopGen = -1
     @Volatile private var resetting = false
+    @Volatile private var pendingRootCleanup: DshProcess? = null
     // Retire skill writes at the stop request, before the Service receives ACTION_STOP.
     // This gate does not change process lifecycle or A5's ownership/launch decisions.
     private val managedSkillGate = ManagedSkillRuntimeGate()
@@ -304,6 +305,17 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     @Synchronized internal fun startProcess() {
         if (process != null || phase == Phase.INSTALLING || phase == Phase.STOPPING) return
+        pendingRootCleanup?.let { pending ->
+            if (pending.rootCleanupConfirmed) {
+                if (pendingRootCleanup === pending) pendingRootCleanup = null
+            } else {
+                error = "previous root container cleanup is unconfirmed; stop or reset to retry cleanup"
+                log("[dsh-app] $error", "system")
+                setPhase(Phase.ERROR)
+                DshService.stopSelfIfRunning(app)
+                return
+            }
+        }
         lastLaunch = null
         if (!installer.isCurrent()) {
             error = "runtime not installed"
@@ -382,7 +394,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 // Keep ownership while the old UID sweep runs, including a
                 // failure after spawning but before the waiter was allocated.
                 launched?.launchDiagnostics?.failed("startFailed")
-                launched?.let { p -> p.failStart(e.message ?: e.javaClass.simpleName); p.awaitExit() }
+                launched?.let { p ->
+                    p.failStart(e.message ?: e.javaClass.simpleName)
+                    val exited = p.awaitExit()
+                    if (!exited || !p.rootCleanupConfirmed) retainPendingRootCleanup(p)
+                }
                 if (gen != runGen) return@execute
                 process = null
                 PhoneControl.get(app).onEngineStopped()
@@ -400,6 +416,18 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         stopGen = runGen
         val p = process
         if (p == null) {
+            val pending = pendingRootCleanup
+            if (pending != null) {
+                worker.execute {
+                    pending.stop()
+                    if (pending.awaitExit(15_000) && pending.rootCleanupConfirmed) {
+                        clearPendingRootCleanup(pending)
+                    } else {
+                        log("[dsh-app] previous root cleanup remains unconfirmed; retry stop or reset", "system")
+                    }
+                }
+                return
+            }
             if (phase == Phase.STARTING) {
                 // The launch is still queued on the worker: finish the stop behind it.
                 setPhase(Phase.STOPPING)
@@ -454,10 +482,12 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         setPhase(Phase.STOPPING)
         worker.execute {
             try {
+                check(retryPendingRootCleanup()) { "previous root cleanup is unconfirmed; retry reset after cleanup" }
                 process?.let { p ->
                     p.stop()
-                    check(p.awaitExit(15_000)) { "runtime stop incomplete; retry reset after cleanup" }
+                    check(p.awaitExit(15_000)) { "runtime stop or root cleanup is unconfirmed; retry reset after cleanup" }
                 }
+                check(retryPendingRootCleanup()) { "previous root cleanup is unconfirmed; retry reset after cleanup" }
                 lastLaunch = null
                 try {
                     check(runtimeLogs.pauseDisk()) { "log reset pause timed out" }
@@ -769,6 +799,13 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     @Synchronized override fun onExit(source: DshProcess, code: Int, expected: Boolean) {
         if (source !== process) return
+        if (BuildConfig.ROOT_RUNTIME) {
+            if (source.rootCleanupConfirmed) {
+                clearPendingRootCleanup(source)
+            } else {
+                retainPendingRootCleanup(source)
+            }
+        }
         try {
             if (!expected && stopGen < runGen) {
                 source.launchDiagnostics.failed(if (source.startupError != null) "startFailed" else "exit:$code")
@@ -842,6 +879,31 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
     }
 
+    @Synchronized private fun retainPendingRootCleanup(source: DshProcess) {
+        if (BuildConfig.ROOT_RUNTIME && !source.rootCleanupConfirmed && pendingRootCleanup == null) {
+            pendingRootCleanup = source
+        }
+    }
+
+    @Synchronized private fun clearPendingRootCleanup(source: DshProcess) {
+        pendingRootCleanup = clearPendingIfSameOwner(
+            pendingRootCleanup,
+            source,
+            source.rootCleanupConfirmed,
+        )
+    }
+
+    private fun retryPendingRootCleanup(): Boolean {
+        val pending = synchronized(this) { pendingRootCleanup } ?: return true
+        if (!pending.rootCleanupConfirmed) {
+            pending.stop()
+            if (!pending.awaitExit(15_000)) return false
+        }
+        if (!pending.rootCleanupConfirmed) return false
+        clearPendingRootCleanup(pending)
+        return true
+    }
+
     /** Starts again right away; [startProcess] picks the mode. [how] names it if that fails. */
     private fun restartNow(how: String) {
         val gen = runGen
@@ -901,3 +963,6 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             }
     }
 }
+
+internal fun <T : Any> clearPendingIfSameOwner(pending: T?, completed: T, confirmed: Boolean): T? =
+    if (pending === completed && confirmed) null else pending

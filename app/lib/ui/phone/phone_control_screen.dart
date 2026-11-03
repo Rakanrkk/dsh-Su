@@ -387,27 +387,31 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
   List<Widget> _setup(PhoneStatus status) {
     final a11y = status.a11y;
     final confirmationReady = status.notifications && status.confirmationNotifications != false;
-    final showRestricted = !a11y.enabled && (status.device.mayNeedRestrictedSettings || _a11yAttemptFailed);
+    final showA11yStep = !status.rootRuntime || !a11y.ok;
+    final showNotificationsStep = !status.rootRuntime || !confirmationReady;
+    final showRestricted =
+        showA11yStep && !a11y.enabled && (status.device.mayNeedRestrictedSettings || _a11yAttemptFailed);
     return [
       ListPageCard(
         title: context.l10n.phoneControlSetup,
         children: [
-          PhoneStepRow(
-            step: 1,
-            done: a11y.ok,
-            title: context.l10n.phoneControlAccessibilityService,
-            subtitle: a11y.ok
-                ? context.l10n.phoneControlAccessibilityReady
-                : a11y.enabled
-                ? context.l10n.phoneControlAccessibilityReconnect
-                : context.l10n.phoneControlAccessibilityHint,
-            trailing: a11y.ok
-                ? const DoneMark()
-                : FixButton(
-                    label: a11y.enabled ? context.l10n.phoneControlGoSettings : context.l10n.phoneControlGoEnable,
-                    onPressed: _openA11y,
-                  ),
-          ),
+          if (showA11yStep)
+            PhoneStepRow(
+              step: 1,
+              done: a11y.ok,
+              title: context.l10n.phoneControlAccessibilityService,
+              subtitle: a11y.ok
+                  ? context.l10n.phoneControlAccessibilityReady
+                  : a11y.enabled
+                  ? context.l10n.phoneControlAccessibilityReconnect
+                  : context.l10n.phoneControlAccessibilityHint,
+              trailing: a11y.ok
+                  ? const DoneMark()
+                  : FixButton(
+                      label: a11y.enabled ? context.l10n.phoneControlGoSettings : context.l10n.phoneControlGoEnable,
+                      onPressed: _openA11y,
+                    ),
+            ),
           if (showRestricted)
             ListPageRow(
               icon: AppIcons.unlock,
@@ -419,19 +423,20 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
               subtitleMaxLines: 2,
               onTap: () => _push(const RestrictedSettingsGuidePage()),
             ),
-          PhoneStepRow(
-            step: 2,
-            done: confirmationReady,
-            title: context.l10n.phoneControlNotifications,
-            subtitle: status.notifications && status.confirmationNotifications == false
-                ? context.l10n.phoneBackgroundNotificationBlocked
-                : status.notifications
-                ? context.l10n.phoneControlNotificationsPairingHint
-                : context.l10n.phoneControlNotificationsHint,
-            trailing: confirmationReady
-                ? DoneMark(label: context.l10n.phoneControlAllowed)
-                : FixButton(label: context.l10n.phoneControlGoEnable, onPressed: _openAppDetails),
-          ),
+          if (showNotificationsStep)
+            PhoneStepRow(
+              step: 2,
+              done: confirmationReady,
+              title: context.l10n.phoneControlNotifications,
+              subtitle: status.notifications && status.confirmationNotifications == false
+                  ? context.l10n.phoneBackgroundNotificationBlocked
+                  : status.notifications
+                  ? context.l10n.phoneControlNotificationsPairingHint
+                  : context.l10n.phoneControlNotificationsHint,
+              trailing: confirmationReady
+                  ? DoneMark(label: context.l10n.phoneControlAllowed)
+                  : FixButton(label: context.l10n.phoneControlGoEnable, onPressed: _openAppDetails),
+            ),
           ListPageRow(
             key: const Key('phone-a11y-restore'),
             icon: AppIcons.keepAlive,

@@ -13,23 +13,27 @@ void main() {
 
   test('status parses every field of the contract', () async {
     final native = FakePhoneNative(
-      status: phoneStatus(
-        a11y: true,
-        notifications: false,
-        mode: 'shizuku',
-        backgroundReady: false,
-        backgroundReason: 'Shizuku 没有在运行',
-        shizukuInstalled: true,
-        wirelessDebugging: null,
-        paired: true,
-        taskActive: true,
-        taskApp: '美团',
-        taskPaused: true,
-      ),
+      status: {
+        ...phoneStatus(
+          a11y: true,
+          notifications: false,
+          mode: 'shizuku',
+          backgroundReady: false,
+          backgroundReason: 'Shizuku 没有在运行',
+          shizukuInstalled: true,
+          wirelessDebugging: null,
+          paired: true,
+          taskActive: true,
+          taskApp: '美团',
+          taskPaused: true,
+        ),
+        'rootRuntime': true,
+      },
     )..install();
     final s = await channel.status();
     expect(native.methods, ['status']);
     expect(s.ready, isTrue);
+    expect(s.rootRuntime, isTrue);
     expect(s.enabled, isTrue);
     expect(s.bridgeListening, isTrue);
     expect(s.a11y.ok, isTrue);
@@ -53,6 +57,7 @@ void main() {
     FakePhoneNative(status: phoneStatus(device: null)).install();
     final s = await channel.status();
     expect(s.ready, isTrue);
+    expect(s.rootRuntime, isFalse);
     expect(s.device.manufacturer, isNull);
     // Unknown → the restricted-settings hint may apply.
     expect(s.device.mayNeedRestrictedSettings, isTrue);
