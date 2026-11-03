@@ -46,7 +46,7 @@ class DshProcess(
     // state, the second sees reported=true and returns without side effects.
     @Volatile private var rootExitReported = false
     // Root branch state; the supervisor owns pid files, cgroups and cleanup.
-    private var rootSession: DshProcessRootSession? = null
+    private var runcSession: DshRuncClient.Session? = null
     // Share captured identities across launcher replacement within this app
     // process. Both capture and cleanup use the shared state's monitor.
     private val cleanupState by lazy {
@@ -68,7 +68,11 @@ class DshProcess(
         private set
 
     val launchDiagnostics = LaunchDiagnostics()
-    val executionMode: String? get() = launchDiagnostics.currentMode(process?.isAlive == true)
+    /** App-side engine state: a local OS process, or the remote runc session. */
+    private val engineAlive: Boolean
+        get() = process?.isAlive == true || runcSession?.isAlive == true
+
+    val executionMode: String? get() = launchDiagnostics.currentMode(engineAlive)
 
     var directFallbackReason: String? = null
         private set
@@ -272,34 +276,35 @@ class DshProcess(
             return
         }
         onLaunchMethod?.invoke(false)
-        val session = DshProcessRootSession(
-            plan,
-            onEvent = { event ->
-                if (event.event == "error") {
-                    listener.onLog("[dsh-app] root supervisor error " + event.fields.joinToString(" "), "system")
+        val session = DshRuncClient.Session(context, port, onLog = listener::onLog, onStdout = ::detectToken)
+        runcSession = session
+        readyReported = false
+        launchDiagnostics.spawned()
+        listener.onLog("[dsh-app] launch method: runc-mountns", "system")
+        session.bind(
+            onReady = {
+                thread(name = "dsh-runc-start", isDaemon = true) {
+                    try {
+                        session.start(guestArgv, effectiveGuestEnv) { error ->
+                            listener.onLog("[dsh-app] runc launch failed: ${error.message}", "system")
+                            failStart(error.message ?: error.javaClass.simpleName)
+                        }
+                    } catch (error: Exception) {
+                        listener.onLog("[dsh-app] runc compose failed: ${error.message}", "system")
+                        failStart(error.message ?: error.javaClass.simpleName)
+                    }
                 }
             },
-            onLog = listener::onLog,
-            onStdout = ::detectToken,
-        )
-        rootSession = session
-        readyReported = false
-        process = session.processReference()
-        launchDiagnostics.spawned()
-        val frame = RootLaunch.frame(guestArgv)
-        session.startPumps()
-        thread(name = "dsh-root-frame", isDaemon = true) {
-            try {
-                session.writeLaunchFrame(frame)
-            } catch (error: Exception) {
+            onFailure = { error ->
+                listener.onLog("[dsh-app] runc bind failed: ${error.message}", "system")
                 failStart(error.message ?: error.javaClass.simpleName)
-            }
-        }
-        waiter = thread(name = "dsh-root-wait", isDaemon = true) {
-            val exited = session.awaitExit(0)
-            val code = session.exitCode() ?: -1
-            val confirmed = exited && session.cleanupConfirmed()
-            reportRootExit(code, confirmed, unexpected = !stopping)
+            },
+        )
+        thread(name = "dsh-runc-wait", isDaemon = true) {
+            val code = session.awaitRemoteExit()
+            session.onRemoteExit(code)
+            session.release()
+            reportRootExit(code, confirmed = true, unexpected = false)
         }
         if (stopping) stop()
     }
@@ -315,7 +320,7 @@ class DshProcess(
             if (rootExitReported) return
             rootExitReported = true
             process = null
-            rootSession = null
+            runcSession = null
         }
         if (!confirmed) {
             val reason = if (unexpected) "exit" else "stop"
@@ -379,19 +384,23 @@ class DshProcess(
         if (expected) expectedExit = true
         if (stopper != null) return
         if (BuildConfig.ROOT_RUNTIME) {
-            val session = rootSession ?: run {
+            val session = runcSession ?: run {
                 if (waiter?.isAlive != true) reportRootExit(0, confirmed = true, unexpected = false)
                 return
             }
             stopper = thread(name = "dsh-stop", isDaemon = true) {
-                try {
-                    session.stopControl()
-                    val exited = session.awaitExit(STOP_TIMEOUT_MS)
-                    val code = session.exitCode() ?: -1
-                    val confirmed = exited && session.cleanupConfirmed()
-                    reportRootExit(code, confirmed, unexpected = false)
+                val status = try {
+                    session.stopStdin()
+                    session.kill()
                 } catch (error: Exception) {
-                    reportRootExit(session.exitCode() ?: -1, confirmed = false, unexpected = false)
+                    null
+                }
+                if (status == "ok") {
+                    session.onRemoteExit(0)
+                    reportRootExit(0, confirmed = true, unexpected = false)
+                } else {
+                    listener.onLog("[dsh-app] runc stop not confirmed: ${status ?: "remoteError"}", "system")
+                    reportRootExit(-1, confirmed = false, unexpected = false)
                 }
             }
             return
@@ -470,14 +479,14 @@ class DshProcess(
         val base = "http://127.0.0.1:$port"
         thread(name = "dsh-ready", isDaemon = true) {
             val deadline = System.currentTimeMillis() + 90_000
-            while (System.currentTimeMillis() < deadline && !stopping && process?.isAlive == true) {
+            while (System.currentTimeMillis() < deadline && !stopping && engineAlive) {
                 if (canConnect(port)) {
                     listener.onReady(this, base, token)
                     return@thread
                 }
                 Thread.sleep(250)
             }
-            if (!stopping && process?.isAlive == true) {
+            if (!stopping && engineAlive) {
                 failStart("token seen but port $port never accepted connections")
             }
         }

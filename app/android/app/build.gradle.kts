@@ -39,6 +39,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        aidl = true
     }
 
     defaultConfig {
@@ -136,6 +137,8 @@ flutter {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    implementation("com.github.topjohnwu.libsu:core:6.0.0") // Apache-2.0: root shell + RootService Binder IPC
+    implementation("com.github.topjohnwu.libsu:service:6.0.0")
 
     // .tar.xz support for the rootfs bundle.
     implementation("org.tukaani:xz:1.10")
