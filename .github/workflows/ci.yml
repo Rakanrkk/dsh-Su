@@ -30,6 +30,7 @@ jobs:
       dart: ${{ steps.sel.outputs.dart }}
       pluginkit: ${{ steps.sel.outputs.pluginkit }}
       runtime: ${{ steps.sel.outputs.runtime }}
+      tooling: ${{ steps.sel.outputs.tooling }}
       guide: ${{ steps.sel.outputs.guide }}
     steps:
       - uses: actions/checkout@v7
@@ -57,13 +58,13 @@ jobs:
         id: sel
         run: |
           if [ -f /tmp/changed.txt ] && grep -Eq '^\.github/workflows/ci\.yml$' /tmp/changed.txt; then
-            for k in app dart pluginkit runtime guide; do
+            for k in app dart pluginkit runtime tooling guide; do
               echo "$k=true" >> "$GITHUB_OUTPUT"
             done
             exit 0
           fi
           if [ -n "${ALL:-}" ]; then
-            for k in app dart pluginkit runtime guide; do
+            for k in app dart pluginkit runtime tooling guide; do
               echo "$k=true" >> "$GITHUB_OUTPUT"
             done
             exit 0
@@ -79,6 +80,7 @@ jobs:
           sel dart '^packages/(dsh_client|dsh_remote)/'
           sel pluginkit '^sdk/plugin-kit/'
           sel runtime '^runtime/'
+          sel tooling '^tooling/'
           sel guide '^(docs/guide/|app/tool/guide_sync\.py$)'
           cat "$GITHUB_OUTPUT"
 
@@ -192,6 +194,15 @@ jobs:
           echo "DSH_PREFIX=$prefix" >> "$GITHUB_ENV"
           echo "DSH_TEST_PREFIX=$prefix" >> "$GITHUB_ENV"
       - run: node --test runtime/tests/*.test.mjs
+
+  tooling:
+    if: needs.changes.outputs.tooling == 'true'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 -m unittest discover -s tooling -p 'test_*.py' -v
 
   guide:
     if: needs.changes.outputs.guide == 'true'
