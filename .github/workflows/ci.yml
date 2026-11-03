@@ -135,11 +135,13 @@ jobs:
         run: |
           ./gradlew \
             -Pdsh.rootRuntime=true \
-            :app:testX86_64DebugUnitTest \
+            :app:testX64DebugUnitTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsTest \
+            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsResultTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SecureSettingsGrantTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.DshProcessRootSessionTest \
+            --tests io.github.ccch1mneyyy.dsh_app.phone.background.RootBackendTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.RootLaunchTest \
+            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeProcessOwnershipTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeMountGuardTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeResetMountGuardTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.GuestAgentsModeTest
