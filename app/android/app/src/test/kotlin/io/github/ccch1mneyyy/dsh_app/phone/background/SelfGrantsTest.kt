@@ -21,10 +21,17 @@ class SelfGrantsTest {
     }
 
     @Test fun sdk32KeepsTheFixedFivePermissions() {
-        assertEquals(base, selfPermissions(32))
+        assertEquals(base + "android.permission.MANAGE_EXTERNAL_STORAGE", selfPermissions(32))
+    }
+
+    @Test fun sdk30AddsAllFilesAccess() {
+        assertEquals(base + "android.permission.MANAGE_EXTERNAL_STORAGE", selfPermissions(30))
     }
 
     @Test fun sdk33AddsNotificationsLast() {
-        assertEquals(base + "android.permission.POST_NOTIFICATIONS", selfPermissions(33))
+        assertEquals(
+            base + "android.permission.POST_NOTIFICATIONS" + "android.permission.MANAGE_EXTERNAL_STORAGE",
+            selfPermissions(33),
+        )
     }
 }

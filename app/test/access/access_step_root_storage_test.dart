@@ -82,6 +82,29 @@ void main() {
       expect(driver.opened, isEmpty);
     });
 
+    testWidgets('storage alone does not hide an overlay that is still off', skip: !_rootRuntime, (tester) async {
+      final driver = FakeAccessDriver(
+        readingsWith(offPhone, storage: true),
+        answer: (item, readings) =>
+            item == AccessItem.overlay ? readingsWith(readings, overlay: true) : readings,
+      );
+      await _pump(tester, AccessStepPage(onDone: () {}), driver);
+      await _tapText(tester, '读写手机里的文件');
+      await tester.tap(find.byKey(const ValueKey('risk-confirm')));
+      await _frames(tester);
+      await _tapText(tester, '桌宠与悬浮窗');
+      await _tapPrimary(tester);
+
+      expect(find.text('允许显示在其他应用上层'), findsOneWidget);
+      expect(driver.opened, isEmpty);
+
+      await _tapPrimary(tester);
+      await awayAndBack(tester);
+      expect(driver.opened, ['overlay']);
+      await _frames(tester, 10);
+      expect(find.text('都开好了'), findsOneWidget);
+    });
+
     // 默认非 root：存储步骤与授权由 access_flow_test.dart 覆盖。
   });
 }

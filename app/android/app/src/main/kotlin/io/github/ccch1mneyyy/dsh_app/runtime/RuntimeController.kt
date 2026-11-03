@@ -63,6 +63,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     @Volatile private var error: String? = null
     @Volatile private var pendingEnv: Map<String, String> = emptyMap()
     @Volatile private var pendingPhoneStorage = false
+    @Volatile private var rootSelfGrantsDone = false
     /** Whether the managed AGENTS.md tells the model about ```dsh-ui views (settings, on by default). */
     @Volatile private var pendingVisualReplies = true
 
@@ -184,6 +185,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         if (phase == Phase.INSTALLING) return onDone(null)
         if (installer.isCurrent() && phase != Phase.ERROR) {
             if (phase == Phase.NOT_INSTALLED) setPhase(Phase.INSTALLED)
+            if (BuildConfig.ROOT_RUNTIME) ensureRootSelfGrants()
             return onDone(null)
         }
         setPhase(Phase.INSTALLING)
@@ -196,6 +198,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     emit(mapOf("type" to "progress", "step" to "extract", "done" to done, "total" to total))
                 }
                 log("[dsh-app] runtime ready in ${(System.currentTimeMillis() - started) / 1000}s", "system")
+                ensureRootSelfGrants()
                 error = null
                 // A new runtime may well fix what failed before.
                 strikes = 0
@@ -232,6 +235,18 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_START)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent) else app.startService(intent)
+    }
+
+    /** A one-shot root self-grant, off the main thread: every first-ready path converges here,
+     *  and plain stop-back-to-INSTALLED phases never touch it. */
+    private fun ensureRootSelfGrants() {
+        if (rootSelfGrantsDone || !BuildConfig.ROOT_RUNTIME) return
+        rootSelfGrantsDone = true
+        worker.execute {
+            if (!PhoneControl.get(app).background.autoGrantSelfPermissionsWithRoot { true }) {
+                log("[dsh-app] root self-grant left some permissions ungranted", "system")
+            }
+        }
     }
 
     /**

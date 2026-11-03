@@ -45,7 +45,7 @@ class DshProcess(
     // thread both observe process death; only the first one may report and reset
     // state, the second sees reported=true and returns without side effects.
     @Volatile private var rootExitReported = false
-    // Root branch state; the supervisor owns pid files, cgroups and cleanup.
+    // Root branch state; the official runc service owns pid files and cleanup.
     private var runcSession: DshRuncClient.Session? = null
     // Share captured identities across launcher replacement within this app
     // process. Both capture and cleanup use the shared state's monitor.
@@ -210,8 +210,8 @@ class DshProcess(
     }
 
     /**
-     * Root branch: reuses the composed guest argv and caller binds, skips the
-     * App-side pid file handling, and drives the supervisor wire protocol.
+     * Root branch: reuses the composed guest argv and caller binds, and starts
+     * the official runc service.
      */
     private fun startRoot(guestEnv: Map<String, String>, binds: List<String>, safe: Boolean, phone: Boolean, directEngine: Boolean, directFailed: Boolean, onLaunchMethod: ((Boolean) -> Unit)?) {
         check(BuildConfig.ROOT_RUNTIME) { "root launch requires the ROOT_RUNTIME build" }
@@ -260,7 +260,6 @@ class DshProcess(
         val envAt = argv.indexOf("/usr/bin/env")
         check(envAt >= 0) { "guest argv does not start the engine at /usr/bin/env" }
         val guestArgv = argv.drop(envAt)
-        val plan = DshProcessRoot.plan(context, manifest, rootfs, guestArgv, binds)
         val l2sReason = DirectLaunch.compatibilityReason(rootfs)
         if (l2sReason == "prootLinkStore") {
             listener.onLog("[dsh-app] root launch blocked: PRoot link store present; run the migration first", "system")
@@ -268,7 +267,7 @@ class DshProcess(
             return
         }
         listener.onLog("[dsh-app] launch method: root-chroot", "system")
-        listener.onLog("[dsh-app] launching " + plan.guestArgv.take(3).joinToString(" ") { redact(it) }, "system")
+        listener.onLog("[dsh-app] launching " + guestArgv.take(3).joinToString(" ") { redact(it) }, "system")
         if (stopping) {
             listener.onExit(this, 0, true)
             return
@@ -283,7 +282,7 @@ class DshProcess(
             onReady = {
                 thread(name = "dsh-runc-start", isDaemon = true) {
                     try {
-                        session.start(guestArgv, effectiveGuestEnv, plan.binds) { error ->
+                        session.start(guestArgv, effectiveGuestEnv, binds.map(DshProcessRoot::bind)) { error ->
                             listener.onLog("[dsh-app] runc launch failed: ${error.message}", "system")
                             session.onRemoteExit(-1)
                             failStart(error.message ?: error.javaClass.simpleName)
@@ -313,8 +312,7 @@ class DshProcess(
     /**
      * Single exit path for the root branch: whichever of the waiter and the stop
      * thread observes the death first reports exactly once and resets state; the
-     * other returns without reporting or clearing anything. Confirmed means the
-     * pumps have drained and the final event matches the actual su exit code.
+     * other returns without reporting or clearing anything.
      */
     private fun reportRootExit(code: Int, confirmed: Boolean, unexpected: Boolean) {
         synchronized(this@DshProcess) {
@@ -325,7 +323,7 @@ class DshProcess(
         }
         if (!confirmed) {
             val reason = if (unexpected) "exit" else "stop"
-            listener.onLog("[dsh-app] root $reason not confirmed; su exit " + code, "system")
+            listener.onLog("[dsh-app] root $reason not confirmed; exit " + code, "system")
         }
         listener.onExit(this, code, !unexpected)
     }

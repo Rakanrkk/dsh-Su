@@ -13,6 +13,7 @@ import android.app.ActivityOptions
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.app.UiAutomation
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -737,13 +738,35 @@ class PrivilegedDisplayCore(private val context: Context) {
         val failed = ArrayList<String>()
         for (permission in selfPermissions(Build.VERSION.SDK_INT)) {
             try {
-                grantRuntimePermission(permission, userId)
+                when (permission) {
+                    Manifest.permission.SYSTEM_ALERT_WINDOW, Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
+                        setSpecialAppOp(permission, userId)
+                    else -> grantRuntimePermission(permission, userId)
+                }
             } catch (e: InvocationTargetException) {
                 val target = e.targetException
                 if (isExpectedPermissionRejection(target)) failed.add(permission) else throw target
+            } catch (e: SecurityException) {
+                failed.add(permission)
             }
         }
         return failed
+    }
+
+    /** System dialogs cannot be raised from this shell-uid process: `cmd appops` is the
+     * system settings page's own backend, reachable from shell or root uid. */
+    private fun setSpecialAppOp(permission: String, userId: Int) {
+        val op = when (permission) {
+            Manifest.permission.SYSTEM_ALERT_WINDOW -> "android:system_alert_window"
+            Manifest.permission.MANAGE_EXTERNAL_STORAGE -> "android:manage_external_storage"
+            else -> throw SecurityException("unsupported special permission: $permission")
+        }
+        val process = ProcessBuilder(
+            "cmd", "appops", "set", "--user", userId.toString(), Proto.APP_PACKAGE, op, "allow",
+        ).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exit = process.waitFor()
+        if (exit != 0) throw SecurityException("appops set $op failed: $output")
     }
 
     private fun isExpectedPermissionRejection(e: Throwable): Boolean =

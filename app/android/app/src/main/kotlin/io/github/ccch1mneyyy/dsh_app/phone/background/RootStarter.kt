@@ -4,6 +4,7 @@ package io.github.ccch1mneyyy.dsh_app.phone.background
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Build
 import android.os.Process
 import java.io.IOException
 
@@ -96,13 +97,18 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
         return ok
     }
 
-    /** The fixed self grants over the connected root process; the permissions themselves are the answer. */
+    /** The fixed self grants over the connected root process; the app-side check is the answer. */
     fun grantSelf(): Boolean {
         val current = connect() ?: return false
-        val ok = current.execute(Bundle().apply {
+        val response = current.execute(Bundle().apply {
             putString(Proto.OP, Proto.OP_GRANT_SELF)
             putInt(Proto.USER, Process.myUid() / 100000)
-        }).getBoolean(Proto.OK)
+        })
+        val ok = selfGrantComplete(
+            response.getBoolean(Proto.OK),
+            response.getStringArrayList(Proto.FAILED_PERMISSIONS).orEmpty(),
+            selfPermissions(Build.VERSION.SDK_INT),
+        )
         if (!ok) synchronized(guard) {
             if (channel === current) state.note("rootGrantFailed")
         }

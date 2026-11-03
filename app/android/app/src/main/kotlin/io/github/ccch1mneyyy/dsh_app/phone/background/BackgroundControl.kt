@@ -2,6 +2,7 @@ package io.github.ccch1mneyyy.dsh_app.phone.background
 
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
 import io.github.ccch1mneyyy.dsh_app.R
+import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -12,9 +13,9 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.Environment
 import android.provider.Settings
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
-import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
@@ -266,13 +267,24 @@ class BackgroundControl private constructor(context: Context) {
     /**
      * Root builds' fixed self grants through the root backend: one `grantSelf` before the storage
      * binds are planned (output folders, Downloads, WRITE_SECURE_SETTINGS). The RPC result is not
-     * the answer: the storage permission itself is. Blocks; the caller's worker thread.
+     * the answer: every fixed permission is, including "All files access". Blocks; the caller's
+     * worker thread.
      */
     fun autoGrantSelfPermissionsWithRoot(mayStart: () -> Boolean): Boolean {
-        if (PhoneStorage.isGranted(app)) return true
+        if (selfPermissionsGranted()) return true
         if (root.status().connected || root.start(mayStart) != null) root.grantSelf()
-        return PhoneStorage.isGranted(app)
+        return selfPermissionsGranted()
     }
+
+    private fun selfPermissionsGranted(): Boolean =
+        selfPermissions(Build.VERSION.SDK_INT).all { permission ->
+            when (permission) {
+                Manifest.permission.MANAGE_EXTERNAL_STORAGE ->
+                    Environment.isExternalStorageManager()
+                Manifest.permission.SYSTEM_ALERT_WINDOW -> Settings.canDrawOverlays(app)
+                else -> app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+            }
+        }
 
     /**
      * Has the engine grant the permission over [via] (`shizuku` / `adb`): 不打扰模式's channel when it
