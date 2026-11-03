@@ -269,6 +269,14 @@
           "after": "ff1c3fc024dfc3520c8b3a89cefae95e3e71b38e5437abb42553681eb1d89cc2"
         }
       }
+    },
+    "workspace-files-final-symlink.diff": {
+      "0.2.1-rc.4": {
+        "node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js": {
+          "after": "c84f8474eadf1aefa27d5deb8cae2591e79b060ed0c3c886e2b4b1781807b948",
+          "before": "1d633aaf12df42e477438738f5939273ffc139ad96299ba471f97b46b2dd256c"
+        }
+      }
     }
   },
   "schema": 1

@@ -1,0 +1,11 @@
+--- a/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js
+@@ -588,7 +588,7 @@
+ 		*/
+ 		async locateFile(workspaceFileScope, path, signal) {
+ 			const { workspaceRoot, entry } = await this.inspect(workspaceFileScope, path, signal);
+-			if (entry.type !== "file") throw new RemoteError("workspace-file/not-regular-file", `"${path}" is a ${entry.type}`, {
++			if (entry.type !== "file" && entry.type !== "symlink") throw new RemoteError("workspace-file/not-regular-file", `"${path}" is a ${entry.type}`, {
+ 				path,
+ 				kind: entry.type
+ 			});
