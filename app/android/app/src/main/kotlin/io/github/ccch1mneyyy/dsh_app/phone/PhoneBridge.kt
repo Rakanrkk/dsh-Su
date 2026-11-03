@@ -5,6 +5,7 @@ import android.net.LocalSocket
 import android.os.Process
 import android.system.Os
 import android.system.OsConstants
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
@@ -26,9 +27,9 @@ import kotlin.concurrent.thread
  * connects to. proot passes abstract addresses through untranslated (filesystem socket paths are
  * rewritten into the rootfs and may exceed sun_path), so a Node process inside proot reaches it.
  *
- * Every connection must come from this app's uid (SO_PEERCRED) and start with a hello line
- * carrying this launch's token; then it is MCP over newline-delimited JSON-RPC, served by
- * [McpServer]. A per-launch random socket name keeps other apps from squatting it.
+ * Connections must come from this app's uid (or guest uid 0 in ROOT_RUNTIME) and start with a
+ * hello line carrying this launch's token; then it is MCP over newline-delimited JSON-RPC, served
+ * by [McpServer]. A per-launch random socket name keeps other apps from squatting it.
  *
  * Fallback: loopback TCP + token, opened only when asked (see [PhoneControl]); the
  * peer uid is checked through /proc/net/tcp when readable. Any app can reach loopback, so this
@@ -139,7 +140,7 @@ class PhoneBridge(
             } catch (_: Exception) {
                 -1
             }
-            if (uid != Process.myUid()) {
+            if (!uidAllowed(uid)) {
                 log("[dsh-app] phone bridge: refused a connection from uid $uid")
                 runCatching { sock.close() }
                 continue
@@ -161,7 +162,7 @@ class PhoneBridge(
                 return
             }
             val uid = loopbackPeerUid(sock.port, s.localPort)
-            if (uid != null && uid != Process.myUid()) {
+            if (uid != null && !uidAllowed(uid)) {
                 log("[dsh-app] phone bridge: refused a tcp connection from uid $uid")
                 runCatching { sock.close() }
                 continue
@@ -221,6 +222,10 @@ class PhoneBridge(
         const val MAX_LINE = 4 * 1024 * 1024
 
         private val random = SecureRandom()
+
+        /** ROOT_RUNTIME starts guest UID 0 in the shared network namespace. */
+        private fun uidAllowed(uid: Int): Boolean =
+            uid == Process.myUid() || (BuildConfig.ROOT_RUNTIME && uid == 0)
 
         fun hex(bytes: Int): String {
             val b = ByteArray(bytes)

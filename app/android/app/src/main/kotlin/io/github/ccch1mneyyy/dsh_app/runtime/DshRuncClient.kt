@@ -43,11 +43,11 @@ internal object DshRuncClient {
   },
   "root": { "path": "/data/data/io.github.rakanrkk.dsh_su/files/runtime/rootfs", "readonly": false },
   "mounts": [
-    { "destination": "/dev", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid","noexec","mode=755"] },
+    { "destination": "/dev", "type": "bind", "source": "/dev", "options": ["rbind","rprivate"] },
     { "destination": "/proc", "type": "proc", "source": "proc", "options": ["nosuid","noexec","nodev"] },
     { "destination": "/dev/pts", "type": "devpts", "source": "devpts", "options": ["nosuid","noexec","newinstance","ptmxmode=0666","mode=0620"] },
-    { "destination": "/dev/shm", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid","noexec","nodev","mode=1777","size=16m"] },
-    { "destination": "/sys", "type": "sysfs", "source": "sysfs", "options": ["nosuid","noexec","nodev","ro"] }
+    { "destination": "/dev/shm", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid","noexec","nodev","mode=1777"] },
+    { "destination": "/sys", "type": "bind", "source": "/sys", "options": ["rbind","rprivate"] }
   ],
   "linux": {
     "rootfsPropagation": "private",
@@ -269,6 +269,25 @@ internal object DshRuncClient {
             // rbind keeps /storage's FUSE submounts visible; rprivate stops the
             // container's mounts from propagating back to the host.
             val mounts = config.getJSONArray("mounts")
+            for (source in listOf("/system", "/apex")) {
+                if (!File(source).exists()) continue
+                mounts.put(
+                    JSONObject()
+                        .put("destination", source)
+                        .put("type", "bind")
+                        .put("source", source)
+                        .put("options", JSONArray().put("rbind").put("rprivate")),
+                )
+            }
+            val resources = config.getJSONObject("linux").optJSONObject("resources") ?: JSONObject().also {
+                config.getJSONObject("linux").put("resources", it)
+            }
+            resources.put(
+                "devices",
+                JSONArray().put(
+                    JSONObject().put("allow", true).put("type", "a").put("access", "rwm"),
+                ),
+            )
             for (entry in binds) {
                 mounts.put(
                     JSONObject()
