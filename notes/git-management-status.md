@@ -177,3 +177,7 @@ bc35f408840a4aae30fef48dea6212d320b1f9d9。58 files +1561/-525，含 README/docs
 | main | 上游基线（不动） | 保留 |
 
 未来合并后删除规则：分支完全 reachable 且无工作树 writer → 本地+远端普通 delete，不 force。
+
+# CI 维护（2026-11-03）
+
+735b240 的 Root 检查曾只用 YAML 解析和旧类清单复核，漏掉了已删除的 `DshProcessRootSessionTest` 和实际 Gradle 任务名 `:app:testX64DebugUnitTest`。维护规则：修改 `ci.yml` 时按当前源码里的实际类与任务写 filter，并执行 workflow 中的同一条 Gradle 命令验证；8f89909 已按此修正。
