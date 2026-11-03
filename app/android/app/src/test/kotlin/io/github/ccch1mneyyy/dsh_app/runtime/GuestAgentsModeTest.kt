@@ -86,4 +86,39 @@ class GuestAgentsModeTest {
             assertEquals(modified, file.lastModified())
         } finally { root.deleteRecursively() }
     }
+
+    @Test fun rootBuildDescribesARealRootChroot() {
+        val root = kotlin.io.path.createTempDirectory("agents-root").toFile()
+        try {
+            val file = File(root, "root/.dsh/AGENTS.md")
+            GuestSetup.writeAgentsMd(root, phoneStorage = false, rootRuntime = true)
+            val text = file.readText()
+            assertTrue(text.contains("chroot"))
+            assertTrue(text.contains("真实 root（UID 0）"))
+            assertFalse(text.contains("proot，免 Root"))
+            // Chroot paths stay guest-side, unlike Direct's absolute host paths.
+            assertTrue(text.contains("`/root/workspace`"))
+            assertFalse(text.contains(root.canonicalPath))
+            assertTrue(text.contains("`\$DSH_HOME/dsh-app/diagnostics.md`"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun rootBuildLeavesUserFilesAloneAndRewritesStably() {
+        val root = kotlin.io.path.createTempDirectory("agents-root-user").toFile()
+        try {
+            val file = File(root, "root/.dsh/AGENTS.md")
+            file.parentFile.mkdirs()
+            val original = "# My own workspace instructions\n".toByteArray()
+            file.writeBytes(original)
+            GuestSetup.writeAgentsMd(root, phoneStorage = true, rootRuntime = true)
+            assertArrayEquals(original, file.readBytes())
+            GuestSetup.writeAgentsMd(root, phoneStorage = true, rootRuntime = true)
+            val managed = File(root, "root/.dsh/AGENTS.md")
+            assertTrue(managed.readText().startsWith("<!-- dsh-app:managed"))
+            assertTrue(managed.setLastModified(1_234_567_000L))
+            val modified = managed.lastModified()
+            GuestSetup.writeAgentsMd(root, phoneStorage = true, rootRuntime = true)
+            assertEquals(modified, managed.lastModified())
+        } finally { root.deleteRecursively() }
+    }
 }
