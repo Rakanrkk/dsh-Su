@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:dsh_app/state/artifact_files.dart';
 import 'package:dsh_app/state/artifacts.dart';
 import 'package:dsh_app/state/connection_state.dart';
+import 'package:dsh_app/state/hosts_state.dart';
 import 'package:dsh_app/ui/chat/widgets/artifact_card.dart';
 import 'package:dsh_app/ui/share/share_card.dart';
 import 'package:dsh_app/ui/share/share_content.dart';
@@ -84,7 +85,12 @@ const _zip = Artifact(path: '/root/workspace/素材.zip', origin: ArtifactOrigin
 
 const _docx = Artifact(path: '/home/me/out/纪要.docx', origin: ArtifactOrigin.linked, turn: 1);
 
-Widget _card(List<Artifact> files, {HostConnection? connection}) => testApp(
+class _LocalActiveHost extends ActiveHostController {
+  @override
+  HostRef build() => HostRef.local;
+}
+
+Widget _card(List<Artifact> files) => testApp(
   Scaffold(
     body: Padding(
       padding: const EdgeInsets.all(16),
@@ -94,7 +100,10 @@ Widget _card(List<Artifact> files, {HostConnection? connection}) => testApp(
       ),
     ),
   ),
-  overrides: [activeConnectionProvider.overrideWithValue(AsyncData<HostConnection?>(connection ?? fakeConnection))],
+  overrides: [
+    activeHostProvider.overrideWith(_LocalActiveHost.new),
+    activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
+  ],
 );
 
 Future<void> _menuAction(WidgetTester tester, String label, {int row = 0}) async {
