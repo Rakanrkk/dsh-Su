@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.io.SuFile
 
 /**
  * Optional access to the phone's shared storage from the Linux environment.
@@ -43,6 +45,21 @@ object PhoneStorage {
         // Skip the mount rather than fail the launch when the path isn't readable.
         if (!java.io.File(hostRoot()).canRead()) return emptyList()
         return listOf("${hostRoot()}:$GUEST_PATH", "/storage")
+    }
+
+    /** Android-path membership for calls that already received a host path from resolveGuest. */
+    internal fun isSharedHostPath(path: String): Boolean {
+        val root = hostRoot()
+        return path == root || path.startsWith("$root/") ||
+            path == "/storage/emulated/0" || path.startsWith("/storage/emulated/0/")
+    }
+
+    /** The App can use the shared path either through its grant or a live Root shell. */
+    internal fun canUseRoot(context: Context, shell: Shell): Boolean {
+        if (isGranted(context)) return true
+        if (!shell.isRoot) return false
+        val root = SuFile(hostRoot()).apply { setShell(shell) }
+        return root.isDirectory && root.canRead()
     }
 
     /** `/root/手机存储` → `/sdcard` inside the rootfs, present only while the mode is on.

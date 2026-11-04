@@ -17,16 +17,22 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
+import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.io.SuFile
+import com.topjohnwu.superuser.io.SuFileInputStream
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.PluginRegistry
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
+import io.github.ccch1mneyyy.dsh_app.runtime.RootShellSelection
 import io.github.ccch1mneyyy.dsh_app.runtime.RootShellSelector
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import kotlin.concurrent.thread
 
@@ -34,19 +40,20 @@ import kotlin.concurrent.thread
  * Files the agent made for the user (chat deliverables / artifacts):
  * MethodChannel `dsh/files`.
  *
- * - `resolveGuest {path}` → host path of a local-engine file, or null.
+ * - `resolveGuest {path}` → host path of a local-engine file, or null. A
+ *   Root-only file is copied into the app cache first.
  * - `listOutputs {depth}` → `[{path, bytes, modified}]` under `/sdcard/Download/DSH-Go`, then
- *   the old `/sdcard/Download/DSH` (guest paths; empty without phone storage).
+ *   the old `/sdcard/Download/DSH` (guest paths; Root can list them without
+ *   Android shared-storage permission).
  * - `open {path, mime, name, chooser}` → ACTION_VIEW through this app's FileProvider.
- * - `saveToDownloads {path, name, mime}` → shown location (`Download/DSH-Go/x.pdf`):
- *   MediaStore Downloads on API 29+, the public Downloads directory before
- *   (asks for the storage permission when needed).
- *
+ * - `saveToDownloads {path, name, mime}` → shown location (`Download/DSH-Go/x.pdf`);
+ *   ordinary storage is used first, live Root is the fallback.
  * - `pdfInfo {path}` → page sizes; `pdfPage {path, page, width}` → PNG bytes;
  *   `pdfClose` (in-app PDF preview, [PdfPages]).
  *
  * Errors: `missing` (no such readable file), `no_app` (nothing opens this
- * type), `permission` (storage write refused), `failed`.
+ * type), `permission` (storage write refused), `root_unavailable` (no
+ * authorized Root shell when the fallback is needed), `failed`.
  */
 class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
     PluginRegistry.RequestPermissionsResultListener {
@@ -58,6 +65,7 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     private var pendingDenied: (() -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
     private val pdfPages = PdfPages()
+    private val rootAccess by lazy { RootFiles(context) }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -68,6 +76,7 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
         onDetachedFromActivity()
         methods.setMethodCallHandler(null)
         pdfPages.run({ close() }) {}
+        rootAccess.close()
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
@@ -90,24 +99,15 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "resolveGuest" -> background(result) {
-                val path = call.argument<String>("path") ?: ""
-                GuestFiles.resolve(context, path)?.absolutePath ?: run {
-                    if (!GuestFiles.isRootfsPath(path)) return@background null
-                    val selection = RootShellSelector.select(context)
-                        ?: throw IllegalStateException("no root shell")
-                    try {
-                        GuestFiles.resolveRoot(context, path, selection.shell)?.absolutePath
-                    } finally {
-                        selection.close()
-                    }
-                }
+                rootAccess.resolve(call.argument<String>("path") ?: "")?.absolutePath
             }
             "listOutputs" -> background(result) { listOutputs(call.argument<Int>("depth") ?: 3) }
-            "open" -> open(call, result)
+            "open" -> background(result) { open(call); null }
             "saveToDownloads" -> save(call, result)
-            "pdfInfo" -> pdf(result) { info(call.argument<String>("path") ?: "") }
-            "pdfPage" -> pdf(result) {
-                render(call.argument<String>("path") ?: "", call.argument<Int>("page") ?: 0, call.argument<Int>("width") ?: 1080)
+            "pdfInfo" -> background(result) { pdfPages.info(pdfSource(call.argument<String>("path") ?: "").path) }
+            "pdfPage" -> background(result) {
+                pdfPages.render(pdfSource(call.argument<String>("path") ?: "").path, call.argument<Int>("page") ?: 0,
+                    call.argument<Int>("width") ?: 1080)
             }
             "pdfClose" -> pdf(result) { close() }
             else -> result.notImplemented()
@@ -117,23 +117,17 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     // ---------------------------------------------------------------------------------------------
     // Open
 
-    private fun open(call: MethodCall, result: MethodChannel.Result) {
-        val file = File(call.argument<String>("path") ?: "")
-        if (!file.isFile) return result.error("missing", "no such file", null)
+    private fun open(call: MethodCall) {
+        val file = rootAccess.resolve(call.argument<String>("path") ?: "")
+            ?: throw FilesError("missing", "no such readable file")
         val name = call.argument<String>("name") ?: file.name
         val mime = mimeOf(call.argument<String>("mime"), name)
-        val uri = try {
-            contentUri(file, name)
-        } catch (e: Exception) {
-            return result.error("failed", e.message, null)
-        }
+        val uri = contentUri(file, name)
         val view = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, mime)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         view.clipData = ClipData.newRawUri(name, uri)
-        if (view.resolveActivity(context.packageManager) == null) {
-            return result.error("no_app", "no app opens $mime", null)
-        }
+        if (view.resolveActivity(context.packageManager) == null) throw FilesError("no_app", "no app opens $mime")
         val launch = if (call.argument<Boolean>("chooser") == true) Intent.createChooser(view, null) else view
         val host: Activity? = activity?.activity
         try {
@@ -142,11 +136,8 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
             } else {
                 context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
-            result.success(null)
         } catch (e: ActivityNotFoundException) {
-            result.error("no_app", e.message, null)
-        } catch (e: Exception) {
-            result.error("failed", e.message, null)
+            throw FilesError("no_app", e.message)
         }
     }
 
@@ -168,12 +159,13 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     // ---------------------------------------------------------------------------------------------
     // Save to Downloads
 
-    private fun save(call: MethodCall, result: MethodChannel.Result) {
-        val file = File(call.argument<String>("path") ?: "")
-        if (!file.isFile) return result.error("missing", "no such file", null)
+    private fun save(call: MethodCall, result: MethodChannel.Result) = background(result) {
+        val file = rootAccess.resolve(call.argument<String>("path") ?: "")
+            ?: throw FilesError("missing", "no such readable file")
         val name = safeName(call.argument<String>("name") ?: file.name)
         val mime = mimeOf(call.argument<String>("mime"), name)
-        saveOrAsk(file, name, mime, result, asked = false)
+        if (canWriteShared()) return@background saveNow(file, name, mime)
+        saveWithRoot(file, name, mime)
     }
 
     /**
@@ -250,6 +242,16 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
         return "${Environment.DIRECTORY_DOWNLOADS}/$SUBDIR/${target.name}"
     }
 
+    private fun saveWithRoot(file: File, name: String, mime: String): String {
+        val directory = rootAccess.rootOutput()
+        return rootAccess.openInput(file).use { input ->
+            LegacyDownloads.copy(input, directory, name).let { copied ->
+                MediaScannerConnection.scanFile(context, arrayOf(copied.absolutePath), arrayOf(mime), null)
+                "${Environment.DIRECTORY_DOWNLOADS}/$SUBDIR/${copied.name}"
+            }
+        }
+    }
+
     private fun saveToMediaStore(file: File, name: String, mime: String): String {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
@@ -286,7 +288,11 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     // The phone's output folder
 
     private fun listOutputs(depth: Int): List<Map<String, Any>> {
-        if (!PhoneStorage.isGranted(context)) return emptyList()
+        if (PhoneStorage.isGranted(context)) return listOutputsNormally(depth)
+        return rootAccess.listOutputs(depth)
+    }
+
+    private fun listOutputsNormally(depth: Int): List<Map<String, Any>> {
         val hostRoot = PhoneStorage.hostRoot()
         val out = ArrayList<Map<String, Any>>()
         fun walk(dir: File, level: Int) {
@@ -312,6 +318,9 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
 
     // ---------------------------------------------------------------------------------------------
 
+    private fun pdfSource(path: String): File = rootAccess.resolve(path)
+        ?: throw FilesError("missing", "no such readable file")
+
     private fun <T> background(result: MethodChannel.Result, work: () -> T) {
         thread(name = "dsh-files", isDaemon = true) {
             val outcome = try {
@@ -336,11 +345,111 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
 
     private fun fail(result: MethodChannel.Result, e: Throwable) = when (e) {
         is FilesError -> result.error(e.code, e.message, null)
+        is RootUnavailableException -> result.error("root_unavailable", e.message, null)
         is SecurityException -> result.error("permission", e.message, null)
         else -> result.error("failed", e.message ?: e.javaClass.simpleName, null)
     }
 
     private class FilesError(val code: String, message: String?) : Exception(message)
+
+    internal class RootFiles(
+        private val appContext: Context,
+        private val rootRuntime: Boolean = BuildConfig.ROOT_RUNTIME,
+        private val selector: (Context) -> RootShellSelection? = RootShellSelector::select,
+    ) {
+        private var selection: RootShellSelection? = null
+
+        fun resolve(path: String): File? {
+            if (!GuestFiles.isGuestRootPath(path)) return null
+            if (GuestFiles.isRootfsPath(path)) {
+                GuestFiles.resolve(appContext, path)?.let { return it }
+            } else if (!PhoneStorage.isSharedHostPath(path) || PhoneStorage.isGranted(appContext)) {
+                File(path).takeIf { it.isFile && it.canRead() }?.let { return it }
+            }
+            val active = ensureSelection() ?: throw RootUnavailableException()
+            return try {
+                when {
+                    GuestFiles.isRootfsPath(path) -> GuestFiles.resolveRoot(appContext, path, active.shell)?.canonicalFile
+                    isSharedGuestPath(path) -> rootSharedGuest(path, active.shell)?.canonicalFile
+                    else -> rootHost(path, active.shell)?.canonicalFile
+                }
+            } finally {
+                if (!active.useDefaultBinding) active.close()
+            }
+        }
+
+        fun listOutputs(depth: Int): List<Map<String, Any>> {
+            val active = ensureSelection() ?: throw RootUnavailableException()
+            val hostRoot = PhoneStorage.hostRoot()
+            val downloads = SuFile(File(hostRoot, Environment.DIRECTORY_DOWNLOADS).path).apply { setShell(active.shell) }
+            val out = ArrayList<Map<String, Any>>()
+            fun walk(dir: SuFile, level: Int) {
+                val children = dir.listFiles() ?: return
+                for (child in children.sortedBy { it.name }) {
+                    if (out.size >= MAX_OUTPUTS) return
+                    if (child.name.startsWith(".")) continue
+                    if (child.isDirectory) {
+                        if (level < depth) walk(child, level + 1)
+                    } else if (child.isFile) {
+                        out += mapOf(
+                            "path" to PhoneStorage.GUEST_PATH + child.absolutePath.removePrefix(hostRoot),
+                            "bytes" to child.length(),
+                            "modified" to child.lastModified(),
+                        )
+                    }
+                }
+            }
+            for (folder in listOf(SUBDIR, LEGACY_SUBDIR)) {
+                walk(downloads.getChildFile(folder), 1)
+            }
+            return out
+        }
+
+        fun rootOutput(): SuFile {
+            val active = ensureSelection() ?: throw RootUnavailableException()
+            val downloads = SuFile(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).path)
+                .apply { setShell(active.shell) }
+            val directory = downloads.getChildFile(SUBDIR)
+            if (!directory.isDirectory && !directory.mkdirs()) throw FilesError("failed", "cannot create Downloads/DSH-Go")
+            return directory
+        }
+
+        fun openInput(file: File): InputStream {
+            if (!PhoneStorage.isSharedHostPath(file.absolutePath)) return file.inputStream()
+            val active = ensureSelection() ?: throw RootUnavailableException()
+            return SuFileInputStream.open(SuFile(file.absolutePath).apply { setShell(active.shell) })
+        }
+
+        private fun rootSharedGuest(path: String, shell: Shell): File? {
+            val host = PhoneStorage.hostRoot() + path.removePrefix(PhoneStorage.GUEST_PATH)
+            return rootHost(host, shell)
+        }
+
+        private fun rootHost(path: String, shell: Shell): File? {
+            val source = SuFile(path).apply { setShell(shell) }
+            if (!source.isFile || !source.canRead()) return null
+            if (PhoneStorage.isSharedHostPath(path) && !PhoneStorage.canUseRoot(appContext, shell)) return null
+            return RootExports.copyToCache({ SuFileInputStream.open(source) }, GuestFiles.exportCache(appContext))
+        }
+
+        private fun ensureSelection(): RootShellSelection? {
+            if (!rootRuntime) throw RootUnavailableException()
+            selection?.let { return it }
+            val active = selector(appContext) ?: return null
+            selection = active
+            return active
+        }
+
+        private fun isSharedGuestPath(path: String): Boolean =
+            path == PhoneStorage.GUEST_PATH || path.startsWith("${PhoneStorage.GUEST_PATH}/")
+
+        fun close() {
+            selection?.close()
+            selection = null
+        }
+    }
+
+    internal class RootUnavailableException : Exception("no root shell")
 
     companion object {
         const val CHANNEL = "dsh/files"

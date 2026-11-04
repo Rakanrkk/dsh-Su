@@ -40,6 +40,8 @@ object GuestFiles {
         return !isSharedGuestPath(guestPath(resolved))
     }
 
+    internal fun isGuestRootPath(path: String): Boolean = path.startsWith("/")
+
     /** Host file for an absolute guest [path]; null when it is not a readable regular file. */
     fun resolve(context: Context, path: String): File? =
         resolve(rootfs(context), path, PhoneStorage.hostRoot(), PhoneStorage.isGranted(context))
@@ -93,7 +95,6 @@ object GuestFiles {
         val rootPaths = listOf(rootfs.absolutePath, rootfs.canonicalPath)
         val resolved = resolveGuestSegments(path) { segments ->
             val guest = guestPath(segments)
-            if (isSharedGuestPath(guest)) return@resolveGuestSegments null
             val candidate = suFile(hostOf(rootfs, segments, PhoneStorage.hostRoot()), shell)
             if (!candidate.isSymlink) null else readlink(shell, candidate.path).let { target ->
                 val root = rootPaths.firstOrNull { target == it || target.startsWith("$it/") }
@@ -103,28 +104,14 @@ object GuestFiles {
 
         val guest = guestPath(resolved)
         val source = hostOf(rootfs, resolved, PhoneStorage.hostRoot())
-        if (isSharedGuestPath(guest)) {
-            if (!PhoneStorage.isGranted(context)) return null
-            return source.takeIf { it.isFile && it.canRead() }
-        }
         val rootFile = suFile(source, shell)
         if (!rootFile.isFile || !rootFile.canRead()) return null
+        if (isSharedGuestPath(guest) && !PhoneStorage.canUseRoot(context, shell)) return null
 
-        val exportCache = File(context.cacheDir, "artifacts")
-        if (!exportCache.isDirectory && !exportCache.mkdirs() && !exportCache.isDirectory) {
-            throw IOException("cannot create artifact cache directory")
-        }
-        val temporary = File.createTempFile("guest-artifact-", ".tmp", exportCache)
-        try {
-            SuFileInputStream.open(rootFile).use { input ->
-                temporary.outputStream().use { output -> input.copyTo(output) }
-            }
-            return temporary
-        } catch (error: Exception) {
-            temporary.delete()
-            throw error
-        }
+        return RootExports.copyToCache({ SuFileInputStream.open(rootFile) }, exportCache(context))
     }
+
+    internal fun exportCache(context: Context): File = File(context.cacheDir, "artifacts")
 
     internal fun resolveGuestSegments(
         path: String,

@@ -191,4 +191,11 @@ class GuestFilesTest {
         assertEquals(true, GuestFiles.isRootfsPath("/sdcard/../root/workspace/file"))
         assertEquals(true, GuestFiles.isRootfsPath("/root/workspace/file"))
     }
+
+    @Test fun rootFallbackUsesAbsoluteGuestNamespacePathsOnly() {
+        assertEquals(true, GuestFiles.isGuestRootPath("/root/workspace/root-owned.bin"))
+        assertEquals(true, GuestFiles.isGuestRootPath("/sdcard/Download/file"))
+        assertEquals(true, GuestFiles.isGuestRootPath("/tmp/outside-guest-root"))
+        assertEquals(false, GuestFiles.isGuestRootPath("relative/file"))
+    }
 }
