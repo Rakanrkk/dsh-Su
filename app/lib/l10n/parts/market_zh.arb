@@ -1,12 +1,12 @@
 {
   "marketSectionOfficial": "官方",
-  "marketSectionAdapted": "适配 dsh-Su",
+  "marketSectionAdapted": "适配 DSH SU",
   "marketSectionAll": "全部",
   "marketSectionLoading": "正在载入…",
   "marketSectionFailed": "官方目录没打开",
   "marketSectionEmpty": "暂无",
   "marketTierOfficial": "官方",
-  "marketTierAdapted": "适配 dsh-Su",
+  "marketTierAdapted": "适配 DSH SU",
   "marketRiskMedium": "中风险",
   "marketRiskHigh": "高风险",
   "marketFlagInstallScripts": "安装时运行脚本",
@@ -21,8 +21,8 @@
   "marketFlagFilesystemBody": "会写入工作区以外的路径",
   "marketFlagObfuscated": "代码难以审阅",
   "marketFlagObfuscatedBody": "有压缩或混淆过的大文件，看不出它做什么",
-  "marketFlagNotAdapted": "未适配 dsh-Su",
-  "marketFlagNotAdaptedBody": "没有声明 dsh-Su 原生协议，在 App 里没有原生界面",
+  "marketFlagNotAdapted": "未适配 DSH SU",
+  "marketFlagNotAdaptedBody": "没有声明 DSH SU 原生协议，在 App 里没有原生界面",
   "marketFlagOtherBody": "自动检查报告的其他特征",
   "marketChecksTitle": "自动检查",
   "marketChecksClean": "没有发现风险特征",
@@ -53,8 +53,8 @@
   },
   "marketRiskConfirmAction": "仍然安装",
   "marketPinnedVersion": "锁定版本",
-  "marketRequiresApp": "需要 dsh-Su",
-  "marketNeedsApp": "需要 dsh-Su {version} 或更高版本",
+  "marketRequiresApp": "需要 DSH SU",
+  "marketNeedsApp": "需要 DSH SU {version} 或更高版本",
   "@marketNeedsApp": {
     "placeholders": {
       "version": {

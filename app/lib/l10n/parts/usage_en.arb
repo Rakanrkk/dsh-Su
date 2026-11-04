@@ -1,9 +1,9 @@
 {
   "usageStatsTitle": "Send anonymous usage stats",
-  "usageStatsSection": "Improve dsh-Su",
+  "usageStatsSection": "Improve DSH SU",
   "usageStatsFooter": "Only usage counts, versions and the phone’s maker. Never chats, files or accounts.",
   "usageNoticeBody": "No chats or personal info.\nTurn off anytime.",
-  "usageUpgradeNotice": "New: anonymous usage stats, to help improve dsh-Su.\nNo chats or personal info.",
+  "usageUpgradeNotice": "New: anonymous usage stats, to help improve DSH SU.\nNo chats or personal info.",
   "usageUpgradeLearn": "Learn more",
   "usageUpgradeOff": "Turn off"
 }

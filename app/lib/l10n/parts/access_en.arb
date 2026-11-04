@@ -1,6 +1,12 @@
 {
   "@@locale": "en",
-  "accessPickTitle": "What should dsh-Su help with?",
+  "accessPickTitle": "What should DSH SU help with?",
+  "accessRootTitle": "Root access",
+  "accessRootMessage": "DSH SU needs root access. After you allow it once, the app's permissions and configuration are set up automatically.",
+  "accessRootConfiguring": "Setting up automatically…",
+  "accessRootManagerNote": "Your root manager will show one prompt. It is the only confirmation you need.",
+  "accessRootFailed": "Authorization failed",
+  "accessRootAuthorize": "Authorize root",
   "accessPickMessage": "Pick any, then turn each one on",
   "accessPickConfirm": "Turn on selected",
   "accessSkip": "Skip",
@@ -61,7 +67,7 @@
   "accessBatteryWhy": "Tasks keep going when you switch apps",
   "accessVendorBackgroundWhy": "Keeps the system from cutting tasks off in the background",
   "accessAutostartTitle": "Allow auto-start",
-  "accessAutostartWhy": "Lets dsh-Su come back after the system clears it",
+  "accessAutostartWhy": "Lets DSH SU come back after the system clears it",
   "accessVivoAutostartPath": "Permission management › Auto-start › {app}",
   "@accessVivoAutostartPath": {
     "placeholders": {
@@ -81,7 +87,7 @@
   "accessA11yTitle": "Turn on accessibility",
   "accessA11yWhy": "Phone control reads the screen and taps through it",
   "accessPopupTitle": "Allow pop-ups in background",
-  "accessPopupWhy": "Brings you back to dsh-Su when phone control is done",
+  "accessPopupWhy": "Brings you back to DSH SU when phone control is done",
   "accessVivoPopupPath": "Permission management › {app} › Display pop-up windows in background",
   "@accessVivoPopupPath": {
     "placeholders": {

@@ -21,10 +21,10 @@ class L10nEn extends L10n {
 
   @override
   String get a11yRestoreNotice =>
-      'Once authorized, accessibility will be turned back on if disabled in system settings. To stop phone control, turn it off in dsh-Su.';
+      'Once authorized, accessibility will be turned back on if disabled in system settings. To stop phone control, turn it off in DSH SU.';
 
   @override
-  String get a11yRestoreForceStop => 'After a force stop, reopen dsh-Su to restore the service.';
+  String get a11yRestoreForceStop => 'After a force stop, reopen DSH SU to restore the service.';
 
   @override
   String get a11yRestoreGrant => 'Authorize and enable';
@@ -60,7 +60,26 @@ class L10nEn extends L10n {
   String get a11yRestoreCopied => 'Command copied';
 
   @override
-  String get accessPickTitle => 'What should dsh-Su help with?';
+  String get accessPickTitle => 'What should DSH SU help with?';
+
+  @override
+  String get accessRootTitle => 'Root access';
+
+  @override
+  String get accessRootMessage =>
+      'DSH SU needs root access. After you allow it once, the app\'s permissions and configuration are set up automatically.';
+
+  @override
+  String get accessRootConfiguring => 'Setting up automatically…';
+
+  @override
+  String get accessRootManagerNote => 'Your root manager will show one prompt. It is the only confirmation you need.';
+
+  @override
+  String get accessRootFailed => 'Authorization failed';
+
+  @override
+  String get accessRootAuthorize => 'Authorize root';
 
   @override
   String get accessPickMessage => 'Pick any, then turn each one on';
@@ -177,7 +196,7 @@ class L10nEn extends L10n {
   String get accessAutostartTitle => 'Allow auto-start';
 
   @override
-  String get accessAutostartWhy => 'Lets dsh-Su come back after the system clears it';
+  String get accessAutostartWhy => 'Lets DSH SU come back after the system clears it';
 
   @override
   String accessVivoAutostartPath(String app) {
@@ -199,7 +218,7 @@ class L10nEn extends L10n {
   String get accessPopupTitle => 'Allow pop-ups in background';
 
   @override
-  String get accessPopupWhy => 'Brings you back to dsh-Su when phone control is done';
+  String get accessPopupWhy => 'Brings you back to DSH SU when phone control is done';
 
   @override
   String accessVivoPopupPath(String app) {
@@ -2536,7 +2555,7 @@ class L10nEn extends L10n {
   String get botsForumSubtitle => 'Ask, share, connect';
 
   @override
-  String get botsProjectHome => 'dsh-Su project home';
+  String get botsProjectHome => 'DSH SU project home';
 
   @override
   String get botsOpenSource => 'Open-source project';
@@ -4897,7 +4916,7 @@ class L10nEn extends L10n {
   String get engineAccountFinishInBrowser => 'Finish sign-in in your browser';
 
   @override
-  String get engineAccountReturnToDsh => 'Return to dsh-Su after signing in';
+  String get engineAccountReturnToDsh => 'Return to DSH SU after signing in';
 
   @override
   String get engineAccountFinishingSignIn => 'Finishing sign-in';
@@ -7392,7 +7411,7 @@ class L10nEn extends L10n {
 
   @override
   String get hubSettingsStorageDenied =>
-      'Storage access wasn’t granted. Allow “All files access” for dsh-Su in system settings, then try again.';
+      'Storage access wasn’t granted. Allow “All files access” for DSH SU in system settings, then try again.';
 
   @override
   String get hubSettingsRestartRequired => 'Takes effect after restarting the engine';
@@ -7785,7 +7804,7 @@ class L10nEn extends L10n {
   String get hubTableTintNoneHint => 'Grid lines only, the lightest';
 
   @override
-  String get hubAbout => 'About dsh-Su';
+  String get hubAbout => 'About DSH SU';
 
   @override
   String get hubAboutAuthor => 'Original author of DSH Go';
@@ -7959,7 +7978,7 @@ class L10nEn extends L10n {
 
   @override
   String get iconShortcutNote =>
-      'Android doesn’t let an app use any picture as its icon, so this adds a separate shortcut that opens dsh-Su. Some home screens put a small badge on its corner.';
+      'Android doesn’t let an app use any picture as its icon, so this adds a separate shortcut that opens DSH SU. Some home screens put a small badge on its corner.';
 
   @override
   String get iconShortcutAdded => 'Added to your home screen';
@@ -7968,7 +7987,7 @@ class L10nEn extends L10n {
   String get iconShortcutConfirm => 'Confirm in the dialog that appears';
 
   @override
-  String get iconShortcutNoDialog => 'No dialog? Allow dsh-Su to create home screen shortcuts in system settings.';
+  String get iconShortcutNoDialog => 'No dialog? Allow DSH SU to create home screen shortcuts in system settings.';
 
   @override
   String get iconShortcutSettings => 'Settings';
@@ -8062,11 +8081,11 @@ class L10nEn extends L10n {
   String get liveUnsupported => 'This phone\'s system doesn\'t support live activities yet';
 
   @override
-  String get liveBlockedTitle => 'Live activities are off for dsh-Su';
+  String get liveBlockedTitle => 'Live activities are off for DSH SU';
 
   @override
   String get liveBlockedText =>
-      'Turn on live activities for dsh-Su in system settings (some phones call it “Show on Live Alerts”)';
+      'Turn on live activities for DSH SU in system settings (some phones call it “Show on Live Alerts”)';
 
   @override
   String get localeTitle => 'Language';
@@ -8161,7 +8180,7 @@ class L10nEn extends L10n {
   String get marketSectionOfficial => 'Official';
 
   @override
-  String get marketSectionAdapted => 'Made for dsh-Su';
+  String get marketSectionAdapted => 'Made for DSH SU';
 
   @override
   String get marketSectionAll => 'All';
@@ -8179,7 +8198,7 @@ class L10nEn extends L10n {
   String get marketTierOfficial => 'Official';
 
   @override
-  String get marketTierAdapted => 'Made for dsh-Su';
+  String get marketTierAdapted => 'Made for DSH SU';
 
   @override
   String get marketRiskMedium => 'Medium risk';
@@ -8226,10 +8245,10 @@ class L10nEn extends L10n {
   String get marketFlagObfuscatedBody => 'Has large minified or obfuscated files; hard to tell what they do';
 
   @override
-  String get marketFlagNotAdapted => 'Not made for dsh-Su';
+  String get marketFlagNotAdapted => 'Not made for DSH SU';
 
   @override
-  String get marketFlagNotAdaptedBody => 'Declares no dsh-Su native protocol, so it has no native screens in the app';
+  String get marketFlagNotAdaptedBody => 'Declares no DSH SU native protocol, so it has no native screens in the app';
 
   @override
   String get marketFlagOtherBody => 'Another trait the automatic checks reported';
@@ -8265,11 +8284,11 @@ class L10nEn extends L10n {
   String get marketPinnedVersion => 'Pinned version';
 
   @override
-  String get marketRequiresApp => 'Requires dsh-Su';
+  String get marketRequiresApp => 'Requires DSH SU';
 
   @override
   String marketNeedsApp(String version) {
-    return 'Needs dsh-Su $version or later';
+    return 'Needs DSH SU $version or later';
   }
 
   @override
@@ -8978,7 +8997,7 @@ class L10nEn extends L10n {
   String get phoneEngineLogs => 'Logs';
 
   @override
-  String get phoneEngineAutoStart => 'Start when dsh-Su opens';
+  String get phoneEngineAutoStart => 'Start when DSH SU opens';
 
   @override
   String get phoneEngineKeepAlive => 'Background running';
@@ -9255,7 +9274,7 @@ class L10nEn extends L10n {
 
   @override
   String get phoneDndShizukuPermissionFailed =>
-      'Permission not granted. Allow dsh-Su in Shizuku’s “Application management”.';
+      'Permission not granted. Allow DSH SU in Shizuku’s “Application management”.';
 
   @override
   String get phoneDndPairedConnect => 'Paired. Tap “Connect”.';
@@ -9361,11 +9380,11 @@ class L10nEn extends L10n {
 
   @override
   String get phoneDndRootConnected =>
-      'Root is connected. If it drops, choose it here again; dsh-Su asks for root on its own only with “Keep root channel” on above.';
+      'Root is connected. If it drops, choose it here again; DSH SU asks for root on its own only with “Keep root channel” on above.';
 
   @override
   String get phoneDndRootConnectedKept =>
-      'Root is connected. If it drops, dsh-Su asks your root manager again on its own.';
+      'Root is connected. If it drops, DSH SU asks your root manager again on its own.';
 
   @override
   String get phoneDndRootRetry => 'Ask for root again';
@@ -9382,10 +9401,10 @@ class L10nEn extends L10n {
       'Open Shizuku and follow “Start via Wireless debugging” (requires Wi-Fi). This page refreshes when you return.';
 
   @override
-  String get phoneDndGrantShizukuHint => 'Shizuku is running. Allow dsh-Su to use it next.';
+  String get phoneDndGrantShizukuHint => 'Shizuku is running. Allow DSH SU to use it next.';
 
   @override
-  String get phoneDndGrantShizuku => 'Allow dsh-Su';
+  String get phoneDndGrantShizuku => 'Allow DSH SU';
 
   @override
   String get phoneDndShizukuAllSet => 'Shizuku is ready.';
@@ -9397,7 +9416,7 @@ class L10nEn extends L10n {
   String get phoneDndShizukuRunning => 'Shizuku running';
 
   @override
-  String get phoneDndShizukuGranted => 'dsh-Su allowed';
+  String get phoneDndShizukuGranted => 'DSH SU allowed';
 
   @override
   String get phoneDndShizukuCompatibility =>
@@ -9511,7 +9530,7 @@ class L10nEn extends L10n {
   String get phoneOpenAccessibilityFailed => 'Can’t open settings. Find DSH in Settings → Accessibility.';
 
   @override
-  String get phoneOpenAppInfoFailed => 'Can’t open app info. Find dsh-Su in Settings → Apps.';
+  String get phoneOpenAppInfoFailed => 'Can’t open app info. Find DSH SU in Settings → Apps.';
 
   @override
   String get phoneStopFailed => 'Couldn’t stop. Tap “Stop” on the floating bar or notification.';
@@ -9755,14 +9774,14 @@ class L10nEn extends L10n {
 
   @override
   String get phoneRestrictedTryOverlay =>
-      'First try turning on dsh-Su in floating window settings. When “Restricted setting” appears, tap “OK”. The option below appears only after this step.';
+      'First try turning on DSH SU in floating window settings. When “Restricted setting” appears, tap “OK”. The option below appears only after this step.';
 
   @override
-  String get phoneRestrictedBackOverlay => 'Return to floating window settings and turn on dsh-Su.';
+  String get phoneRestrictedBackOverlay => 'Return to floating window settings and turn on DSH SU.';
 
   @override
   String get phoneRestrictedHuaweiOverlay =>
-      'HarmonyOS 4 and earlier usually skip this step. Turn on dsh-Su directly in floating window settings.';
+      'HarmonyOS 4 and earlier usually skip this step. Turn on DSH SU directly in floating window settings.';
 
   @override
   String get phoneRestrictedHuaweiAccessibility =>
@@ -10274,7 +10293,7 @@ class L10nEn extends L10n {
   String get phoneControlEnabledPending => 'On · Takes effect when the engine starts';
 
   @override
-  String get phoneReturnAfterDone => 'Back to dsh-Su when done';
+  String get phoneReturnAfterDone => 'Back to DSH SU when done';
 
   @override
   String get phoneReturnAfterDoneHint => 'Closes the bar, opens the chat';
@@ -10390,15 +10409,15 @@ class L10nEn extends L10n {
 
   @override
   String get phoneBackgroundGuideBody =>
-      'When a step needs your decision, a dsh-Su card appears. If the card is unavailable, the app tries a notification or returns here. Allow phone-control notifications and pop-up alerts in system settings.';
+      'When a step needs your decision, a DSH SU card appears. If the card is unavailable, the app tries a notification or returns here. Allow phone-control notifications and pop-up alerts in system settings.';
 
   @override
   String get phoneBackgroundOemHint =>
-      'In the system permissions for dsh-Su, check “Display pop-up windows while running in the background”, if available. Allowing it can help the app return automatically. Menu names vary by system version.';
+      'In the system permissions for DSH SU, check “Display pop-up windows while running in the background”, if available. Allowing it can help the app return automatically. Menu names vary by system version.';
 
   @override
   String get phoneBackgroundReturnHint =>
-      'If the app does not return when a task finishes, tap “Task complete · View result”. If system notifications or background windows are blocked, you may need to open dsh-Su yourself.';
+      'If the app does not return when a task finishes, tap “Task complete · View result”. If system notifications or background windows are blocked, you may need to open DSH SU yourself.';
 
   @override
   String get phoneBackgroundGotIt => 'Got it';
@@ -10411,7 +10430,7 @@ class L10nEn extends L10n {
 
   @override
   String get phonePrivilegedUpgrade =>
-      'This app build does not support that privileged channel. Update dsh-Su to use it.';
+      'This app build does not support that privileged channel. Update DSH SU to use it.';
 
   @override
   String get phonePrivilegedSui => 'Sui';
@@ -10446,11 +10465,11 @@ class L10nEn extends L10n {
   String get phonePrivilegedSuggested => 'Suggested';
 
   @override
-  String get phonePrivilegedRootRiskTitle => 'Give dsh-Su root access?';
+  String get phonePrivilegedRootRiskTitle => 'Give DSH SU root access?';
 
   @override
   String get phonePrivilegedRootRiskBody =>
-      'Your root manager (Magisk, KernelSU or APatch) will ask you. If you allow it, dsh-Su runs its own background service as root. It asks again on its own after a disconnect or restart only with “Keep root channel” on.';
+      'Your root manager (Magisk, KernelSU or APatch) will ask you. If you allow it, DSH SU runs its own background service as root. It asks again on its own after a disconnect or restart only with “Keep root channel” on.';
 
   @override
   String phoneKeepTitle(String mode) {
@@ -10466,15 +10485,15 @@ class L10nEn extends L10n {
 
   @override
   String get phoneKeepRootDescription =>
-      'After a drop, an app restart or a reboot, dsh-Su asks your root manager again by itself. The manager still decides.';
+      'After a drop, an app restart or a reboot, DSH SU asks your root manager again by itself. The manager still decides.';
 
   @override
   String get phoneKeepSharedDescription =>
-      'After a drop, an app restart or a reboot, dsh-Su reconnects with the permission it already has. It never asks for permission.';
+      'After a drop, an app restart or a reboot, DSH SU reconnects with the permission it already has. It never asks for permission.';
 
   @override
   String get phoneKeepAdbDescription =>
-      'After a drop, an app restart or a reboot, dsh-Su reconnects over Wi‑Fi with the existing pairing. With the permission from “Restore accessibility automatically”, it also tries once to turn on wireless debugging.';
+      'After a drop, an app restart or a reboot, DSH SU reconnects over Wi‑Fi with the existing pairing. With the permission from “Restore accessibility automatically”, it also tries once to turn on wireless debugging.';
 
   @override
   String get phoneKeepRestoring => 'Reconnecting';
@@ -10520,7 +10539,7 @@ class L10nEn extends L10n {
 
   @override
   String get phoneModeAutoNote =>
-      'System settings and permission pages, passwords and verification codes, and dsh-Su itself stay with you. Banking and payment apps are off limits by default; you can change that in Settings.';
+      'System settings and permission pages, passwords and verification codes, and DSH SU itself stay with you. Banking and payment apps are off limits by default; you can change that in Settings.';
 
   @override
   String get phoneModeAutoUnlockNote =>
@@ -10539,7 +10558,7 @@ class L10nEn extends L10n {
   String get phoneYoursSecrets => 'Passwords and verification codes';
 
   @override
-  String get phoneYoursOwnApp => 'dsh-Su itself';
+  String get phoneYoursOwnApp => 'DSH SU itself';
 
   @override
   String get phoneYoursDenyList => 'Apps set to Hands off in App rules, banking and payment by default';
@@ -10563,10 +10582,10 @@ class L10nEn extends L10n {
   String get phoneUnlockSecretsHint => 'Fill in passwords, verification and payment codes';
 
   @override
-  String get phoneUnlockOwnApp => 'dsh-Su itself';
+  String get phoneUnlockOwnApp => 'DSH SU itself';
 
   @override
-  String get phoneUnlockOwnAppHint => 'Tap and type inside dsh-Su';
+  String get phoneUnlockOwnAppHint => 'Tap and type inside DSH SU';
 
   @override
   String get phoneUnlockBusy => 'Can’t turn on while a task is running';
@@ -10599,7 +10618,7 @@ class L10nEn extends L10n {
   String get phoneUnlockConfirmSecretsTitle => 'Let AI fill in passwords and codes?';
 
   @override
-  String get phoneUnlockConfirmOwnAppTitle => 'Let AI operate dsh-Su itself?';
+  String get phoneUnlockConfirmOwnAppTitle => 'Let AI operate DSH SU itself?';
 
   @override
   String get phoneUnlockCanTitle => 'Once on, AI can';
@@ -10645,10 +10664,10 @@ class L10nEn extends L10n {
   String get phoneUnlockSecretsRisk2 => 'It could complete a payment or transfer you didn’t intend';
 
   @override
-  String get phoneUnlockOwnAppCan1 => 'Tap and type inside dsh-Su, including changing settings';
+  String get phoneUnlockOwnAppCan1 => 'Tap and type inside DSH SU, including changing settings';
 
   @override
-  String get phoneUnlockOwnAppCan2 => 'Read conversations and settings on dsh-Su’s screens';
+  String get phoneUnlockOwnAppCan2 => 'Read conversations and settings on DSH SU’s screens';
 
   @override
   String get phoneUnlockOwnAppRisk1 =>
@@ -10665,7 +10684,7 @@ class L10nEn extends L10n {
 
   @override
   String get phoneUnlockDisclaimer3 =>
-      'Any resulting loss to your accounts, money, data or device is yours to bear. dsh-Su and its developers accept no liability.';
+      'Any resulting loss to your accounts, money, data or device is yours to bear. DSH SU and its developers accept no liability.';
 
   @override
   String get phoneUnlockDisclaimer4 => 'Turn it on only when you need it, and off when you’re done.';
@@ -11150,7 +11169,7 @@ class L10nEn extends L10n {
   String get pluginsFileWriteFailed => 'Couldn’t write the file';
 
   @override
-  String get pluginsProfileTitle => 'dsh-Su settings';
+  String get pluginsProfileTitle => 'DSH SU settings';
 
   @override
   String get pluginsGistTokenInvalid => 'GitHub token is invalid or lacks Gist permission';
@@ -11748,7 +11767,7 @@ class L10nEn extends L10n {
 
   @override
   String get pluginsNotificationSettingsFailed =>
-      'Couldn’t open system settings. Turn on notifications in Settings → Apps → dsh-Su → Notifications.';
+      'Couldn’t open system settings. Turn on notifications in Settings → Apps → DSH SU → Notifications.';
 
   @override
   String get pluginsSystemNotificationsOff => 'System notifications are off';
@@ -12026,7 +12045,7 @@ class L10nEn extends L10n {
   String get pluginsShareOpenFailed => 'Couldn’t open this share code';
 
   @override
-  String get pluginsPluginShareTitle => 'dsh-Su plugin';
+  String get pluginsPluginShareTitle => 'DSH SU plugin';
 
   @override
   String get pluginsShareSheetOpenFailed => 'Couldn’t open sharing';
@@ -12294,7 +12313,7 @@ class L10nEn extends L10n {
 
   @override
   String plugslotsIssueNeedsApp(String version) {
-    return 'Needs dsh-Su $version or later';
+    return 'Needs DSH SU $version or later';
   }
 
   @override
@@ -12737,7 +12756,7 @@ class L10nEn extends L10n {
   String get remoteErrHostNotOwned => 'Host isn’t in your DSH Remote account';
 
   @override
-  String get remoteErrUpdateNeeded => 'Version mismatch. Update dsh-Su and the host’s remote plugin';
+  String get remoteErrUpdateNeeded => 'Version mismatch. Update DSH SU and the host’s remote plugin';
 
   @override
   String get remoteErrVersionIncompatible => 'Update DSH or the remote plugin on the host';
@@ -14243,7 +14262,7 @@ class L10nEn extends L10n {
 
   @override
   String get riskPetOverlayBody =>
-      'Turn on “Display over other apps” for dsh-Su in system settings so your pet can appear outside the app.';
+      'Turn on “Display over other apps” for DSH SU in system settings so your pet can appear outside the app.';
 
   @override
   String get riskPetOverlayAction => 'Open settings';
@@ -14259,19 +14278,19 @@ class L10nEn extends L10n {
 
   @override
   String askAiAboutApp(String question) {
-    return 'About the dsh-Su app: $question';
+    return 'About the DSH SU app: $question';
   }
 
   @override
   String askAiWithGuide(String question) {
-    return 'About the dsh-Su app: $question\nPlease answer from the attached guide.';
+    return 'About the DSH SU app: $question\nPlease answer from the attached guide.';
   }
 
   @override
-  String get askAiNoGuide => 'This host doesn’t have the dsh-Su guide, so answers may be off';
+  String get askAiNoGuide => 'This host doesn’t have the DSH SU guide, so answers may be off';
 
   @override
-  String get askAiQuestionOverview => 'What can dsh-Su do, and where should I start?';
+  String get askAiQuestionOverview => 'What can DSH SU do, and where should I start?';
 
   @override
   String get askAiQuestionPhoneControl => 'How does phone control work, and what are the risks?';
@@ -15634,7 +15653,7 @@ class L10nEn extends L10n {
 
   @override
   String shellSkillInstallPrompt(String skill) {
-    return 'Install the dsh-Su interface skill $skill on this host:';
+    return 'Install the DSH SU interface skill $skill on this host:';
   }
 
   @override
@@ -15764,16 +15783,16 @@ class L10nEn extends L10n {
     String _temp0 = intl.Intl.pluralLogic(
       hours,
       locale: localeName,
-      other: 'I’ve kept you company in dsh-Su for $hours hours now~',
-      one: 'I’ve kept you company in dsh-Su for an hour now~',
-      zero: 'I’ve kept you company in dsh-Su for half an hour now~',
+      other: 'I’ve kept you company in DSH SU for $hours hours now~',
+      one: 'I’ve kept you company in DSH SU for an hour now~',
+      zero: 'I’ve kept you company in DSH SU for half an hour now~',
     );
     return '$_temp0';
   }
 
   @override
   String get starPromptBody =>
-      'dsh-Su is free and open source. If it’s made your phone a little nicer to use, please give it a Star — it means so much to this little whale!';
+      'DSH SU is free and open source. If it’s made your phone a little nicer to use, please give it a Star — it means so much to this little whale!';
 
   @override
   String get starPromptPlea => 'Pretty please~ It really matters!!';
@@ -15788,10 +15807,10 @@ class L10nEn extends L10n {
   String get starPromptLater => 'Maybe later';
 
   @override
-  String get starSettingsTitle => 'Star dsh-Su on GitHub';
+  String get starSettingsTitle => 'Star DSH SU on GitHub';
 
   @override
-  String get stateDiagnosticsSubject => 'dsh-Su diagnostics bundle';
+  String get stateDiagnosticsSubject => 'DSH SU diagnostics bundle';
 
   @override
   String get stateStoragePermission => 'No storage permission to save to Downloads';
@@ -17074,7 +17093,7 @@ class L10nEn extends L10n {
   String get stateProviderTokenCountInvalid => 'Enter a number, like 128K';
 
   @override
-  String get appSlogan => 'Anytime, anywhere. Just Go!';
+  String get appSlogan => 'Anytime, anywhere.';
 
   @override
   String get updateCheck => 'Check for updates';
@@ -17167,7 +17186,7 @@ class L10nEn extends L10n {
 
   @override
   String get updateSettingsOpenFailedMessage =>
-      'Allow “Install unknown apps” in Settings → Apps → dsh-Su, then return to install.';
+      'Allow “Install unknown apps” in Settings → Apps → DSH SU, then return to install.';
 
   @override
   String get updateInstallCancelled => 'Installation cancelled';
@@ -17187,7 +17206,7 @@ class L10nEn extends L10n {
 
   @override
   String get updateSignatureMismatchMessage =>
-      'The dsh-Su on your phone has a different signature (usually a test build). Uninstall it before installing this version. Uninstalling erases your chats, Linux environment, and settings.';
+      'The DSH SU on your phone has a different signature (usually a test build). Uninstall it before installing this version. Uninstalling erases your chats, Linux environment, and settings.';
 
   @override
   String get updateWrongPackage => 'This isn’t a DSH package';
@@ -17252,7 +17271,7 @@ class L10nEn extends L10n {
   String get updateNoReleaseNotes => 'No release notes for this version.';
 
   @override
-  String get updateInstallKeepsData => 'dsh-Su closes to install. Your chats and settings stay.';
+  String get updateInstallKeepsData => 'DSH SU closes to install. Your chats and settings stay.';
 
   @override
   String get updateNoCompatiblePackage => 'No package for this phone';
@@ -17287,7 +17306,7 @@ class L10nEn extends L10n {
   String get updateReadyToInstall => 'Verified and ready to install.';
 
   @override
-  String get updateAllowInstall => 'Allow dsh-Su to install apps';
+  String get updateAllowInstall => 'Allow DSH SU to install apps';
 
   @override
   String get updateAllowInstallMessage =>
@@ -17343,7 +17362,7 @@ class L10nEn extends L10n {
   String get usageStatsTitle => 'Send anonymous usage stats';
 
   @override
-  String get usageStatsSection => 'Improve dsh-Su';
+  String get usageStatsSection => 'Improve DSH SU';
 
   @override
   String get usageStatsFooter => 'Only usage counts, versions and the phone’s maker. Never chats, files or accounts.';
@@ -17352,7 +17371,7 @@ class L10nEn extends L10n {
   String get usageNoticeBody => 'No chats or personal info.\nTurn off anytime.';
 
   @override
-  String get usageUpgradeNotice => 'New: anonymous usage stats, to help improve dsh-Su.\nNo chats or personal info.';
+  String get usageUpgradeNotice => 'New: anonymous usage stats, to help improve DSH SU.\nNo chats or personal info.';
 
   @override
   String get usageUpgradeLearn => 'Learn more';
@@ -17497,7 +17516,7 @@ class L10nEn extends L10n {
   String get viewBalanceNoAlert => 'Off';
 
   @override
-  String get viewBalanceBannerHidden => 'Balance alert hidden until dsh-Su restarts';
+  String get viewBalanceBannerHidden => 'Balance alert hidden until DSH SU restarts';
 
   @override
   String get viewBalanceTurnOff => 'Turn off';
@@ -18214,7 +18233,7 @@ class L10nEn extends L10n {
 
   @override
   String viewContinueHeader(String value) {
-    return '> Shared dsh-Su chat · $value\n';
+    return '> Shared DSH SU chat · $value\n';
   }
 
   @override
@@ -18269,7 +18288,7 @@ class L10nEn extends L10n {
 
   @override
   String viewShareLinkText(String first, String second) {
-    return '“$first” · dsh-Su chat\n$second';
+    return '“$first” · DSH SU chat\n$second';
   }
 
   @override
@@ -18288,7 +18307,7 @@ class L10nEn extends L10n {
   }
 
   @override
-  String get viewShareFileHint => 'Replay and continue in dsh-Su';
+  String get viewShareFileHint => 'Replay and continue in DSH SU';
 
   @override
   String get viewShareWebHint => 'Opens in any browser, even offline';

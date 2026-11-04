@@ -1,6 +1,12 @@
 {
   "@@locale": "zh",
-  "accessPickTitle": "想让 dsh-Su 帮你做哪些事",
+  "accessPickTitle": "想让 DSH SU 帮你做哪些事",
+  "accessRootTitle": "Root 授权",
+  "accessRootMessage": "DSH SU 需要 Root 权限。允许一次后，本 App 需要的权限和配置会自动完成。",
+  "accessRootConfiguring": "正在自动配置…",
+  "accessRootManagerNote": "Root 管理器会弹出一次授权；这是唯一需要你确认的提示。",
+  "accessRootFailed": "授权失败",
+  "accessRootAuthorize": "授权 Root",
   "accessPickMessage": "选好后逐项开启",
   "accessPickConfirm": "开启所选",
   "accessSkip": "跳过",
@@ -81,7 +87,7 @@
   "accessA11yTitle": "打开无障碍",
   "accessA11yWhy": "手机操控靠它看屏幕、点按",
   "accessPopupTitle": "允许后台弹出界面",
-  "accessPopupWhy": "手机操控做完能回到 dsh-Su",
+  "accessPopupWhy": "手机操控做完能回到 DSH SU",
   "accessVivoPopupPath": "权限管理 › {app} › 后台弹出界面",
   "@accessVivoPopupPath": {
     "placeholders": {

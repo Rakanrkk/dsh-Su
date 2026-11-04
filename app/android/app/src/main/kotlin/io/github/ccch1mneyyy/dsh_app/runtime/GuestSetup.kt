@@ -21,8 +21,8 @@ object GuestSetup {
 
     // l10n:keep agent prompt
     private val AGENTS_MD = ("""
-        |<!-- dsh-app:managed — 删除这一行后，DSH App 不再覆盖本文件 -->
-        |# 运行环境（DSH 手机版）
+        |<!-- dsh-app:managed — 删除这一行后，DSH SU 不再覆盖本文件 -->
+        |# 运行环境（DSH SU）
         |
         |- 你运行在 Android 手机上的 Ubuntu 24.04 环境里（proot，免 Root）。这里没有可用的沙箱后端（bubblewrap / Landlock 都不可用），`workspace-write` 沙箱模式一定会被拒绝。
 """ +
@@ -110,7 +110,7 @@ object GuestSetup {
                 AGENTS_MD
                     .replace(
                         "你运行在 Android 手机上的 Ubuntu 24.04 环境里（proot，免 Root）。这里没有可用的沙箱后端（bubblewrap / Landlock 都不可用），`workspace-write` 沙箱模式一定会被拒绝。",
-                        "你运行在 Android 手机上的 Ubuntu 24.04 chroot 环境里，引擎和它启动的 bash / git / python / apt 都以真实 root（UID 0）运行。本环境的沙箱后端（bubblewrap / Landlock）未经验证，`workspace-write` 沙箱模式不保证可用。",
+                        "你运行在 Android 手机上的 Ubuntu 24.04 chroot 环境里，引擎和它启动的 bash / git / python / apt 都以真实 root（UID 0）运行。DSH SU 自身的 Android 权限由 Root 构建自动获得。本环境的沙箱后端（bubblewrap / Landlock）未经验证，`workspace-write` 沙箱模式不保证可用。",
                     )
             } else if (directEngine) {
                     // l10n:keep agent prompt

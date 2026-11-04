@@ -1,12 +1,12 @@
 {
   "marketSectionOfficial": "Official",
-  "marketSectionAdapted": "Made for dsh-Su",
+  "marketSectionAdapted": "Made for DSH SU",
   "marketSectionAll": "All",
   "marketSectionLoading": "Loading…",
   "marketSectionFailed": "The official catalogue didn't load",
   "marketSectionEmpty": "None yet",
   "marketTierOfficial": "Official",
-  "marketTierAdapted": "Made for dsh-Su",
+  "marketTierAdapted": "Made for DSH SU",
   "marketRiskMedium": "Medium risk",
   "marketRiskHigh": "High risk",
   "marketFlagInstallScripts": "Runs install scripts",
@@ -21,8 +21,8 @@
   "marketFlagFilesystemBody": "Writes to paths outside the workspace",
   "marketFlagObfuscated": "Hard to review",
   "marketFlagObfuscatedBody": "Has large minified or obfuscated files; hard to tell what they do",
-  "marketFlagNotAdapted": "Not made for dsh-Su",
-  "marketFlagNotAdaptedBody": "Declares no dsh-Su native protocol, so it has no native screens in the app",
+  "marketFlagNotAdapted": "Not made for DSH SU",
+  "marketFlagNotAdaptedBody": "Declares no DSH SU native protocol, so it has no native screens in the app",
   "marketFlagOtherBody": "Another trait the automatic checks reported",
   "marketChecksTitle": "Automatic checks",
   "marketChecksClean": "No risky traits found",
@@ -53,8 +53,8 @@
   },
   "marketRiskConfirmAction": "Install anyway",
   "marketPinnedVersion": "Pinned version",
-  "marketRequiresApp": "Requires dsh-Su",
-  "marketNeedsApp": "Needs dsh-Su {version} or later",
+  "marketRequiresApp": "Requires DSH SU",
+  "marketNeedsApp": "Needs DSH SU {version} or later",
   "@marketNeedsApp": {
     "placeholders": {
       "version": {

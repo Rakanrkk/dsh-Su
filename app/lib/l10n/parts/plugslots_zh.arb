@@ -101,7 +101,7 @@
       }
     }
   },
-  "plugslotsIssueNeedsApp": "需要 dsh-Su {version} 或更新版本",
+  "plugslotsIssueNeedsApp": "需要 DSH SU {version} 或更新版本",
   "@plugslotsIssueNeedsApp": {
     "placeholders": {
       "version": {

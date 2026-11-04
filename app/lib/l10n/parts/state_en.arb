@@ -1,5 +1,5 @@
 {
-  "stateDiagnosticsSubject": "dsh-Su diagnostics bundle",
+  "stateDiagnosticsSubject": "DSH SU diagnostics bundle",
   "stateStoragePermission": "No storage permission to save to Downloads",
   "stateDiagnosticsStorageFull": "Not enough storage to create the diagnostics bundle",
   "stateDiagnosticsExportFailed": "Couldn’t export diagnostics bundle",
@@ -370,5 +370,5 @@
   "stateUiWeb": "Web",
   "statePluginRegistryProgressUnknown": "Downloading from {registry} (registry {attempt}/null)",
   "stateProviderTokenCountInvalid": "Enter a number, like 128K",
-  "appSlogan": "Anytime, anywhere. Just Go!"
+  "appSlogan": "Anytime, anywhere."
 }

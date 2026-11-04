@@ -44,7 +44,7 @@
   "engineAccountPreparingSignIn": "Preparing sign-in",
   "engineAccountOpenDeepSeekNext": "Opening DeepSeek sign-in",
   "engineAccountFinishInBrowser": "Finish sign-in in your browser",
-  "engineAccountReturnToDsh": "Return to dsh-Su after signing in",
+  "engineAccountReturnToDsh": "Return to DSH SU after signing in",
   "engineAccountFinishingSignIn": "Finishing sign-in",
   "engineAccountSavingSignIn": "Saving sign-in details",
   "engineAccountAwaitingResult": "Still waiting for sign-in",

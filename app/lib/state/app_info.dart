@@ -16,17 +16,17 @@ abstract final class AppInfo {
 
   /// The app's name as the phone shows it: launcher, Recents, notifications, system
   /// settings, the licence page. Matches `android:label` in AndroidManifest.xml.
-  static const name = 'DSH Go';
+  static const name = 'DSH SU';
 
   /// The in-app wordmark: the drawer's lockup, the welcome page and the brand mark's
   /// spoken label.
-  static const wordmark = 'DSH';
+  static const wordmark = 'DSH SU';
 
   /// Required wording: the app is built on DSH but is not an official DeepSeek product.
   /// Shown on the About and licence pages.
   static String get disclaimer => appL10n.stateAppDisclaimer;
 
-  /// The line under the brand mark (welcome page, 关于 dsh-go).
+  /// The line under the brand mark (welcome page, 关于 DSH SU).
   static String get slogan => appL10n.appSlogan;
 
   /// The original DSH Go author and their personal profiles, not project pages.
