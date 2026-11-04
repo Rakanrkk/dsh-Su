@@ -147,6 +147,13 @@ class FakeEngine extends LocalRuntimeController {
   }
 
   @override
+  Future<int> startOwned() async {
+    await start();
+    state = state.copyWith(status: const RuntimeStatus(phase: RuntimePhase.running));
+    return starts.length;
+  }
+
+  @override
   Future<void> stop() async {
     stops++;
     state = const LocalRuntimeState(loaded: true, status: RuntimeStatus(phase: RuntimePhase.installed));

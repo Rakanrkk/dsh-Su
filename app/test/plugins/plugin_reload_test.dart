@@ -62,6 +62,13 @@ class _Runtime extends RecordingRuntime {
     if (fail) throw StateError('restart failed');
     return super.start();
   }
+
+  @override
+  Future<int> startOwned() async {
+    calls.add('start');
+    if (fail) throw StateError('restart failed');
+    return super.startOwned();
+  }
 }
 
 Future<({ProviderContainer container, _Runtime runtime, FakePluginCarrier carrier})> _fixture({

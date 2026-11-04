@@ -65,6 +65,12 @@ class _Engine extends LocalRuntimeController {
     _boot();
     state = _running;
   }
+
+  @override
+  Future<int> startOwned() async {
+    await start();
+    return 1;
+  }
 }
 
 class _Settings extends SettingsController {

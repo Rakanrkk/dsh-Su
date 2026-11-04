@@ -34,6 +34,14 @@ class _Runtime extends RecordingRuntime {
     await super.start();
     emit(_running);
   }
+
+  @override
+  Future<int> startOwned() async {
+    if (fail) throw StateError('restart failed');
+    final ticket = await super.startOwned();
+    emit(_running);
+    return ticket;
+  }
 }
 
 class _Active extends ActiveHostController {
