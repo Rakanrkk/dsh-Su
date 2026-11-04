@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4"><img alt="dsh-Su ARM64 prerelease" src="https://img.shields.io/badge/dsh--Su-ARM64%20Prerelease-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6"><img alt="dsh-Su v1.0.9-internal.6 prerelease" src="https://img.shields.io/badge/dsh--Su-v1.0.9--internal.6-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/upstream-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
   <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -36,12 +36,7 @@ flowchart LR
 
 - **Architecture**: `RootService` acts purely as a UID 0 process bridge rather than reimplementing DSH. It uses a `libsu` `6.0.0` non-daemon `RootService` and official `runc` `1.4.3` over the embedded Ubuntu 24.04 rootfs in a mount-only private namespace (no PID namespace, running as `UID/GID 0` with inherited capabilities preserved).
 - **Identity and Build Isolation**: Built via `tooling/build-root-apk.sh` (which fetches and verifies official `runc` 1.4.3 binaries through `tooling/fetch-runc-assets.sh`), with package name `io.github.rakanrkk.dsh_su` and launcher label `DSH SU` for side-by-side installation with upstream `DSH Go`. Update sources are isolated to `Rakanrkk/dsh-Su`.
-- **Compatibility Targets & Verified Scope**: Public prerelease `v1.0.9-internal.4` provides an ARM64 APK only. Static signature, ABI, resource, and SHA-256 checks passed; runtime on an ARM64 device has not been verified. x86_64 acceptance used emulator builds from the same source; each framework's build flavor is listed below.
-  - **SukiSU Ultra (x86_64)**: Verified the normal App launch, UID 0 Node listener, native UI PTY, Phone MCP (13 tools plus `apps` and `screen` calls), Android host views, DNS/HTTPS, startup permission grant, storage Off without mounts, UI Stop/Start, and recovery after force-stop; keyless HTTPS returned 401.
-  - **KernelSU (standard, x86_64)**: KernelSU `3.3.1` (version `32680`, UAPI 5, LKM, SELinux Enforcing) passed the same APK SHA through the normal App path, UID 0 PTY, 13 Phone MCP tools, Android host views, DNS/HTTPS 200, and UI Stop/Start cleanup.
-  - **Magisk (x86_64 debug)**: The same-source internal.4 debug build passed UID 0 Main, 13 Phone MCP tools, Android host views, DNS/HTTPS, and notification Stop cleanup.
-  - **KernelSU Next (x86_64 release)**: The internal.4 release-flavor build passed UID 0 Main, PTY, 13 Phone MCP tools, Android host views, DNS/HTTPS, and UI Stop/Start. One `pm list packages -U` query timed out and was not retried; the host PTY package-path query succeeded.
-  - **APatch**: Android 16 has reached Package Manager readiness. The normal App `su` to `RootService` path has not passed, so there is no verified App UID 0 run.
+- **Compatibility Targets & Verified Scope**: The dual-ABI `v1.0.9-internal.6` APK has passed core runtime checks on SukiSU Ultra x86_64 and APatch arm64-v8a. SukiSU Ultra arm64-v8a has passed RootReady and platform-state readbacks. KernelSU, Magisk, and KernelSU Next have records from an earlier build only. See [docs/dsh-su.md](docs/dsh-su.md) for verification by framework, version, and ABI.
 
 <br>
 
@@ -62,7 +57,7 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">Downloads & Builds</h3>
 
-<p align="center"><code>dsh-Su</code> has an ARM64 public prerelease, <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4"><code>v1.0.9-internal.4</code></a>, available from Releases. This build has not been run on an ARM64 device. The x86_64 emulator acceptance builds are not Release assets. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
+<p align="center">The current public prerelease of <code>dsh-Su</code> is <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6"><code>v1.0.9-internal.6</code></a>. Releases provides both <code>arm64-v8a</code> and <code>x86_64</code> APKs alongside public metadata and SHA-256 checksum files; see <a href="docs/dsh-su.md">Architecture &amp; Status</a> for per-framework test scope. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
 
 <p align="center">
   <a href="#build-from-source"><img alt="Build dsh-Su from Source" src="https://img.shields.io/badge/dsh--Su-Build%20from%20Source-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Upstream%20Site-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
@@ -198,9 +193,9 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 ## Install
 
-Installation requires Android 8.0 (API 26) or later. The current `v1.0.9-internal.4` prerelease provides only an **arm64** APK for 64-bit Android phones; x86_64 emulator acceptance builds are not Release assets. This repository has no 32-bit ARM build.
+Installation requires Android 8.0 (API 26) or later. The current `v1.0.9-internal.6` prerelease provides both an **arm64-v8a** APK for 64-bit Android phones and an **x86_64** APK for emulators, along with matching `.apk.sha256` sidecars and public metadata JSON files. This repository has no 32-bit ARM build.
 
-1. Download the ARM64 APK from [dsh-Su `v1.0.9-internal.4` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.4) and follow Android's prompt to allow that installation source. It is a prerelease and has not been run on an ARM64 device. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
+1. Download the APK for your ABI from [dsh-Su `v1.0.9-internal.6` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6) and follow Android's prompt to allow that installation source; allow `DSH SU` in your root manager when starting the on-device engine. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
