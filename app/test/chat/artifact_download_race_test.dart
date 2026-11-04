@@ -5,12 +5,29 @@ import 'package:dsh_app/state/artifact_files.dart';
 import 'package:dsh_app/state/artifacts.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
+import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _artifact = Artifact(path: '/home/me/a.png', origin: ArtifactOrigin.linked, turn: 1);
+
+class _FixedLocalHost extends ActiveHostController {
+  @override
+  HostRef build() => HostRef.local;
+}
+
+class _RuntimeBuildProbe extends LocalRuntimeController {
+  int buildCalls = 0;
+
+  @override
+  LocalRuntimeState build() {
+    buildCalls++;
+    return const LocalRuntimeState(loaded: true);
+  }
+}
 
 class _Carrier extends DshCarrier {
   String version = 'v1';
@@ -183,6 +200,40 @@ void main() {
     expect(resolved.path, ordinary.path);
     expect(rig.carrier.statCalls, 0);
     expect(rig.carrier.readCalls, 0);
+  });
+
+  test('the provider factory resolves a local Native file without runtime events', () async {
+    const channel = MethodChannel('test/dsh/files-provider');
+    final ordinary = File('${rig.cache.path}/provider-native.png');
+    await ordinary.writeAsBytes([5, 5, 5, 5]);
+    var resolveCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method != 'resolveGuest') return null;
+      resolveCalls++;
+      return ordinary.path;
+    });
+    final runtimeProbe = _RuntimeBuildProbe();
+    final container = ProviderContainer(
+      overrides: [
+        activeHostProvider.overrideWith(_FixedLocalHost.new),
+        activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
+        filesChannelProvider.overrideWithValue(FilesChannel(channel)),
+        localRuntimeProvider.overrideWith(() => runtimeProbe),
+      ],
+    );
+    try {
+      final files = container.read(artifactFilesProvider);
+      expect(files.isLocal, isTrue);
+      expect(files.canFetch, isTrue);
+      final resolved = await files.materialize('s1', _artifact);
+      expect(resolved.path, ordinary.path);
+      expect(await resolved.readAsBytes(), [5, 5, 5, 5]);
+      expect(resolveCalls, 1);
+      expect(runtimeProbe.buildCalls, 0);
+    } finally {
+      container.dispose();
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+    }
   });
 
   test('a disconnected remote host does not resolve through the local channel', () async {

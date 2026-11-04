@@ -12,7 +12,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/l10n.dart';
-import '../runtime/runtime_state.dart';
 import 'artifacts.dart';
 import 'connection_state.dart';
 import 'hosts_state.dart';
@@ -22,6 +21,7 @@ const maxRemoteArtifactBytes = 300 * 1024 * 1024;
 
 /// Largest remote image fetched just to draw a thumbnail.
 const maxThumbnailBytes = 8 * 1024 * 1024;
+const _rootRuntimeBuild = bool.fromEnvironment('DSH_ROOT_RUNTIME');
 
 /// Why an artifact action could not run (beyond Host and platform errors).
 class ArtifactError implements Exception {
@@ -221,7 +221,12 @@ class ArtifactFiles {
       }
 
       if (stat == null) {
-        if (statFailure case final failure?) Error.throwWithStackTrace(failure.$1, failure.$2);
+        if (statFailure case final failure?) {
+          final (error, stack) = failure;
+          if (error is DshRemoteException || error is DshHttpException) {
+            Error.throwWithStackTrace(error, stack);
+          }
+        }
         throw const ArtifactError('missing');
       }
       if (!conn.client.canReadFileBytes) throw const ArtifactError('unsupported');
@@ -390,7 +395,7 @@ final artifactFilesProvider = Provider<ArtifactFiles>((ref) {
     connection: ref.watch(activeConnectionProvider).value,
     channel: ref.watch(filesChannelProvider),
     selectedHost: host,
-    rootRuntime: ref.watch(localRuntimeProvider.select((state) => state.status.rootRuntime)),
+    rootRuntime: _rootRuntimeBuild,
   );
 });
 
