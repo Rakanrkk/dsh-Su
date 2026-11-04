@@ -195,6 +195,7 @@ jobs:
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsResultTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SecureSettingsGrantTest \
+            --tests io.github.ccch1mneyyy.dsh_app.phone.background.RootShellBootstrapTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.RootBackendTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.RootLaunchTest \
             --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeProcessOwnershipTest \
