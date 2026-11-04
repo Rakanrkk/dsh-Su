@@ -54,6 +54,26 @@
 - Plugin development: the plugin skill and checklist describe view v2, not only 16 components.
 - Performance: the runtime unpacks with parallel decoding; engine logs are batched; long chats fold only what's new; re-opening the session list skips unchanged records; the boot cache also works in Direct mode; the local connection can load the session list before the mux is up.
 
+## 1.1.0 · 2026-11-04
+
+### 中文
+
+- 本机 Root 运行时以 UID 0 运行，并保留 DSH Go 原有的聊天、工具、插件与远程主机功能。
+- Root 启动兼容 SukiSU Ultra、APatch、KernelSU、Magisk、KernelSU Next 的无参数 `su` 与 stdin 输入。
+- 启动本机环境时，App 会向 Root 管理器申请所需权限，相关设置项也相应简化。
+- 本机 Root 工件按文件版本复用缓存；文件元信息不可用时，仍通过 Native 路径重新解析。
+- 调整本机 Root 运行环境的目录清理，删除时不再逐项处理子目录内容。
+- 修复 Root 运行环境清理时临时目录删除失败的问题。
+
+### English
+
+- The on-device Root runtime runs as UID 0 while retaining DSH Go's chat, tools, plugins and remote-host features.
+- Root startup supports argument-free `su` and stdin input across SukiSU Ultra, APatch, KernelSU, Magisk and KernelSU Next.
+- The app requests the Root access needed to start the on-device runtime, and related settings are simplified.
+- Local Root artifacts reuse cached exports while the reported file version is unchanged; when file metadata is unavailable, the app resolves the artifact through the native path again.
+- Root runtime cleanup now handles a directory without processing each child separately.
+- Fixed failures when deleting temporary directories during Root runtime cleanup.
+
 ## 1.0.8 · 2026-11-01
 
 ### 中文
