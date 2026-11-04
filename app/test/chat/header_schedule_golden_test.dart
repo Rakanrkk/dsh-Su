@@ -9,7 +9,6 @@ import 'package:dsh_app/state/header_schedule_state.dart';
 import 'package:dsh_app/state/models_state.dart';
 import 'package:dsh_app/state/schedule_editor_state.dart';
 import 'package:dsh_app/state/sessions_state.dart';
-import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/ui/chat/chat_header.dart';
 import 'package:dsh_app/ui/chat/model_sheet.dart';
 import 'package:dsh_app/ui/common/status_dot.dart';

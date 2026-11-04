@@ -522,6 +522,14 @@
         }
       }
     },
+    "zzzzzzzz-workspace-files-final-symlink.diff": {
+      "0.2.1-rc.4": {
+        "node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js": {
+          "after": "e810b7ee2e13d540eae6c944698fd6ad7fcca2013bef88687146028a3e8f44a9",
+          "before": "1cdd038c3fd7ebc60642280a86ef6eadae43ff05a7bf7eb263a2e47d06676869"
+        }
+      }
+    },
     "zzzzzzzzz-credentials-disposal.diff": {
       "0.2.1-rc.4": {
         "node_modules/@deepseek-ai/dsh-credentials-local/lib/index.js": {
@@ -611,14 +619,6 @@
         "node_modules/@deepseek-ai/dsh-workspace/lib/index.js": {
           "after": "97d891ee0bc2ee8a1867a3c2420cf3ea8787b8000293771244f923de3b362658",
           "before": "a26b396baee3c353b5bd55c932e30f2653b083a136e7a8f9f596e9fe4c1222b0"
-        }
-      }
-    },
-    "workspace-files-final-symlink.diff": {
-      "0.2.1-rc.4": {
-        "node_modules/@deepseek-ai/dsh-api-workspace-files/lib/index.js": {
-          "after": "c84f8474eadf1aefa27d5deb8cae2591e79b060ed0c3c886e2b4b1781807b948",
-          "before": "1d633aaf12df42e477438738f5939273ffc139ad96299ba471f97b46b2dd256c"
         }
       }
     }

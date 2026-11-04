@@ -188,18 +188,6 @@ Future<Object> _observed(Future<Object> future) =>
 
 const _noSpace = FileSystemException('write failed', '', OSError('No space left', 28));
 
-class _FailingConsumer implements StreamConsumer<List<int>> {
-  @override
-  Future<void> addStream(Stream<List<int>> stream) async {
-    await for (final _ in stream) {
-      throw _noSpace;
-    }
-  }
-
-  @override
-  Future<void> close() async {}
-}
-
 class _FailingHandle implements RandomAccessFile {
   _FailingHandle(this.file);
   final RandomAccessFile file;
