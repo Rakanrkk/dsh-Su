@@ -33,6 +33,16 @@ class _NoPhone extends PhoneChannel {
   Future<PhoneStatus> status() async => const PhoneStatus.notReady();
 }
 
+class _PhoneFallback extends PhoneChannel {
+  int statusCalls = 0;
+
+  @override
+  Future<PhoneStatus> status() async {
+    statusCalls++;
+    return const PhoneStatus(ready: true, enabled: true, task: PhoneTaskStatus(active: true));
+  }
+}
+
 class _Mux extends DshMux {
   _Mux(super.carrier);
   final current = StreamController<DshConnectionState>.broadcast();
@@ -53,10 +63,8 @@ class _Client extends DshClient {
 
 class _Runtime extends LocalRuntimeController {
   @override
-  LocalRuntimeState build() => LocalRuntimeState(
-    loaded: true,
-    status: RuntimeStatus(phase: RuntimePhase.installed, rootRuntime: true),
-  );
+  LocalRuntimeState build() =>
+      LocalRuntimeState(loaded: true, status: RuntimeStatus(phase: RuntimePhase.installed, rootRuntime: true));
 }
 
 class _CurrentConnection extends Notifier<AsyncValue<HostConnection?>> {
@@ -70,10 +78,9 @@ class _CurrentConnection extends Notifier<AsyncValue<HostConnection?>> {
   void set(AsyncValue<HostConnection?> connection) => state = connection;
 }
 
-final _currentConnectionProvider =
-    NotifierProvider<_CurrentConnection, AsyncValue<HostConnection?>>(
-      () => _CurrentConnection(const AsyncData(null)),
-    );
+final _currentConnectionProvider = NotifierProvider<_CurrentConnection, AsyncValue<HostConnection?>>(
+  () => _CurrentConnection(const AsyncData(null)),
+);
 
 void main() {
   late FakeNotifyChannel channel;
@@ -83,8 +90,7 @@ void main() {
   ProviderContainer make({required bool foreground, bool runningSession = false}) {
     SharedPreferences.setMockInitialValues({});
     channel = FakeNotifyChannel();
-    remote = FakeAlertSource()
-      ..sessions = [session('r1', title: '服务器任务', running: runningSession)];
+    remote = FakeAlertSource()..sessions = [session('r1', title: '服务器任务', running: runningSession)];
     final connection = HostConnection(
       client: _Client(),
       label: '远程',
@@ -96,14 +102,10 @@ void main() {
       overrides: [
         notifyChannelProvider.overrideWithValue(channel),
         alertSourceFactoryProvider.overrideWithValue((_) => remote),
-        alertTimingProvider.overrideWithValue(
-          (announce: Duration.zero, reconcile: const Duration(milliseconds: 30)),
-        ),
+        alertTimingProvider.overrideWithValue((announce: Duration.zero, reconcile: const Duration(milliseconds: 30))),
         localConnectionProvider.overrideWith(() => _Local(null)),
         activeConnectionProvider.overrideWith((ref) => ref.watch(_currentConnectionProvider)),
-        _currentConnectionProvider.overrideWith(
-          () => _CurrentConnection(AsyncData(connection)),
-        ),
+        _currentConnectionProvider.overrideWith(() => _CurrentConnection(AsyncData(connection))),
         phoneChannelProvider.overrideWithValue(_NoPhone()),
         localRuntimeProvider.overrideWith(_Runtime.new),
       ],
@@ -129,8 +131,7 @@ void main() {
   });
 
   group('remote Root queue', () {
-    testWidgets('a denied post stays available and banners in the foreground',
-        (tester) async {
+    testWidgets('a denied post stays available and banners in the foreground', (tester) async {
       container = make(foreground: true);
       remote.emit(approval('e1', 'r1'));
       await tester.pump(const Duration(milliseconds: 50));
@@ -152,6 +153,50 @@ void main() {
       expect(channel.shown, hasLength(1));
     });
 
+    testWidgets('revocation during Root phone tryShow rejects a late success', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      channel = FakeNotifyChannel();
+      remote = FakeAlertSource()
+        ..sessions = [session('s1', title: '本机任务')]
+        ..pending = [approval('e1', 's1')];
+      final localConnection = HostConnection(client: _Client(), label: '本机', isLocal: true);
+      final phone = _PhoneFallback();
+      container = ProviderContainer(
+        overrides: [
+          notifyChannelProvider.overrideWithValue(channel),
+          phoneChannelProvider.overrideWithValue(phone),
+          alertSourceFactoryProvider.overrideWithValue((_) => remote),
+          alertTimingProvider.overrideWithValue((announce: Duration.zero, reconcile: const Duration(seconds: 5))),
+          localConnectionProvider.overrideWith(() => _Local(localConnection)),
+          activeConnectionProvider.overrideWithValue(AsyncData(localConnection)),
+          localRuntimeProvider.overrideWith(_Runtime.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(chatAlertsProvider, (_, _) {});
+      container.read(appForegroundProvider.notifier).set(false);
+      final pending = Completer<NotifyShowResult>();
+      channel.showReply = (_) => pending.future;
+      expect(container.read(appForegroundProvider), isFalse);
+      expect(container.read(activeConnectionProvider).value, same(localConnection));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(remote.listCalls, greaterThan(0));
+      expect(phone.statusCalls, greaterThan(0));
+      expect(channel.shown, hasLength(1));
+      expect(channel.posted, isEmpty);
+
+      remote.emit(const HostRequestCancelledEvent('e1'));
+      await tester.pump(const Duration(milliseconds: 50));
+      pending.complete(const NotifyShowResult(delivered: true));
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(channel.posted, isEmpty);
+      expect(channel.cancelled, contains(('local:local|s1', 'e1')));
+      expect(container.read(chatAlertsProvider), isNull);
+      expect(await container.read(chatAlertsProvider.notifier).retryFailedNotifications(), isFalse);
+      expect(channel.shown, hasLength(1));
+    });
+
     testWidgets('retry delivers the original valid alert once', (tester) async {
       container = make(foreground: false);
       channel.showReply = (_) async => const NotifyShowResult(delivered: false, reason: 'denied');
@@ -159,9 +204,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(channel.shown, hasLength(1));
       channel.showReply = null;
-      final delivered = await container
-          .read(chatAlertsProvider.notifier)
-          .retryFailedNotifications();
+      final delivered = await container.read(chatAlertsProvider.notifier).retryFailedNotifications();
       expect(delivered, isTrue);
       expect(channel.shown, hasLength(2));
       expect(channel.shown.last.key, 'q1');
@@ -229,8 +272,7 @@ void main() {
       expect(channel.shown, hasLength(1));
     });
 
-    testWidgets('the foreground banner survives a background round trip',
-        (tester) async {
+    testWidgets('the foreground banner survives a background round trip', (tester) async {
       container = make(foreground: true);
       channel.showReply = (_) async => const NotifyShowResult(delivered: false, reason: 'denied');
       remote.emit(question('q1', 'r1', ['继续吗？']));
@@ -238,8 +280,11 @@ void main() {
       expect(container.read(chatAlertsProvider)?.key, 'q1');
       container.read(appForegroundProvider.notifier).set(false);
       await tester.pump(const Duration(milliseconds: 50));
-      expect(container.read(chatAlertsProvider), isNull,
-          reason: 'the post stays queued instead of dropping a duplicate');
+      expect(
+        container.read(chatAlertsProvider),
+        isNull,
+        reason: 'the post stays queued instead of dropping a duplicate',
+      );
       container.read(appForegroundProvider.notifier).set(true);
       await tester.pump(const Duration(milliseconds: 50));
       expect(container.read(chatAlertsProvider)?.key, 'q1');
@@ -290,9 +335,7 @@ void main() {
         kind: HostKind.ssh,
         hostId: 'lab-b',
       );
-      container
-          .read(_currentConnectionProvider.notifier)
-          .set(AsyncData(nextConnection));
+      container.read(_currentConnectionProvider.notifier).set(AsyncData(nextConnection));
       await tester.pump(const Duration(milliseconds: 50));
       pending.complete(const NotifyShowResult(delivered: true));
       await tester.pump(const Duration(milliseconds: 50));
@@ -332,7 +375,6 @@ void main() {
       expect(await container.read(chatAlertsProvider.notifier).retryFailedNotifications(), isTrue);
       expect(channel.shown, hasLength(2));
     });
-
   });
 
   group('normal path', () {

@@ -302,14 +302,20 @@ class FakeNotifyChannel extends NotifyChannel {
   Future<NotifySystemStatus> status() async => system;
 
   @override
-  Future<void> show(NotifyPost post) async => shown.add(post);
+  Future<NotifyShowResult> show(NotifyPost post, {bool Function()? stillCurrent}) async {
+    if (stillCurrent?.call() == false) {
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    shown.add(post);
+    return const NotifyShowResult.success();
+  }
 
   @override
-  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent}) async {
+  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent, bool rootRuntime = false}) async {
     if (stillCurrent?.call() == false) return false;
+    if (rootRuntime) return (await show(post, stillCurrent: stillCurrent)).delivered;
     if (!system.native || !system.enabled || !(post.attention ? system.attention : system.done)) return false;
-    await show(post);
-    return true;
+    return (await show(post, stillCurrent: stillCurrent)).delivered;
   }
 
   @override

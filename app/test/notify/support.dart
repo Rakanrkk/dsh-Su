@@ -2,10 +2,13 @@
 
 import 'dart:async';
 
+import 'package:dsh_app/runtime/runtime_bridge.dart';
+import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
 import 'package:dsh_app/state/notify_state.dart';
 import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 
 /// Lets queued microtasks and zero-length timers run.
 Future<void> settle() async {
@@ -92,6 +95,7 @@ class FakeNotifyChannel extends NotifyChannel {
   NotifySystemStatus system;
   Future<NotifyShowResult> Function(NotifyPost post)? showReply;
   final List<NotifyPost> shown = [];
+  final List<NotifyPost> posted = [];
   final List<(String, String)> cancelled = [];
   final List<String> cancelledGroups = [];
   int cancelledAll = 0;
@@ -108,22 +112,22 @@ class FakeNotifyChannel extends NotifyChannel {
     if (stillCurrent?.call() == false) return const NotifyShowResult(delivered: false, reason: 'cancelled');
     shown.add(post);
     final reply = showReply;
-    if (reply != null) return reply(post);
-    return const NotifyShowResult.success();
+    final result = reply == null ? const NotifyShowResult.success() : await reply(post);
+    if (stillCurrent?.call() == false) {
+      return const NotifyShowResult(delivered: false, reason: 'cancelled');
+    }
+    if (result.delivered) posted.add(post);
+    return result;
   }
 
   @override
-  Future<bool> tryShow(
-    NotifyPost post, {
-    bool Function()? stillCurrent,
-    bool rootRuntime = false,
-  }) async {
+  Future<bool> tryShow(NotifyPost post, {bool Function()? stillCurrent, bool rootRuntime = false}) async {
     if (stillCurrent?.call() == false) return false;
     if (rootRuntime) {
-      return (await show(post)).delivered;
+      return (await show(post, stillCurrent: stillCurrent)).delivered;
     }
     if (!system.native || !system.enabled || !(post.attention ? system.attention : system.done)) return false;
-    final result = await show(post);
+    final result = await show(post, stillCurrent: stillCurrent);
     return result.delivered;
   }
 
@@ -152,6 +156,14 @@ class FakeNotifyChannel extends NotifyChannel {
   Future<void> completeAction(NotifyAction action, NotifyActionResult result) async =>
       actionResults.add((action, result));
 }
+
+class _NotificationRuntime extends LocalRuntimeController {
+  @override
+  LocalRuntimeState build() =>
+      const LocalRuntimeState(loaded: true, status: RuntimeStatus(phase: RuntimePhase.installed));
+}
+
+Override notificationRuntimeOverride() => localRuntimeProvider.overrideWith(_NotificationRuntime.new);
 
 /// A connection object that is never used: [FakeAlertSource] stands in.
 HostConnection fakeHostConnection({bool local = true, HostKind kind = HostKind.local, String? hostId}) =>

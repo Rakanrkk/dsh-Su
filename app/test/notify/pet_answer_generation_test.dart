@@ -100,6 +100,7 @@ void main() {
         activeConnectionProvider.overrideWithValue(
           AsyncData(HostConnection(client: client, label: 'Lab', isLocal: false, kind: HostKind.ssh, hostId: 'lab')),
         ),
+        notificationRuntimeOverride(),
       ],
     );
     container.listen(chatAlertsProvider, (_, _) {});

@@ -19,6 +19,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:val_latex_flutter/val_latex_flutter.dart' show MathFont, MathPainter;
 
 import '../chat/support/harness.dart' show loadTestFonts;
 
@@ -126,6 +127,12 @@ Future<void> pumpShareCard(
   bool settle = true,
 }) async {
   await tester.runAsync(loadTestFonts);
+  await tester.runAsync(() => MathPainter.preloadFont(MathFont.latinModern));
+  expect(
+    MathPainter.fontGeneration,
+    greaterThan(0),
+    reason: 'the Latin Modern math font must be ready before share-card goldens',
+  );
   tester.view.devicePixelRatio = 2;
   tester.view.physicalSize = const Size(ShareCard.width * 2, 4800 * 2);
   addTearDown(tester.view.reset);

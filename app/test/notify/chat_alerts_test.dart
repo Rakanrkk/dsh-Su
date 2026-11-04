@@ -17,14 +17,14 @@ class _Recorder {
 void main() {
   late FakeAlertSource source;
   late _Recorder out;
-  late HostAlertTracker tracker;
+  HostAlertTracker? tracker;
 
   HostAlertTracker start({
     Duration announce = Duration.zero,
     Duration reconcile = const Duration(milliseconds: 30),
     bool Function(String)? skipApproval,
   }) {
-    tracker = HostAlertTracker(
+    final next = HostAlertTracker(
       host: HostRef.local,
       source: source,
       onAlert: out.alerts.add,
@@ -34,10 +34,12 @@ void main() {
       announceDelay: announce,
       reconcileDelay: reconcile,
     )..start();
-    return tracker;
+    tracker = next;
+    return next;
   }
 
   setUp(() {
+    tracker = null;
     source = FakeAlertSource()
       ..sessions = [
         session('s1', title: '修复登录按钮'),
@@ -47,7 +49,10 @@ void main() {
     out = _Recorder();
   });
 
-  tearDown(() => tracker.dispose());
+  tearDown(() async {
+    await tracker?.dispose();
+    tracker = null;
+  });
 
   group('requests', () {
     test('an approval alerts once, with the card verb and reason', () async {

@@ -131,6 +131,7 @@ void main() {
           alertTimingProvider.overrideWithValue((announce: Duration.zero, reconcile: const Duration(milliseconds: 30))),
           localConnectionProvider.overrideWith(() => _Local(localConn)),
           activeConnectionProvider.overrideWithValue(AsyncData(active ?? localConn)),
+          notificationRuntimeOverride(),
         ],
       );
       addTearDown(container.dispose);

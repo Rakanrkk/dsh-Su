@@ -177,11 +177,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Setup Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v6.4.1
+        with:
+          gradle-version: '9.3.1'
+          cache-disabled: true
       - name: Root-mode Android unit tests
-        working-directory: app/android
         run: |
-          ./gradlew \
-            -Pdsh.rootRuntime=true \
+          {
+            printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT"
+            if [ -n "${ANDROID_HOME:-}" ]; then printf 'sdk.dir=%s\n' "$ANDROID_HOME"; fi
+          } > app/android/local.properties
+          gradle \
+            --project-dir "$GITHUB_WORKSPACE/app/android" \
+            --project-prop=dsh.rootRuntime=true \
             :app:testX64DebugUnitTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsTest \
             --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsResultTest \

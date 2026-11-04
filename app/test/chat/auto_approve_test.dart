@@ -6,6 +6,8 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../notify/support.dart' show notificationRuntimeOverride;
+
 /// A client whose session stream and approval answers are scripted.
 class ScriptedClient extends DshClient {
   ScriptedClient() : super(DshConnection(Uri.parse('http://127.0.0.1:9')));
@@ -55,6 +57,7 @@ void main() {
     client = ScriptedClient();
     container = ProviderContainer(
       overrides: [
+        notificationRuntimeOverride(),
         activeConnectionProvider.overrideWithValue(
           AsyncData<HostConnection?>(HostConnection(client: client, label: '本机', isLocal: true)),
         ),
@@ -156,10 +159,19 @@ void main() {
   });
 
   test('a failed auto answer puts the card back with an error', () async {
+    final cardReturned = Completer<void>();
+    final subscription = container.listen(chatProvider('s'), (_, next) {
+      if (next.error == '自动允许失败' &&
+          next.approvals.any((approval) => approval.eventId == 'e') &&
+          !next.autoAnswered.contains('e')) {
+        cardReturned.complete();
+      }
+    });
     client.failing.add('e');
     chat.setAutoApprove(true);
     client.events.add(ApprovalRequestedEvent(request('e')));
-    await settle();
+    await cardReturned.future;
+    subscription.close();
     expect(client.answered, isEmpty);
     expect(state().autoAnswered, isEmpty);
     expect(state().approvals.single.eventId, 'e');

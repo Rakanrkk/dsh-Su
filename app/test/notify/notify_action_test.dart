@@ -101,6 +101,7 @@ void main() {
         alertTimingProvider.overrideWithValue((announce: Duration.zero, reconcile: const Duration(milliseconds: 30))),
         localConnectionProvider.overrideWith(() => _Local(localConnection)),
         activeConnectionProvider.overrideWithValue(AsyncData(remoteConnection)),
+        notificationRuntimeOverride(),
       ],
     );
     container.listen(chatAlertsProvider, (_, _) {});
