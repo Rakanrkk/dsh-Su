@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dsh_app/state/artifact_files.dart';
 import 'package:dsh_app/state/artifacts.dart';
 import 'package:dsh_app/state/connection_state.dart';
+import 'package:dsh_app/state/hosts_state.dart';
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
@@ -15,7 +16,14 @@ class _Carrier extends DshCarrier {
   String version = 'v1';
   String absolutePath = _artifact.path;
   bool failStat = false;
+  DshRemoteException? statFailure;
+  int? statHttpFailure;
+  bool immediateRead = false;
+  DshRemoteException? readFailure;
+  bool allowReadEndpoint = true;
+  int readCalls = 0;
   int statCalls = 0;
+  List<int> apiBytes = [6, 6, 6, 6];
   int? size = 4;
   final requests = <Completer<RpcResult>>[];
   final entered = List.generate(8, (_) => Completer<void>());
@@ -26,13 +34,27 @@ class _Carrier extends DshCarrier {
   DshTracer? get tracer => null;
 
   @override
+  bool allowsEndpoint(String endpoint) => endpoint != 'workspaceFiles/readBytes' || allowReadEndpoint;
+
+  @override
   Future<RpcResult> call(String endpoint, Map<String, Object?> args, {Duration? timeout}) async {
     if (endpoint == 'workspaceFiles/stat') {
       statCalls++;
       if (failStat) throw const DshTransportException('offline');
+      if (statHttpFailure case final status?) throw DshHttpException(status, 'endpoint unavailable');
+      if (statFailure case final failure?) return RpcError(failure);
       return RpcOk({'absolutePath': absolutePath, 'version': version, 'bytes': size});
     }
     if (endpoint == 'workspaceFiles/readBytes') {
+      readCalls++;
+      if (readFailure case final failure?) return RpcError(failure);
+      if (immediateRead) {
+        final options = args['options'] as Map;
+        final range = options['range'] as Map;
+        final offset = range['offset'] as int;
+        final data = offset >= apiBytes.length ? <int>[] : apiBytes.sublist(offset);
+        return RpcOk({'data': data, 'bytes': apiBytes.length, 'eof': true});
+      }
       final request = Completer<RpcResult>();
       requests.add(request);
       entered[requests.length - 1].complete();
@@ -72,14 +94,25 @@ class _Rig {
   late final files = forHost('host-a');
 
   ArtifactFiles forHost(String host) => ArtifactFiles(
-    connection: HostConnection(client: client, label: host, isLocal: false, hostId: host),
+    connection: HostConnection(client: client, label: host, isLocal: false, kind: HostKind.ssh, hostId: host),
     channel: const FilesChannel(),
+    selectedHost: HostRef.ssh(host),
     cacheRoot: () async => cache,
   );
 
-  ArtifactFiles forLocal({String hostId = 'local'}) => ArtifactFiles(
+  ArtifactFiles forLocal({String hostId = 'local', bool rootRuntime = false}) => ArtifactFiles(
     connection: HostConnection(client: client, label: hostId, isLocal: true, hostId: hostId),
     channel: const FilesChannel(),
+    selectedHost: HostRef.local,
+    rootRuntime: rootRuntime,
+    cacheRoot: () async => cache,
+  );
+
+  ArtifactFiles forOfflineLocal() => ArtifactFiles(
+    connection: null,
+    channel: const FilesChannel(),
+    selectedHost: HostRef.local,
+    rootRuntime: true,
     cacheRoot: () async => cache,
   );
 
@@ -88,6 +121,7 @@ class _Rig {
   Completer<void>? resolverRelease;
   List<int> localBytes = [8, 8, 8, 8];
   String? nativePathOverride;
+  bool nativeMissing = false;
 
   Future<void> installNativeResolver() async {
     const channel = MethodChannel('dsh/files');
@@ -95,6 +129,7 @@ class _Rig {
       if (call.method != 'resolveGuest') return null;
       resolveCalls++;
       if (nativePathOverride case final path?) return path;
+      if (nativeMissing) return null;
       final callIndex = resolveCalls;
       if (resolverEntered != null && callIndex == 2) resolverEntered!.complete();
       if (resolverRelease != null) await resolverRelease!.future;
@@ -135,6 +170,64 @@ void main() {
     await rig.cache.delete(recursive: true);
   });
 
+  test('selected local host resolves natively without a DSH connection', () async {
+    await rig.installNativeResolver();
+    final ordinary = File('${rig.cache.path}/offline.png');
+    await ordinary.writeAsBytes([5, 5, 5, 5]);
+    rig.nativePathOverride = ordinary.path;
+    final local = rig.forOfflineLocal();
+
+    expect(local.isLocal, isTrue);
+    expect(local.canFetch, isTrue);
+    final resolved = await local.materialize('s1', _artifact);
+    expect(resolved.path, ordinary.path);
+    expect(rig.carrier.statCalls, 0);
+    expect(rig.carrier.readCalls, 0);
+  });
+
+  test('a disconnected remote host does not resolve through the local channel', () async {
+    await rig.installNativeResolver();
+    final remote = ArtifactFiles(
+      connection: null,
+      selectedHost: const HostRef.ssh('host-a'),
+      channel: const FilesChannel(),
+      cacheRoot: () async => rig.cache,
+    );
+
+    expect(remote.canFetch, isFalse);
+    await expectLater(
+      remote.materialize('s1', _artifact),
+      throwsA(isA<ArtifactError>().having((error) => error.code, 'code', 'offline')),
+    );
+    expect(rig.resolveCalls, 0);
+  });
+
+  test('a removed remote host cannot use the temporary local connection', () async {
+    await rig.installNativeResolver();
+    final underlay = File('${rig.cache.path}/local-only.png');
+    await underlay.writeAsBytes([1, 1, 1, 1]);
+    rig.nativePathOverride = underlay.path;
+    rig.carrier.immediateRead = true;
+    rig.carrier.apiBytes = [9, 9, 9, 9];
+    final transitional = ArtifactFiles(
+      connection: HostConnection(client: rig.client, label: 'This phone', isLocal: true),
+      selectedHost: const HostRef.ssh('host-a'),
+      rootRuntime: true,
+      channel: const FilesChannel(),
+      cacheRoot: () async => rig.cache,
+    );
+
+    expect(transitional.isLocal, isFalse);
+    expect(transitional.canFetch, isFalse);
+    await expectLater(
+      transitional.materialize('s1', _artifact),
+      throwsA(isA<ArtifactError>().having((error) => error.code, 'code', 'offline')),
+    );
+    expect(rig.resolveCalls, 0);
+    expect(rig.carrier.statCalls, 0);
+    expect(rig.carrier.readCalls, 0);
+  });
+
   test('local Root export is reused until its stat version changes', () async {
     await rig.installNativeResolver();
     final local = rig.forLocal();
@@ -156,6 +249,73 @@ void main() {
     await rig.noStagingLeft();
   });
 
+  test('a bind-covered target exports guest bytes instead of rootfs underlay bytes', () async {
+    await rig.installNativeResolver();
+    final underlay = File('${rig.cache.path}/underlay.txt');
+    await underlay.writeAsBytes([1, 1, 1, 1]);
+    rig.nativePathOverride = underlay.path;
+    rig.carrier.immediateRead = true;
+    rig.carrier.apiBytes = [9, 9, 9, 9];
+
+    final local = rig.forLocal(rootRuntime: true);
+    final resolved = await local.materialize('s1', _artifact);
+    expect(await resolved.readAsBytes(), [9, 9, 9, 9]);
+    final cached = await local.materialize('s1', _artifact);
+    expect(cached.path, resolved.path);
+    expect(rig.carrier.readCalls, 1);
+
+    rig.carrier.version = 'v2';
+    rig.carrier.apiBytes = [2, 2, 2, 2];
+    final refreshed = await local.materialize('s1', _artifact);
+    expect(refreshed.path, resolved.path);
+    expect(await refreshed.readAsBytes(), [2, 2, 2, 2]);
+    expect(rig.carrier.readCalls, 2);
+    expect(rig.resolveCalls, 0);
+    await rig.noStagingLeft();
+  });
+
+  test('mount-only bytes fall back to DSH, reuse one version, and refresh', () async {
+    await rig.installNativeResolver();
+    rig.nativeMissing = true;
+    rig.carrier.immediateRead = true;
+    rig.carrier.apiBytes = [7, 7, 7, 7];
+    final local = rig.forLocal();
+
+    final first = await local.materialize('s1', _artifact);
+    expect(await first.readAsBytes(), [7, 7, 7, 7]);
+    final cached = await local.materialize('s1', _artifact);
+    expect(cached.path, first.path);
+    expect(rig.carrier.readCalls, 1);
+
+    rig.carrier.version = 'v2';
+    rig.carrier.apiBytes = [2, 2, 2, 2];
+    final refreshed = await local.materialize('s1', _artifact);
+    expect(await refreshed.readAsBytes(), [2, 2, 2, 2]);
+    expect(refreshed.path, first.path);
+    expect(rig.carrier.readCalls, 2);
+    expect(rig.resolveCalls, 3);
+    await rig.noStagingLeft();
+  });
+
+  test('overlapping Root API reads publish one versioned file without staging leaks', () async {
+    await rig.installNativeResolver();
+    rig.nativeMissing = true;
+    final local = rig.forLocal(rootRuntime: true);
+    final first = local.materialize('s1', _artifact);
+    await rig.carrier.entered[0].future;
+    final second = local.materialize('s1', _artifact);
+    await rig.carrier.entered[1].future;
+    rig.carrier.succeed(0, bytes: [9, 9, 9, 9]);
+    rig.carrier.succeed(1, bytes: [9, 9, 9, 9]);
+
+    final files = await Future.wait([first, second]);
+    expect(files[0].path, files[1].path);
+    expect(await files[0].readAsBytes(), [9, 9, 9, 9]);
+    expect(rig.carrier.requests.length, 2);
+    expect(rig.resolveCalls, 0);
+    await rig.noStagingLeft();
+  });
+
   test('ordinary native paths are returned without moving or caching', () async {
     await rig.installNativeResolver();
     final ordinary = File('${rig.cache.path}/ordinary.png');
@@ -166,6 +326,7 @@ void main() {
     expect(resolved.path, ordinary.path);
     expect(await resolved.readAsBytes(), [4, 4, 4, 4]);
     expect(await Directory('${rig.cache.path}/artifacts').exists(), isFalse);
+    expect(rig.carrier.readCalls, 0);
     expect(rig.resolveCalls, 1);
   });
 
@@ -211,10 +372,74 @@ void main() {
     expect(remaining.where((entry) => entry.path.split('/').last.startsWith('guest-artifact-')), isEmpty);
   });
 
+  test('native missing with stat not-found preserves the missing error', () async {
+    await rig.installNativeResolver();
+    rig.nativeMissing = true;
+    rig.carrier.statFailure = const DshRemoteException('workspace-file/not-found', 'missing');
+    await expectLater(
+      rig.forLocal(rootRuntime: true).materialize('s1', _artifact),
+      throwsA(isA<DshRemoteException>().having((error) => error.code, 'code', 'workspace-file/not-found')),
+    );
+    expect(rig.carrier.readCalls, 0);
+    expect(rig.resolveCalls, 0);
+  });
+
+  test('native missing without a read endpoint remains unsupported', () async {
+    await rig.installNativeResolver();
+    rig.nativeMissing = true;
+    rig.carrier.allowReadEndpoint = false;
+    await expectLater(
+      rig.forLocal().materialize('s1', _artifact),
+      throwsA(isA<ArtifactError>().having((error) => error.code, 'code', 'unsupported')),
+    );
+    expect(rig.carrier.readCalls, 0);
+  });
+
+  test('Root runtime uses Native when the byte endpoint is unavailable', () async {
+    await rig.installNativeResolver();
+    final ordinary = File('${rig.cache.path}/ordinary.png');
+    await ordinary.writeAsBytes([4, 4, 4, 4]);
+    rig.nativePathOverride = ordinary.path;
+    rig.carrier.allowReadEndpoint = false;
+
+    final resolved = await rig.forLocal(rootRuntime: true).materialize('s1', _artifact);
+    expect(await resolved.readAsBytes(), [4, 4, 4, 4]);
+    expect(rig.carrier.statCalls, 0);
+    expect(rig.carrier.readCalls, 0);
+    expect(rig.resolveCalls, 1);
+  });
+
+  test('Root runtime uses Native when the stat endpoint is absent', () async {
+    await rig.installNativeResolver();
+    final ordinary = File('${rig.cache.path}/ordinary.png');
+    await ordinary.writeAsBytes([4, 4, 4, 4]);
+    rig.nativePathOverride = ordinary.path;
+    rig.carrier.statHttpFailure = 404;
+
+    final resolved = await rig.forLocal(rootRuntime: true).materialize('s1', _artifact);
+    expect(await resolved.readAsBytes(), [4, 4, 4, 4]);
+    expect(rig.carrier.statCalls, 1);
+    expect(rig.carrier.readCalls, 0);
+    expect(rig.resolveCalls, 1);
+  });
+
+  test('native missing with an explicit API refusal preserves that error', () async {
+    await rig.installNativeResolver();
+    rig.nativeMissing = true;
+    rig.carrier.immediateRead = true;
+    rig.carrier.readFailure = const DshRemoteException('workspace-file/not-allowed', 'refused');
+    await expectLater(
+      rig.forLocal(rootRuntime: true).materialize('s1', _artifact),
+      throwsA(isA<DshRemoteException>().having((error) => error.code, 'code', 'workspace-file/not-allowed')),
+    );
+    expect(rig.carrier.readCalls, 1);
+    expect(rig.resolveCalls, 0);
+  });
+
   test('local stat failure preserves native resolution and does not trust old versions', () async {
     await rig.installNativeResolver();
-    final local = rig.forLocal();
-    final cached = await local.materialize('s1', _artifact);
+    final local = rig.forLocal(rootRuntime: true);
+    final cached = await rig.forLocal().materialize('s1', _artifact);
     rig.carrier.failStat = true;
     rig.localBytes = [3, 3, 3, 3];
     final fallback = await local.materialize('s1', _artifact);
