@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/l10n.dart';
+import '../runtime/runtime_state.dart';
 import 'artifacts.dart';
 import 'connection_state.dart';
 import 'hosts_state.dart';
@@ -151,38 +152,67 @@ class ArtifactFiles {
     if (!_connectionMatchesSelection) throw const ArtifactError('offline');
     if (conn.isLocal) {
       if (rootRuntime) {
-        if (!conn.client.canReadFileBytes) return _resolveNative(artifact.path);
-        try {
-          final stat = await conn.client.statFile(sessionId, artifact.path);
-          final sourcePath = stat.absolutePath.isEmpty ? artifact.path : stat.absolutePath;
-          final key = _fnv('local-api\n${conn.hostId ?? 'local'}\n$sessionId\n$sourcePath');
-          return await _downloadToCache(
-            client: conn.client,
-            sessionId: sessionId,
-            path: artifact.path,
-            artifact: artifact,
-            stat: stat,
-            cacheKey: key,
-            maxBytes: maxBytes,
-            cacheRoot: _cacheRoot,
-            onProgress: onProgress,
-            requireVersion: true,
-          );
-        } on DshTransportException {
-          return _resolveNative(artifact.path);
-        } on DshCarrierLostException {
-          return _resolveNative(artifact.path);
-        } on DshClosedException {
-          return _resolveNative(artifact.path);
-        } on DshHttpException catch (error) {
-          if (error.statusCode == 404) return _resolveNative(artifact.path);
-          rethrow;
-        } on DshRemoteException catch (error) {
-          if (error.code == 'METHOD_NOT_ALLOWED' || error.code == 'workspace-file/unsupported') {
-            return _resolveNative(artifact.path);
+        DshFileStat? stat;
+        (Object, StackTrace)? statFailure;
+        if (conn.client.canReadFileBytes) {
+          try {
+            stat = await conn.client.statFile(sessionId, artifact.path);
+          } catch (error, stack) {
+            statFailure = (error, stack);
           }
-          rethrow;
         }
+        final cacheVersion = stat != null && stat.absolutePath.isNotEmpty && stat.version.isNotEmpty;
+        final root = cacheVersion ? await _cacheRoot() : null;
+        final nativeKey = cacheVersion
+            ? _fnv('local\n${conn.hostId ?? 'local'}\n$sessionId\n${stat.absolutePath}\n${stat.version}')
+            : null;
+        final nativeDir = nativeKey == null ? null : Directory('${root!.path}/artifacts/$nativeKey');
+        final nativeTarget = nativeDir == null ? null : File('${nativeDir.path}/${_safeName(artifact.name)}');
+        if (nativeTarget?.existsSync() == true) return nativeTarget!;
+
+        final host = await channel.resolveGuest(artifact.path);
+        if (host != null) {
+          final resolved = File(host);
+          if (!cacheVersion || !_isManagedRootArtifact(resolved, root!)) return resolved;
+
+          Directory? staging;
+          try {
+            await nativeDir!.create(recursive: true);
+            staging = await nativeDir.createTemp('.part-');
+            final staged = File('${staging.path}/${_safeName(artifact.name)}');
+            if (nativeTarget!.existsSync()) return nativeTarget;
+            await resolved.rename(staged.path);
+            staged.renameSync(nativeTarget.path);
+            return nativeTarget;
+          } finally {
+            if (staging != null && await staging.exists()) await staging.delete(recursive: true);
+            if (await resolved.exists()) await resolved.delete();
+          }
+        }
+
+        if (stat == null) {
+          if (statFailure case final failure?) {
+            final (error, stack) = failure;
+            if (error is DshRemoteException || error is DshHttpException) {
+              Error.throwWithStackTrace(error, stack);
+            }
+          }
+          throw const ArtifactError('missing');
+        }
+        final sourcePath = stat.absolutePath.isEmpty ? artifact.path : stat.absolutePath;
+        final key = _fnv('local-api\n${conn.hostId ?? 'local'}\n$sessionId\n$sourcePath');
+        return await _downloadToCache(
+          client: conn.client,
+          sessionId: sessionId,
+          path: artifact.path,
+          artifact: artifact,
+          stat: stat,
+          cacheKey: key,
+          maxBytes: maxBytes,
+          cacheRoot: _cacheRoot,
+          onProgress: onProgress,
+          requireVersion: true,
+        );
       }
       DshFileStat? stat;
       (Object, StackTrace)? statFailure;
@@ -391,11 +421,12 @@ String _fnv(String text) {
 
 final artifactFilesProvider = Provider<ArtifactFiles>((ref) {
   final host = ref.watch(activeHostProvider);
+  final runtimeMode = ref.watch(localRuntimeProvider.select((state) => state.loaded ? state.status.rootRuntime : null));
   return ArtifactFiles(
     connection: ref.watch(activeConnectionProvider).value,
     channel: ref.watch(filesChannelProvider),
     selectedHost: host,
-    rootRuntime: _rootRuntimeBuild,
+    rootRuntime: _rootRuntimeBuild && (runtimeMode ?? true),
   );
 });
 

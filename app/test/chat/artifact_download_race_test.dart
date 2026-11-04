@@ -5,6 +5,7 @@ import 'package:dsh_app/state/artifact_files.dart';
 import 'package:dsh_app/state/artifacts.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
+import 'package:dsh_app/runtime/runtime_bridge.dart';
 import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/painting.dart';
@@ -19,14 +20,18 @@ class _FixedLocalHost extends ActiveHostController {
   HostRef build() => HostRef.local;
 }
 
-class _RuntimeBuildProbe extends LocalRuntimeController {
-  int buildCalls = 0;
+class _RuntimeBridge extends RuntimeBridge {
+  _RuntimeBridge(this.runtimeStatus)
+    : super(methods: const MethodChannel('unused'), events: const EventChannel('unused'));
+
+  final RuntimeStatus runtimeStatus;
 
   @override
-  LocalRuntimeState build() {
-    buildCalls++;
-    return const LocalRuntimeState(loaded: true);
-  }
+  Future<RuntimeStatus> status() async => runtimeStatus;
+  @override
+  Stream<RuntimeEvent> get events => const Stream.empty();
+  @override
+  Future<RuntimeLogSnapshot> logSnapshot({int lines = 300}) async => const RuntimeLogSnapshot([], 0);
 }
 
 class _Carrier extends DshCarrier {
@@ -153,12 +158,14 @@ class _Rig {
   List<int> localBytes = [8, 8, 8, 8];
   String? nativePathOverride;
   bool nativeMissing = false;
+  Object? resolveFailure;
 
   Future<void> installNativeResolver() async {
     const channel = MethodChannel('dsh/files');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method != 'resolveGuest') return null;
       resolveCalls++;
+      if (resolveFailure case final failure?) throw failure;
       if (nativePathOverride case final path?) return path;
       if (nativeMissing) return null;
       final callIndex = resolveCalls;
@@ -246,7 +253,7 @@ void main() {
     expect(rig.carrier.readCalls, 0);
   });
 
-  test('the provider factory resolves a local Native file without runtime events', () async {
+  test('the provider factory resolves a local Native file from runtime state', () async {
     const channel = MethodChannel('test/dsh/files-provider');
     final ordinary = File('${rig.cache.path}/provider-native.png');
     await ordinary.writeAsBytes([5, 5, 5, 5]);
@@ -256,16 +263,18 @@ void main() {
       resolveCalls++;
       return ordinary.path;
     });
-    final runtimeProbe = _RuntimeBuildProbe();
     final container = ProviderContainer(
       overrides: [
         activeHostProvider.overrideWith(_FixedLocalHost.new),
         activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
         filesChannelProvider.overrideWithValue(FilesChannel(channel)),
-        localRuntimeProvider.overrideWith(() => runtimeProbe),
+        runtimeBridgeProvider.overrideWithValue(
+          _RuntimeBridge(const RuntimeStatus(phase: RuntimePhase.installed, rootRuntime: true)),
+        ),
       ],
     );
     try {
+      await Future<void>.delayed(Duration.zero);
       final files = container.read(artifactFilesProvider);
       expect(files.isLocal, isTrue);
       expect(files.canFetch, isTrue);
@@ -273,11 +282,35 @@ void main() {
       expect(resolved.path, ordinary.path);
       expect(await resolved.readAsBytes(), [5, 5, 5, 5]);
       expect(resolveCalls, 1);
-      expect(runtimeProbe.buildCalls, 0);
     } finally {
       container.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
     }
+  });
+
+  test('provider Root build follows a loaded runtime mode and waits while loading', () async {
+    ProviderContainer container(RuntimeStatus status) => ProviderContainer(
+      overrides: [
+        activeHostProvider.overrideWith(_FixedLocalHost.new),
+        activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
+        runtimeBridgeProvider.overrideWithValue(_RuntimeBridge(status)),
+      ],
+    );
+
+    const rootBuild = bool.fromEnvironment('DSH_ROOT_RUNTIME');
+
+    final loading = container(const RuntimeStatus.unknown());
+    expect(loading.read(artifactFilesProvider).rootRuntime, rootBuild);
+    await Future<void>.delayed(Duration.zero);
+    expect(loading.read(artifactFilesProvider).rootRuntime, rootBuild);
+
+    final normal = container(const RuntimeStatus(phase: RuntimePhase.installed));
+    await Future<void>.delayed(Duration.zero);
+    expect(normal.read(artifactFilesProvider).rootRuntime, false);
+
+    final root = container(const RuntimeStatus(phase: RuntimePhase.installed, rootRuntime: true));
+    await Future<void>.delayed(Duration.zero);
+    expect(root.read(artifactFilesProvider).rootRuntime, rootBuild);
   });
 
   test('a disconnected remote host does not resolve through the local channel', () async {
@@ -323,6 +356,23 @@ void main() {
     expect(rig.carrier.readCalls, 0);
   });
 
+  test('Root build keeps a connected remote on DSH bytes', () async {
+    rig.carrier.immediateRead = true;
+    rig.carrier.apiBytes = [4, 3, 2, 1];
+    final remote = ArtifactFiles(
+      connection: rig.files.connection,
+      selectedHost: const HostRef.ssh('host-a'),
+      rootRuntime: true,
+      channel: rig.files.channel,
+      cacheRoot: () async => rig.cache,
+    );
+
+    final file = await remote.materialize('s1', _artifact);
+    expect(await file.readAsBytes(), [4, 3, 2, 1]);
+    expect(rig.resolveCalls, 0);
+    expect(rig.carrier.readCalls, 1);
+  });
+
   test('local Root export is reused until its stat version changes', () async {
     await rig.installNativeResolver();
     final local = rig.forLocal();
@@ -344,12 +394,11 @@ void main() {
     await rig.noStagingLeft();
   });
 
-  test('a bind-covered target exports guest bytes instead of rootfs underlay bytes', () async {
+  test('Root mode returns native guest bytes without a DSH read', () async {
     await rig.installNativeResolver();
-    final underlay = File('${rig.cache.path}/underlay.txt');
-    await underlay.writeAsBytes([1, 1, 1, 1]);
-    rig.nativePathOverride = underlay.path;
-    rig.carrier.immediateRead = true;
+    final guest = File('${rig.cache.path}/guest.png');
+    await guest.writeAsBytes([9, 9, 9, 9]);
+    rig.nativePathOverride = guest.path;
     rig.carrier.apiBytes = [9, 9, 9, 9];
 
     final local = rig.forLocal(rootRuntime: true);
@@ -357,15 +406,9 @@ void main() {
     expect(await resolved.readAsBytes(), [9, 9, 9, 9]);
     final cached = await local.materialize('s1', _artifact);
     expect(cached.path, resolved.path);
-    expect(rig.carrier.readCalls, 1);
-
-    rig.carrier.version = 'v2';
-    rig.carrier.apiBytes = [2, 2, 2, 2];
-    final refreshed = await local.materialize('s1', _artifact);
-    expect(refreshed.path, resolved.path);
-    expect(await refreshed.readAsBytes(), [2, 2, 2, 2]);
-    expect(rig.carrier.readCalls, 2);
-    expect(rig.resolveCalls, 0);
+    expect(rig.carrier.statCalls, 2);
+    expect(rig.carrier.readCalls, 0);
+    expect(rig.resolveCalls, 2);
     await rig.noStagingLeft();
   });
 
@@ -392,7 +435,7 @@ void main() {
     await rig.noStagingLeft();
   });
 
-  test('overlapping Root API reads publish one versioned file without staging leaks', () async {
+  test('overlapping ordinary API reads publish one versioned file without staging leaks', () async {
     await rig.installNativeResolver();
     rig.nativeMissing = true;
     final local = rig.forLocal(rootRuntime: true);
@@ -407,7 +450,7 @@ void main() {
     expect(files[0].path, files[1].path);
     expect(await files[0].readAsBytes(), [9, 9, 9, 9]);
     expect(rig.carrier.requests.length, 2);
-    expect(rig.resolveCalls, 0);
+    expect(rig.resolveCalls, 2);
     await rig.noStagingLeft();
   });
 
@@ -476,7 +519,7 @@ void main() {
       throwsA(isA<DshRemoteException>().having((error) => error.code, 'code', 'workspace-file/not-found')),
     );
     expect(rig.carrier.readCalls, 0);
-    expect(rig.resolveCalls, 0);
+    expect(rig.resolveCalls, 1);
   });
 
   test('native missing without a read endpoint remains unsupported', () async {
@@ -528,7 +571,20 @@ void main() {
       throwsA(isA<DshRemoteException>().having((error) => error.code, 'code', 'workspace-file/not-allowed')),
     );
     expect(rig.carrier.readCalls, 1);
-    expect(rig.resolveCalls, 0);
+    expect(rig.resolveCalls, 1);
+  });
+
+  test('Root denial propagates instead of silently using DSH bytes', () async {
+    await rig.installNativeResolver();
+    rig.resolveFailure = PlatformException(code: 'root-denied', message: 'shell denied');
+    rig.carrier.immediateRead = true;
+
+    await expectLater(
+      rig.forLocal(rootRuntime: true).materialize('s1', _artifact),
+      throwsA(isA<PlatformException>().having((error) => error.code, 'code', 'root-denied')),
+    );
+    expect(rig.carrier.readCalls, 0);
+    expect(rig.resolveCalls, 1);
   });
 
   test('local stat failure preserves native resolution and does not trust old versions', () async {
