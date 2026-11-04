@@ -1,0 +1,9 @@
+--- a/node_modules/@deepseek-ai/dsh-api-job-controller/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-job-controller/lib/index.js
+@@ -112,2 +112,4 @@
+-			cursor = read.next;
+-			job = registry.get(id, request.sessionId);
++			cursor = read.next;
++			// Teardown can remove a job while an output frame is yielded.
++			if (removed !== void 0) continue;
++			job = registry.get(id, request.sessionId);

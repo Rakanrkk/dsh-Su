@@ -1,0 +1,35 @@
+--- a/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-atomic-write/lib/index.js
+@@ -2,1 +2,1 @@
+-import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
++import { lstat, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+@@ -125,11 +125,18 @@
+-	const claim = `${lockPath}.takeover-${createHash("sha256").update(record).digest("hex").slice(0, 16)}`;
+-	try {
+-		await writeFile(claim, `${process.pid}\n`, {
+-			mode: 384,
+-			flag: "wx"
+-		});
+-	} catch (error) {
+-		const code = error.code;
+-		if (code === "EEXIST" || code === "EPERM") return false;
+-		throw error;
+-	}
++	const claim = `${lockPath}.takeover-${createHash("sha256").update(record).digest("hex").slice(0, 16)}`;
++	let handle;
++	try {
++		handle = await open(claim, "wx", 384);
++		try {
++			await handle.writeFile(`${process.pid}\n`);
++		} finally {
++			await handle.close();
++		}
++	} catch (error) {
++		if (handle !== void 0) {
++			await rm(claim, { force: true });
++			throw error;
++		}
++		const code = error.code;
++		if (code === "EEXIST" || code === "EPERM") return false;
++		throw error;
++	}

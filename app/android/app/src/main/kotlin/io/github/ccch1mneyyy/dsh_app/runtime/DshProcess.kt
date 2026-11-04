@@ -15,6 +15,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -39,6 +41,7 @@ class DshProcess(
     @Volatile private var stopping = false
     @Volatile private var expectedExit = false
     @Volatile private var readyReported = false
+    private val startupSignal = CountDownLatch(1)
     @Volatile private var waiter: Thread? = null
     @Volatile private var stopper: Thread? = null
     private val rootCleanup = RootCleanupConfirmation()
@@ -104,6 +107,11 @@ class DshProcess(
         check(!java.nio.file.Files.exists(pidFile.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "cannot remove stale runtime pid file" }
         port = pickPort()
         val tmp = File(context.cacheDir, "proot-tmp").apply { mkdirs() }
+        if (cleanup.canPruneTemp) {
+            val reclaimed = ProotTempFiles.prune(tmp) { pid -> processReader.uid(pid) == null }
+            if (reclaimed.removed > 0) listener.onLog("[dsh-app] reclaimed ${reclaimed.removed} stale proot temporary directories", "system")
+            if (reclaimed.incomplete) listener.onLog("[dsh-app] proot temporary cleanup incomplete; retained entries for a later start", "system")
+        }
         val vars = mapOf(
             "{NATIVE_LIB_DIR}" to context.applicationInfo.nativeLibraryDir,
             "{ROOTFS}" to rootfs.canonicalPath,
@@ -191,6 +199,7 @@ class DshProcess(
         val err = pump(p.errorStream.bufferedReader(), "stderr")
         waiter = thread(name = "dsh-wait", isDaemon = true) {
             val code = try { p.waitFor() } catch (_: InterruptedException) { -1 }
+            startupSignal.countDown()
             // The fatal message is usually the last output: let the pumps drain it before reporting.
             try {
                 out.join(2000)
@@ -207,6 +216,16 @@ class DshProcess(
             // controller's ownership until this UID sweep has finished.
             if (stopThread == null) killStrays()
             listener.onExit(this, code, expectedExit)
+        }
+        // The port deadline starts only after a token. A stuck loader/Node can emit nothing.
+        thread(name = "dsh-start-deadline", isDaemon = true) {
+            if (startupSignal.await(TOKEN_TIMEOUT_MS, TimeUnit.MILLISECONDS)) return@thread
+            synchronized(this) {
+                // Token detection and stop share this lock; a late deadline cannot retire either.
+                if (process === p && p.isAlive && !readyReported && !stopping) {
+                    failStart("no startup token received within ${TOKEN_TIMEOUT_MS / 1000}s")
+                }
+            }
         }
         if (stopping) stop()
     }
@@ -404,6 +423,7 @@ class DshProcess(
      */
     @Synchronized fun stop(expected: Boolean = true) {
         stopping = true
+        startupSignal.countDown()
         if (expected) expectedExit = true
         if (BuildConfig.ROOT_RUNTIME) {
             if (stopper?.isAlive == true || rootCleanup.confirmed) return
@@ -504,6 +524,7 @@ class DshProcess(
         val url = match.value
         val token = TOKEN_PARAM.find(url)?.groupValues?.get(1) ?: return
         readyReported = true
+        startupSignal.countDown()
         val base = "http://127.0.0.1:$port"
         thread(name = "dsh-ready", isDaemon = true) {
             val deadline = System.currentTimeMillis() + 90_000
@@ -553,7 +574,7 @@ class DshProcess(
     /** Reap a captured process tree before releasing #17 ownership to another launch. */
     @Synchronized fun killStrays(): Boolean = reapStrays().complete
 
-    private data class CleanupResult(val complete: Boolean, val ownedRemaining: Boolean)
+    private data class CleanupResult(val complete: Boolean, val ownedRemaining: Boolean, val canPruneTemp: Boolean = false)
 
     /** Unknown ambient processes are not proof of ownership. The default-mode
      * startup policy may continue after reaping every captured identity, while
@@ -574,7 +595,12 @@ class DshProcess(
             val owned = RuntimeProcessOwnership.owned(snapshot.records, roots, myPid, cleanupKnown)
             owned.forEach { cleanupKnown[it.pid] = it.started }
             val ownedRemaining = owned.isNotEmpty() || cleanupKnown.isNotEmpty()
-            if (!ownedRemaining && snapshot.observed) return CleanupResult(true, false)
+            if (!ownedRemaining && snapshot.observed) {
+                // This cache is shared across rootfs instances. Another engine may still use its glue.
+                val temp = File(context.cacheDir, "proot-tmp").absolutePath
+                val idle = snapshot.records.none { it.proot || it.marker != null || RuntimeProcessOwnership.within(it.cwd, temp) }
+                return CleanupResult(true, false, canPruneTemp = idle)
+            }
             owned.filter { it.proot }.forEach { signalOwned(it, if (first) OsConstants.SIGQUIT else OsConstants.SIGKILL) }
             owned.filterNot { it.proot }.forEach { signalOwned(it, OsConstants.SIGKILL) }
             first = false
@@ -599,6 +625,8 @@ class DshProcess(
         const val DEFAULT_PORT = 3080
         private const val STOP_TIMEOUT_MS = 10_000L
         const val GUEST_ENV = "{GUEST_ENV}"
+        // Bootstrap budget (not a device measurement); token-to-port retains its own 90 seconds.
+        private const val TOKEN_TIMEOUT_MS = 180_000L
         private val TOKEN_URL = Regex("""https?://[^\s'"]*[?&#]token=[A-Za-z0-9._~%-]+""")
         private val TOKEN_PARAM = Regex("""[?&#]token=([A-Za-z0-9._~%-]+)""")
         private val SECRET_KEY = Regex("(?i)(key|token|secret|password)")

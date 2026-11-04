@@ -17,8 +17,10 @@ import java.nio.file.LinkOption
  *
  * proot maps the guest root onto the rootfs (`filesDir/runtime/rootfs`, see
  * RuntimeInstaller) and, with phone storage on, binds the shared storage at
- * `/sdcard` and `/storage`. Symlinks inside the rootfs hold guest targets, so
- * absolute targets are resolved from the guest root rather than Android `/`.
+ * `/sdcard` and `/storage` (PhoneStorage.binds). Symlinks usually hold guest
+ * targets (`/usr/lib/…`), but `--link2symlink` uses host-absolute targets in
+ * the rootfs's `/root/.l2s`. Rebase those targets before following each link
+ * in the guest world, not by Android.
  */
 object GuestFiles {
     private const val MAX_LINKS = 16
@@ -39,9 +41,12 @@ object GuestFiles {
     }
 
     /** Host file for an absolute guest [path]; null when it is not a readable regular file. */
-    fun resolve(context: Context, path: String): File? {
+    fun resolve(context: Context, path: String): File? =
+        resolve(rootfs(context), path, PhoneStorage.hostRoot(), PhoneStorage.isGranted(context))
+
+    internal fun resolve(rootfs: File, path: String, phoneRoot: String, storageGranted: Boolean = true): File? {
         if (!path.startsWith("/")) return null
-        val rootfs = rootfs(context)
+        val rootPaths = listOf(rootfs.absolutePath, rootfs.canonicalPath)
         val pending = ArrayDeque(segments(path))
         val resolved = ArrayList<String>()
         var links = 0
@@ -52,26 +57,29 @@ object GuestFiles {
                 ".." -> { if (resolved.isNotEmpty()) resolved.removeAt(resolved.size - 1); continue }
             }
             resolved += segment
-            val host = hostOf(rootfs, resolved)
+            val host = hostOf(rootfs, resolved, phoneRoot)
             val nio = host.toPath()
             if (!Files.isSymbolicLink(nio)) continue
             if (++links > MAX_LINKS) return null
-            val target = try { Files.readSymbolicLink(nio).toString() } catch (_: Exception) { return null }
+            var target = try { Files.readSymbolicLink(nio).toString() } catch (_: Exception) { return null }
             resolved.removeAt(resolved.size - 1)
             if (target.startsWith("/")) {
-                // A host-rooted storage link is available only while phone storage is enabled.
-                if (target == PhoneStorage.hostRoot() || target.startsWith("${PhoneStorage.hostRoot()}/")) {
+                val root = rootPaths.firstOrNull { target == it || target.startsWith("$it/") }
+                if (root != null) {
+                    // PRoot l2s links name the host rootfs, not another guest /data/... path.
+                    target = target.removePrefix(root)
+                } else if (target.startsWith(phoneRoot)) {
                     val rest = pending.joinToString("/")
                     val file = if (rest.isEmpty()) File(target) else File(target, rest)
-                    return file.takeIf { PhoneStorage.isGranted(context) && it.isFile && it.canRead() }
+                    return file.takeIf { storageGranted && it.isFile && it.canRead() }
                 }
                 resolved.clear()
             }
-            segments(target).asReversed().forEach { pending.addFirst(it) }
+            segments(target).reversed().forEach { pending.addFirst(it) }
         }
         val guest = guestPath(resolved)
-        if (isSharedGuestPath(guest) && !PhoneStorage.isGranted(context)) return null
-        val file = hostOf(rootfs, resolved)
+        if (isSharedGuestPath(guest) && !storageGranted) return null
+        val file = hostOf(rootfs, resolved, phoneRoot)
         return file.takeIf { Files.isRegularFile(it.toPath(), LinkOption.NOFOLLOW_LINKS) && it.canRead() }
     }
 
@@ -82,15 +90,19 @@ object GuestFiles {
     fun resolveRoot(context: Context, path: String, shell: Shell): File? {
         if (!path.startsWith("/")) return null
         val rootfs = rootfs(context)
+        val rootPaths = listOf(rootfs.absolutePath, rootfs.canonicalPath)
         val resolved = resolveGuestSegments(path) { segments ->
             val guest = guestPath(segments)
             if (isSharedGuestPath(guest)) return@resolveGuestSegments null
-            val candidate = suFile(hostOf(rootfs, segments), shell)
-            if (!candidate.isSymlink) null else readlink(shell, candidate.path)
+            val candidate = suFile(hostOf(rootfs, segments, PhoneStorage.hostRoot()), shell)
+            if (!candidate.isSymlink) null else readlink(shell, candidate.path).let { target ->
+                val root = rootPaths.firstOrNull { target == it || target.startsWith("$it/") }
+                if (root == null) target else target.removePrefix(root)
+            }
         } ?: return null
 
         val guest = guestPath(resolved)
-        val source = hostOf(rootfs, resolved)
+        val source = hostOf(rootfs, resolved, PhoneStorage.hostRoot())
         if (isSharedGuestPath(guest)) {
             if (!PhoneStorage.isGranted(context)) return null
             return source.takeIf { it.isFile && it.canRead() }
@@ -159,11 +171,11 @@ object GuestFiles {
         SuFile(file.path).apply { setShell(shell) }
 
     /** Host path of resolved guest [segments] (no symlinks left to follow in them). */
-    private fun hostOf(rootfs: File, segments: List<String>): File {
-        val guest = guestPath(segments)
+    private fun hostOf(rootfs: File, segments: List<String>, phoneRoot: String): File {
+        val guest = "/" + segments.joinToString("/")
         val phone = PhoneStorage.GUEST_PATH
         return when {
-            guest == phone || guest.startsWith("$phone/") -> File(PhoneStorage.hostRoot() + guest.removePrefix(phone))
+            guest == phone || guest.startsWith("$phone/") -> File(phoneRoot + guest.removePrefix(phone))
             guest == "/storage" || guest.startsWith("/storage/") -> File(guest)
             else -> File(rootfs, guest.removePrefix("/"))
         }

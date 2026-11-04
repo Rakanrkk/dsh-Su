@@ -1,0 +1,9 @@
+--- a/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-session-reference/lib/index.js
+@@ -244 +244,2 @@
+-	let low = 0;
++	const encodedText = new TextEncoder().encode(text);
++	let low = 0;
+@@ -257 +258 @@
+-		retainer.push(text);
++		retainer.push(encodedText);

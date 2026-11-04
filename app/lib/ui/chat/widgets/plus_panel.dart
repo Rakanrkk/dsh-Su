@@ -25,6 +25,7 @@ import '../../../l10n/l10n.dart';
 import '../../../state/chat_state.dart';
 import '../../../state/connection_state.dart';
 import '../../../state/features_state.dart';
+import '../../../state/hosts_state.dart';
 import '../../../state/phone_state.dart';
 import '../../../state/session_modes.dart';
 import '../../common/app_sheet.dart';
@@ -305,9 +306,10 @@ class _SessionPermissionPageState extends ConsumerState<SessionPermissionPage> {
   }
 
   Future<void> _makeDefault(String value, int revision) async {
+    final owner = ref.read(activeHostProvider);
     final client = ref.read(activeConnectionProvider).value?.client;
     if (client == null || _busy) return;
-    if (!await confirmPermission(context, value) || !mounted) return;
+    if (!await confirmPermission(context, value) || !mounted || ref.read(activeHostProvider) != owner) return;
     setState(() => _busy = true);
     final problem = await writePermissionDefault(ref, client, value, revision);
     if (!mounted) return;

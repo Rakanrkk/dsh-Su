@@ -1131,11 +1131,13 @@ class DshGoStream {
   Timer? _graceTimer;
   Timer? _retryTimer;
   Timer? _silenceTimer;
+  Timer? _probeTimer;
   int _attempt = 0;
   int _nextSid = 0;
   int _epoch = 0;
   bool _inBackground = false;
   bool _closed = false;
+  bool _welcomed = false;
   DshGoLink _link = DshGoLink.idle;
 
   /// The bridge's version from `welcome`.
@@ -1348,6 +1350,7 @@ class DshGoStream {
   /// The socket went: every result it was to bring is void.
   void _voidAll() {
     conn = null;
+    _welcomed = false;
     negotiatedFeatures = const {};
     for (final sub in _microSubs.values) {
       sub.reset();
@@ -1489,9 +1492,16 @@ class DshGoStream {
 
   void _armSilence(int epoch) {
     _silenceTimer?.cancel();
+    _probeTimer?.cancel();
+    // dart:io consumes control ping/pong internally. Ask for a text reply
+    // without moving the existing deadline or prolonging an unused socket.
+    _probeTimer = Timer(silence ~/ 2, () {
+      if (epoch != _epoch || _link != DshGoLink.open || !_welcomed || _subs.isEmpty && _holds == 0) return;
+      _send({'t': 'ping'});
+    });
     _silenceTimer = Timer(silence, () {
       if (epoch != _epoch || _link != DshGoLink.open) return;
-      // Nothing for a minute, not even a ping: treat it as dropped.
+      // No text (including a probe reply) arrived within the original window.
       _disconnect(DshGoLink.idle);
       _scheduleRetry();
     });
@@ -1501,6 +1511,7 @@ class DshGoStream {
     if (epoch != _epoch) return;
     _voidAll();
     _silenceTimer?.cancel();
+    _probeTimer?.cancel();
     _socketSub = null;
     _socket = null;
     _scheduleRetry();
@@ -1535,6 +1546,8 @@ class DshGoStream {
     _retryTimer = null;
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    _probeTimer?.cancel();
+    _probeTimer = null;
     unawaited(_socketSub?.cancel());
     _socketSub = null;
     final socket = _socket;
@@ -1563,6 +1576,7 @@ class DshGoStream {
     final type = asString(map['t']);
     switch (type) {
       case 'welcome':
+        _welcomed = map['v'] == dshGoProtocol;
         bridge = asString(map['bridge']);
         conn = asString(map['conn']);
         negotiatedFeatures = asStringList(map['features']).where(features.contains).toSet();
@@ -1629,6 +1643,7 @@ class DshGoStream {
         _subs.remove(sub.sid);
         _emit(sub, DshGoEnded(asString(map['reason']) ?? 'error', code: asString(map['code'])));
         unawaited(sub.controller.close());
+        if (_subs.isEmpty && _holds == 0) _disconnect(DshGoLink.idle);
       default:
         // sync: already current, nothing to deliver.
         break;

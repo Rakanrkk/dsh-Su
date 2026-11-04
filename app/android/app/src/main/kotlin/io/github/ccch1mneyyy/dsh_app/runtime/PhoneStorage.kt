@@ -50,19 +50,16 @@ object PhoneStorage {
     fun syncShortcut(rootfs: java.io.File, enabled: Boolean): Boolean {
         // l10n:keep guest filesystem path
         val link = java.io.File(rootfs, "root/手机存储")
-        val present = try {
-            android.system.Os.lstat(link.path)
+        return try {
+            val info = android.system.Os.lstat(link.path)
+            if (!enabled && android.system.OsConstants.S_ISLNK(info.st_mode) &&
+                android.system.Os.readlink(link.path) == GUEST_PATH) {
+                link.delete()
+            }
             true
         } catch (_: Exception) {
-            // absent
-            false
+            if (enabled) runCatching { android.system.Os.symlink(GUEST_PATH, link.path) }.isSuccess else true
         }
-        if (present) {
-            if (!enabled) return link.delete()
-            return true
-        }
-        if (!enabled) return true
-        return runCatching { android.system.Os.symlink(GUEST_PATH, link.path) }.isSuccess
     }
 
     /** Opens the system "All files access" page for this app (Android 11+). */

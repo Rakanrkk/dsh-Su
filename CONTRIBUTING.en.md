@@ -41,6 +41,8 @@ Keeping upstream sync easy is a development requirement for this project. Reuse 
 
 Run these commands from the repository root. Select checks relevant to your change and record the commands and actual results in the PR. If a device, asset or dependency is unavailable, say what was not run and why.
 
+[CI](.github/workflows/ci.yml) runs these checks on PRs and `main`: a PR runs the general checks plus what it touches, a push to `main` runs everything, and `CI OK` is the result to read. CI has no devices or real accounts, so verify those separately.
+
 **Flutter app:**
 
 ```bash

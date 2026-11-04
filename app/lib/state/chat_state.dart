@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../diagnostics/app_error_log.dart';
 import '../l10n/l10n.dart';
 import '../usage/usage_stats.dart';
 import 'attachments.dart';
@@ -523,9 +525,7 @@ class ChatController extends Notifier<ChatState> {
       // These requests belong to the previous Host, even if the new Host has
       // the same session id. A new watch replays its own mux's pending requests.
       // Retire only the local cards; do not answer or cancel the old Host's work.
-      for (final id in [..._transcript.pendingApprovals.keys, ..._transcript.pendingQuestions.keys]) {
-        _transcript.apply(HostRequestCancelledEvent(id));
-      }
+      _retireHostRequests();
       _approvalHost = host;
       _defaultModelSaveFailed = false;
       _approvalScope = Object();
@@ -734,6 +734,12 @@ class ChatController extends Notifier<ChatState> {
     })();
   }
 
+  void _retireHostRequests() {
+    for (final id in [..._transcript.pendingApprovals.keys, ..._transcript.pendingQuestions.keys]) {
+      _transcript.apply(HostRequestCancelledEvent(id));
+    }
+  }
+
   void _listen(DshClient client, RunPulse pulse, {bool building = false}) {
     final owner = ref;
     final listener = _listenOwner = Object();
@@ -743,6 +749,10 @@ class ChatController extends Notifier<ChatState> {
     _syncReady = Completer<bool>();
     _markSyncing(building: building);
     unawaited(_sub?.cancel());
+    // A new watch replays its own mux's pending requests. It cannot retract
+    // cards forwarded only by the previous watch and settled while it was away.
+    // Retire local cards before replay; consent and in-flight answers stay intact.
+    _retireHostRequests();
     _sub = client
         .watch(
           sessionId,
@@ -759,6 +769,10 @@ class ChatController extends Notifier<ChatState> {
         .listen(
           (event) {
             if (!current()) return;
+            if (event is SessionErrorEvent) {
+              // Remote hosts have no local engine log in the diagnostics ZIP.
+              appErrorLog.record(AppErrorSource.session, event.message, StackTrace.empty);
+            }
             if (event is SessionSyncEvent) {
               _markSyncing(epoch: event.epoch);
               return;
@@ -838,7 +852,7 @@ class ChatController extends Notifier<ChatState> {
               _schedule();
             }
           },
-          onError: (Object e) {
+          onError: (Object e, StackTrace stack) {
             if (!current()) return;
             _watchEnded = true;
             _markSyncing();
@@ -850,6 +864,7 @@ class ChatController extends Notifier<ChatState> {
               }
               return;
             }
+            appErrorLog.record(AppErrorSource.session, e, stack);
             state = state.copyWith(
               error: chatErrorText(e, action: appL10n.stateChatSyncInterrupted),
               streamLost: true,
@@ -1343,44 +1358,46 @@ class ChatController extends Notifier<ChatState> {
   static String _contentKey(String text, List<DraftAttachment> attachments) =>
       [text, for (final a in attachments) a.name].join('\n');
 
-  /// Stages the files among [attachments] (`DshClient.uploadFile` prefers the
-  /// Host's raw-byte route and falls back to `fileUploads/upload`); images go
-  /// inline with the prompt instead, unless [images] asks for them.
-  Future<List<String>> _stageFiles(
+  /// Stages attachment receipts locally/over SSH, or publishes Remote files
+  /// into the current workspace. Images stay inline unless [images] is set.
+  Future<({List<String> receipts, List<String> paths})> _stageFiles(
     _ChatOperation operation,
     List<DraftAttachment> attachments, {
     bool images = false,
   }) async {
     final receipts = <String>[];
+    final paths = <String>[];
+    final client = operation.client;
     for (final attachment in attachments) {
       if (attachment.isImage != images) continue;
       _requireCurrent(operation);
-      receipts.add(await _upload(operation.client, attachment));
+      try {
+        if (client.supportsEndpoint('fileUploads/upload')) {
+          final receipt = await client.uploadFile(sessionId, attachment.bytes, name: attachment.name);
+          receipts.add(receipt.receiptId);
+        } else {
+          final file = await client.uploadWorkspaceFile(sessionId, attachment.bytes, name: attachment.name);
+          paths.add(file.path);
+        }
+      } catch (e) {
+        throw _UploadFailed(e);
+      }
       _requireCurrent(operation);
     }
-    return receipts;
+    return (receipts: receipts, paths: paths);
   }
 
-  Future<String> _upload(DshClient client, DraftAttachment attachment) async {
-    try {
-      final receipt = await client.uploadFile(sessionId, attachment.bytes, name: attachment.name);
-      return receipt.receiptId;
-    } catch (e) {
-      throw _UploadFailed(e);
-    }
-  }
-
-  /// `session/prompt` with the images of [attachments] inline and [receipts]
-  /// for its staged files. A model that reads text only (V4 Pro) refuses
+  /// `session/prompt` with the images of [attachments] inline and [staged]
+  /// for its uploaded files. A model that reads text only (V4 Pro) refuses
   /// images at admission, recording nothing: the same request goes again
   /// with them staged as files, so the message still lands and tools can
-  /// open them, and the returned notice says so. DSH Remote stages no files,
-  /// so there the refusal stands.
+  /// open them, and the returned notice says so. Remote workspace uploads
+  /// supply paths instead of receipt IDs.
   Future<String?> _deliver(
     _ChatOperation operation,
     String text,
     List<DraftAttachment> attachments,
-    List<String> receipts, {
+    ({List<String> receipts, List<String> paths}) staged, {
     required String requestId,
     required PromptMode mode,
   }) async {
@@ -1389,13 +1406,17 @@ class ChatController extends Notifier<ChatState> {
       for (final a in attachments)
         if (a.isImage) PromptImage.fromBytes(a.bytes, mediaType: a.mediaType!, name: a.name),
     ];
-    Future<void> prompt(List<PromptImage> images, List<String> receipts) {
+    Future<void> prompt(List<PromptImage> images, ({List<String> receipts, List<String> paths}) files) {
       _requireCurrent(operation);
+      final paths = files.paths.map((path) => '- ${jsonEncode(path)}').join('\n');
+      final content = paths.isEmpty
+          ? text
+          : [if (text.isNotEmpty) text, '${appL10n.stateWorkspaceFilesHint}\n$paths'].join('\n\n');
       return client.prompt(
         sessionId,
-        text,
+        content,
         images: images,
-        fileReceiptIds: receipts,
+        fileReceiptIds: files.receipts,
         requestId: requestId,
         mode: mode,
         // No clientTimeZone: DSH needs an IANA name, which Dart can't provide; the
@@ -1404,14 +1425,18 @@ class ChatController extends Notifier<ChatState> {
     }
 
     try {
-      await prompt(images, receipts);
+      await prompt(images, staged);
       return null;
     } on DshRemoteException catch (e) {
-      if (images.isEmpty || !_imagesRefused(e) || !client.supportsEndpoint('fileUploads/upload')) {
+      if (images.isEmpty || !_imagesRefused(e) || !client.supportsFileUpload) {
         rethrow;
       }
       _requireCurrent(operation);
-      await prompt(const [], [...receipts, ...await _stageFiles(operation, attachments, images: true)]);
+      final uploaded = await _stageFiles(operation, attachments, images: true);
+      await prompt(const [], (
+        receipts: [...staged.receipts, ...uploaded.receipts],
+        paths: [...staged.paths, ...uploaded.paths],
+      ));
       return appL10n.stateChatTextOnlyModel;
     }
   }
@@ -1422,7 +1447,7 @@ class ChatController extends Notifier<ChatState> {
   /// The banner for a send that did not go through.
   static String _sendFailure(Object e) => switch (e) {
     _UploadFailed(:final cause) => chatErrorText(cause, action: appL10n.stateAttachmentUploadFailed),
-    // DSH Remote: the images cannot go as files either.
+    // Older Remote Hosts may not support workspace uploads either.
     _ when _imagesRefused(e) => appL10n.stateChatImageModelRequired,
     _ => chatErrorText(e, action: appL10n.stateSendFailed),
   };

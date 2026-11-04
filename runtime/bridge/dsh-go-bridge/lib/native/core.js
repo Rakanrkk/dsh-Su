@@ -468,7 +468,7 @@ export class NativeCore {
   patchFeed(pkg, id, scope, data) {
     for (const feed of this.feeds.values()) {
       if (feed.pkg !== pkg || feed.id !== id || feed.dataFn === undefined || feed.data === undefined) continue;
-      if (JSON.stringify(feed.scope) !== scope.key) continue;
+      if (feed.scopeKey !== scope.key) continue;
       // Merge over the newest value, including an emit still waiting for its 4 Hz slot.
       const current = feed.pending !== undefined ? feed.pending.value : feed.data;
       feed.push(mergeApply(current ?? {}, data));
@@ -504,6 +504,8 @@ export class Feed {
     this.id = id;
     this.kind = kind;
     this.scope = scope;
+    // Canonical scope is private; plugin callbacks receive a copy.
+    this.scopeKey = JSON.stringify(scope);
     this.dataFn = dataFn;
     this.locale = locale;
     this.epoch = randomBytes(3).toString("hex");
@@ -538,7 +540,7 @@ export class Feed {
     result.then((cancel) => {
       if (typeof cancel !== "function") return;
       if (this.stopped) {
-        try { cancel(); } catch {}
+        try { Promise.resolve(cancel()).catch(() => {}); } catch {}
       } else this.cancel = cancel;
     }, (error) => {
       if (this.stopped) return;
@@ -587,6 +589,8 @@ export class Feed {
     this.rev = `${this.epoch}.${this.seq}`;
     this.data = next;
     for (const w of this.waiters.splice(0)) w();
+    // Later subscribers receive the current full data, not these unsent patches.
+    if (this.subs.size === 0) return;
     let msg;
     if (prev !== undefined && prev !== null && next !== null && base !== null) {
       const merge = mergeDiff(prev, next);
@@ -601,9 +605,15 @@ export class Feed {
   waitFirst(ms) {
     if (this.data !== undefined || this.stopped) return Promise.resolve();
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
+      const done = () => {
+        clearTimeout(timer);
+        const index = this.waiters.indexOf(done);
+        if (index !== -1) this.waiters.splice(index, 1);
+        resolve();
+      };
+      const timer = setTimeout(done, ms);
       timer.unref?.();
-      this.waiters.push(() => { clearTimeout(timer); resolve(); });
+      this.waiters.push(done);
     });
   }
 
@@ -655,7 +665,8 @@ export class Feed {
     if (this.core.feeds.get(this.key) === this) this.core.feeds.delete(this.key);
     if (this.cancel) {
       try {
-        this.cancel();
+        // Start cleanup now, but own its rejection without delaying retirement.
+        Promise.resolve(this.cancel()).catch((error) => this.core.ctx.logger?.warn?.(error));
       } catch (error) {
         this.core.ctx.logger?.warn?.(error);
       }

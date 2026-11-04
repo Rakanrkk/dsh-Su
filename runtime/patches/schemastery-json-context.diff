@@ -1,0 +1,40 @@
+diff --git a/node_modules/@deepseek-ai/schemastery/lib/index.cjs b/node_modules/@deepseek-ai/schemastery/lib/index.cjs
+--- a/node_modules/@deepseek-ai/schemastery/lib/index.cjs
++++ b/node_modules/@deepseek-ai/schemastery/lib/index.cjs
+@@ -76,7 +76,9 @@
+-	globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+-	const result = {
+-		uid: this.uid,
+-		refs: globalThis.__schemastery_refs__
+-	};
+-	globalThis.__schemastery_refs__ = void 0;
+-	return result;
++	try {
++		globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
++		return {
++			uid: this.uid,
++			refs: globalThis.__schemastery_refs__
++		};
++	} finally {
++		globalThis.__schemastery_refs__ = void 0;
++	}
+diff --git a/node_modules/@deepseek-ai/schemastery/lib/index.mjs b/node_modules/@deepseek-ai/schemastery/lib/index.mjs
+--- a/node_modules/@deepseek-ai/schemastery/lib/index.mjs
++++ b/node_modules/@deepseek-ai/schemastery/lib/index.mjs
+@@ -76,7 +76,9 @@
+-	globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
+-	const result = {
+-		uid: this.uid,
+-		refs: globalThis.__schemastery_refs__
+-	};
+-	globalThis.__schemastery_refs__ = void 0;
+-	return result;
++	try {
++		globalThis.__schemastery_refs__[this.uid] = JSON.parse(JSON.stringify({ ...this }));
++		return {
++			uid: this.uid,
++			refs: globalThis.__schemastery_refs__
++		};
++	} finally {
++		globalThis.__schemastery_refs__ = void 0;
++	}
