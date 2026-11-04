@@ -14,11 +14,14 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import '../chat/support/harness.dart' show fakeConnection;
 
 class FakeDsBotTransport implements DsBotTransport {
-  FakeDsBotTransport({Map<String, Object?>? team}) {
-    final data = team ?? sampleTeam();
+  FakeDsBotTransport({Map<String, Object?>? team, DateTime? sampleAt})
+    : chatItems = sampleChat(sampleAt: sampleAt),
+      roomItems = sampleRoomItems(sampleAt: sampleAt) {
+    final data = team ?? sampleTeam(sampleAt: sampleAt);
     handlers.addAll({
       'hello': (_) => helloAnswer(),
-      'state': (payload) => payload['since'] == data['revision'] ? {...liveOf(data), 'unchanged': true} : data,
+      'state': (payload) =>
+          payload['since'] == data['revision'] ? {...liveOf(data, sampleAt: sampleAt), 'unchanged': true} : data,
       'chat': (payload) => {'sessionId': '${payload['botId']}-c', 'items': chatItems, 'cursor': null},
       'room-chat': (payload) => {
         'roomId': payload['roomId'],
@@ -41,8 +44,8 @@ class FakeDsBotTransport implements DsBotTransport {
   final Map<String, Object? Function(Map<String, Object?> payload)> handlers = {};
   final List<(String, Map<String, Object?>)> calls = [];
 
-  List<Object?> chatItems = sampleChat();
-  List<Object?> roomItems = sampleRoomItems();
+  List<Object?> chatItems;
+  List<Object?> roomItems;
   bool roomRunning = false;
   String? roomSpeaking;
   Map<String, Object?> memory = sampleMemory();
@@ -142,10 +145,10 @@ const tinyPhoto =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAB20lEQVR4nA3LoRGGIBiA4X8FVzDZdQADkeqdA3hkmoUBvgEoNLLHANxRDW8gOACu4Ar+Pv35/Qa6gX5gHFADy4AZ2AdkIAwcA2WgDtwDz8A78PtNdBP9xDihJpYJM7FPyESYOCbKRJ24J56Jd/rCTDfTz4wzamaZMTP7jMyEmWOmzNSZe+aZeecvaDpNrxk1SrNojGbXiCZoDk3RVM2teTSv/sJKt9KvjCtqZVkxK/uKrISVY6Ws1JV75Vl51y9sdBv9xrihNpYNs7FvyEbYODbKRt24N56Nd/uCpbP0ltGiLIvFWHaLWILlsBRLtdyWx/LaLzg6R+8YHcqxOIxjd4gjOA5HcVTH7Xgcr/uC0Am9MApKWAQj7IIIQTiEIlThFh7hlS94Ok/vGT3Ks3iMZ/eIJ3gOT/FUz+15PK//QqSL9JExoiJLxET2iERC5IiUSI3ckSfyxi8kukSfGBMqsSRMYk9IIiSOREnUxJ14Em/6QqbL9JkxozJLxmT2jGRC5siUTM3cmSfz5i+cdCf9yXiiTpYTc7KfyEk4OU7KST25T56T9/zCRXfRX4wX6mK5MBf7hVyEi+OiXNSL++K5eK8vNLpG3xgbqrE0TGNvSCM0jkZp1MbdeBpv4w9hucmQU0mAqQAAAABJRU5ErkJggg==';
 
 /// Chief (Main, working), Writer, Coder with a photo, and one group.
-Map<String, Object?> sampleTeam({bool working = true, Map<String, Object?> questions = const {}}) {
-  // Before any of today's messages whatever the clock says, so the list order
+Map<String, Object?> sampleTeam({bool working = true, Map<String, Object?> questions = const {}, DateTime? sampleAt}) {
+  // Before any sample messages whatever the clock says, so the list order
   // (newest activity first) does not depend on when the test runs.
-  final now = todayAt(0, 0).millisecondsSinceEpoch;
+  final now = todayAt(0, 0, sampleAt: sampleAt).millisecondsSinceEpoch;
   return {
     'revision': 7,
     'mainBotIds': ['m1'],
@@ -205,13 +208,13 @@ Map<String, Object?> sampleTeam({bool working = true, Map<String, Object?> quest
     'readOnly': null,
     // Kept so the live-only answer to a later read says the same.
     'working': working,
-    ...liveOf({'working': working}),
+    ...liveOf({'working': working}, sampleAt: sampleAt),
   };
 }
 
-Map<String, Object?> liveOf(Map<String, Object?> data, {List<Object?> approvals = const []}) {
+Map<String, Object?> liveOf(Map<String, Object?> data, {List<Object?> approvals = const [], DateTime? sampleAt}) {
   final working = data['working'] != false;
-  final now = DateTime.now().millisecondsSinceEpoch;
+  final now = (sampleAt ?? DateTime.now()).millisecondsSinceEpoch;
   return {
     'revision': data['revision'] ?? 7,
     'activity': working ? {'m1': 'tool'} : <String, Object?>{},
@@ -227,8 +230,8 @@ Map<String, Object?> liveOf(Map<String, Object?> data, {List<Object?> approvals 
   };
 }
 
-List<Object?> sampleChat() {
-  final base = todayAt(14, 2).millisecondsSinceEpoch;
+List<Object?> sampleChat({DateTime? sampleAt}) {
+  final base = todayAt(14, 2, sampleAt: sampleAt).millisecondsSinceEpoch;
   return [
     {'kind': 'user', 'text': '帮我看看发布会的准备进度', 'time': base},
     {
@@ -241,8 +244,8 @@ List<Object?> sampleChat() {
   ];
 }
 
-List<Object?> sampleRoomItems() {
-  final base = todayAt(15, 10).millisecondsSinceEpoch;
+List<Object?> sampleRoomItems({DateTime? sampleAt}) {
+  final base = todayAt(15, 10, sampleAt: sampleAt).millisecondsSinceEpoch;
   return [
     {'id': '1', 'kind': 'user', 'text': '周五的发布会，大家分一下工', 'time': base},
     {
@@ -298,9 +301,11 @@ Future<void> settle([int rounds = 6]) async {
   }
 }
 
-/// Today at a fixed clock time: times in the goldens read the same every day.
-DateTime todayAt(int hour, int minute) {
-  final now = DateTime.now();
+/// At a fixed clock time on the sample day.
+final goldenSampleAt = DateTime(2020, 1, 15);
+
+DateTime todayAt(int hour, int minute, {DateTime? sampleAt}) {
+  final now = sampleAt ?? DateTime.now();
   return DateTime(now.year, now.month, now.day, hour, minute);
 }
 

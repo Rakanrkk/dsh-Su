@@ -25,14 +25,15 @@ void main() {
     double scale = 1,
     double width = 390,
     Brightness brightness = Brightness.light,
+    DateTime? sampleAt,
   }) async {
-    final team = sampleTeam(working: false);
+    final team = sampleTeam(working: false, sampleAt: sampleAt);
     final room = (team['rooms'] as List).single as Map<String, Object?>;
     room['paused'] = [
       {'id': 'parked-1', 'botId': 'b2', 'name': 'Writer'},
     ];
     if (readOnly) team['readOnly'] = 'Another host owns this team';
-    final fake = FakeDsBotTransport(team: team);
+    final fake = FakeDsBotTransport(team: team, sampleAt: sampleAt);
     usePhoneView(tester);
     tester.view.physicalSize = Size(width * 2, 1688);
     await tester.pumpWidget(
@@ -90,7 +91,7 @@ void main() {
       });
     }
     testWidgets('paused group golden ${brightness.name}', (tester) async {
-      await open(tester, brightness: brightness);
+      await open(tester, brightness: brightness, sampleAt: goldenSampleAt);
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/room_paused_${brightness.name}.png'));
     }, skip: !const bool.fromEnvironment('DSBOT_GOLDENS'));
   }

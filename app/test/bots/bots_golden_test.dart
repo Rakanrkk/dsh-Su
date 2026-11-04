@@ -24,7 +24,7 @@ import 'support.dart';
 void goldenBots(
   String name,
   Widget Function() home, {
-  required FakeDsBotTransport Function() transport,
+  required FakeDsBotTransport Function(DateTime sampleAt) transport,
   Future<void> Function(WidgetTester tester, FakeDsBotTransport transport)? before,
   double height = 844,
   List<Override> extra = const [],
@@ -39,7 +39,7 @@ void goldenBots(
       tester.view.padding = const FakeViewPadding(top: 32 * 2, bottom: 24 * 2);
       tester.view.viewPadding = const FakeViewPadding(top: 32 * 2, bottom: 24 * 2);
       addTearDown(tester.view.reset);
-      final fake = transport();
+      final fake = transport(goldenSampleAt);
       await tester.pumpWidget(
         goldenApp(home: home(), brightness: brightness, overrides: [...dsBotOverrides(fake), ...extra]),
       );
@@ -69,15 +69,14 @@ Map<String, Object?> notice(int seq, String kind, String text, {String? roomId})
 };
 
 DateTime _today(int hour, int minute) {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day, hour, minute);
+  return todayAt(hour, minute, sampleAt: goldenSampleAt);
 }
 
 void main() {
   goldenBots(
     'bots_home',
     () => const BotsPage(),
-    transport: FakeDsBotTransport.new,
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt),
     before: (tester, fake) async {
       fake
         ..emit('notice', notice(1, 'message', '海报文案我今晚给出，先发你一版提纲。'))
@@ -90,15 +89,17 @@ void main() {
   goldenBots(
     'bots_home_install',
     () => const BotsPage(),
-    transport: () => FakeDsBotTransport()..handlers['hello'] = (_) => throw const DshHttpException(404, 'missing'),
+    transport: (sampleAt) =>
+        FakeDsBotTransport(sampleAt: sampleAt)..handlers['hello'] = (_) => throw const DshHttpException(404, 'missing'),
   );
 
   goldenBots(
     'bot_chat',
     () => const BotChatPage(botId: 'm1'),
-    transport: () => FakeDsBotTransport(
+    transport: (sampleAt) => FakeDsBotTransport(
       team: sampleTeam(
         working: false,
+        sampleAt: sampleAt,
         questions: {
           'm1c': {
             'id': 'q1',
@@ -110,13 +111,14 @@ void main() {
           },
         },
       ),
+      sampleAt: sampleAt,
     ),
   );
 
   goldenBots(
     'room_chat_mention',
     () => const RoomChatPage(roomId: 'r1'),
-    transport: () => FakeDsBotTransport()
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt)
       ..roomRunning = true
       ..roomSpeaking = 'b3',
     before: (tester, fake) async {
@@ -125,21 +127,31 @@ void main() {
     },
   );
 
-  goldenBots('bot_details', () => const BotDetailsPage(botId: 'm1'), transport: FakeDsBotTransport.new, height: 1500);
+  goldenBots(
+    'bot_details',
+    () => const BotDetailsPage(botId: 'm1'),
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt),
+    height: 1500,
+  );
 
   goldenBots(
     'room_details',
     () => const RoomDetailsPage(roomId: 'r1'),
-    transport: FakeDsBotTransport.new,
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt),
     height: 1300,
   );
 
-  goldenBots('new_bot', () => const NewBotPage(), transport: FakeDsBotTransport.new, height: 980);
+  goldenBots(
+    'new_bot',
+    () => const NewBotPage(),
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt),
+    height: 980,
+  );
 
   goldenBots(
     'new_room_sheet',
     () => const _SheetHost(),
-    transport: FakeDsBotTransport.new,
+    transport: (sampleAt) => FakeDsBotTransport(sampleAt: sampleAt),
     before: (tester, fake) async {
       await tester.tap(find.text('open'));
       for (var i = 0; i < 8; i++) {
