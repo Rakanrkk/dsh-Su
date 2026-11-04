@@ -12,17 +12,26 @@ import '../runtime/runtime_state.dart';
 abstract final class EngineControl {
   /// Stops the local DSH, waits until the process has actually exited, then starts it again.
   /// [mode] null keeps the current mode (a restart in safe mode stays in safe mode).
-  static Future<void> restart(ProviderContainer container, {EngineMode? mode}) async {
+  static Future<void> restart(
+    ProviderContainer container, {
+    EngineMode? mode,
+    bool Function()? isCurrent,
+    Future<void>? cancelRequested,
+    Duration stopTimeout = const Duration(seconds: 20),
+  }) async {
     final runtime = container.read(localRuntimeProvider.notifier);
     final phase = container.read(localRuntimeProvider).status.phase;
     if (phase == RuntimePhase.running || phase == RuntimePhase.starting || phase == RuntimePhase.stopping) {
-      await _stopAndWait(container);
+      await _stopAndWait(container, timeout: stopTimeout);
     }
-    if (mode == null) {
-      await runtime.start();
-    } else {
-      await runtime.startIn(mode);
-    }
+    if (isCurrent != null && !isCurrent()) throw StateError('restart cancelled');
+    await _startAndWait(
+      container,
+      () => mode == null ? runtime.startOwned() : runtime.startInOwned(mode),
+      isCurrent: isCurrent,
+      cancelRequested: cancelRequested,
+      stopOwnedStart: runtime.stopOwnedStart,
+    );
   }
 
   /// Starts the engine unless it is already starting or running.
@@ -66,7 +75,10 @@ abstract final class EngineControl {
     return changed;
   }
 
-  static Future<void> _stopAndWait(ProviderContainer container) async {
+  static Future<void> _stopAndWait(
+    ProviderContainer container, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final stopped = Completer<void>();
     final sub = container.listen<RuntimePhase>(localRuntimeProvider.select((s) => s.status.phase), (_, next) {
       if (!next.isBusy && next != RuntimePhase.running && !stopped.isCompleted) {
@@ -74,11 +86,58 @@ abstract final class EngineControl {
       }
     });
     try {
-      if (container.read(localRuntimeProvider).status.phase != RuntimePhase.stopping) {
-        await container.read(localRuntimeProvider.notifier).stop();
+      final stop = container.read(localRuntimeProvider).status.phase == RuntimePhase.stopping
+          ? Future<void>.value()
+          : container.read(localRuntimeProvider.notifier).stop();
+      await Future.wait<void>([stop, stopped.future], eagerError: true).timeout(timeout);
+    } finally {
+      sub.close();
+    }
+  }
+
+  static Future<void> _startAndWait(
+    ProviderContainer container,
+    Future<int> Function() start, {
+    bool Function()? isCurrent,
+    Future<void>? cancelRequested,
+    required Future<void> Function(int ticket) stopOwnedStart,
+  }) async {
+    final ready = Completer<void>();
+    var starting = false;
+    void observe(RuntimePhase phase) {
+      if (phase == RuntimePhase.starting) starting = true;
+      if (phase == RuntimePhase.running) {
+        if (!ready.isCompleted) ready.complete();
+      } else if (starting &&
+          (phase == RuntimePhase.error || phase == RuntimePhase.installed || phase == RuntimePhase.notInstalled)) {
+        if (!ready.isCompleted) {
+          final error = container.read(localRuntimeProvider).status.error;
+          ready.completeError(StateError(error?.isNotEmpty == true ? error! : 'runtime stopped before becoming ready'));
+        }
       }
-      // DshProcess sends SIGTERM and escalates on its own; don't wait forever.
-      await stopped.future.timeout(const Duration(seconds: 20), onTimeout: () {});
+    }
+
+    final sub = container.listen<RuntimePhase>(
+      localRuntimeProvider.select((s) => s.status.phase),
+      (_, next) => observe(next),
+    );
+    final readyResult = ready.future.then<(bool, Object?, StackTrace?)>(
+      (_) => (false, null, null),
+      onError: (Object error, StackTrace stack) => (false, error, stack),
+    );
+    final cancelResult = cancelRequested?.then<(bool, Object?, StackTrace?)>((_) => (true, null, null));
+    final outcomeFuture = cancelResult == null ? readyResult : Future.any([readyResult, cancelResult]);
+    try {
+      if (isCurrent != null && !isCurrent()) throw StateError('restart cancelled');
+      final startTicket = await start();
+      observe(container.read(localRuntimeProvider).status.phase);
+      if (startTicket <= 0) throw StateError('runtime start returned no owner ticket');
+      final (wasCancelled, error, stack) = await outcomeFuture;
+      if (wasCancelled || (isCurrent != null && !isCurrent())) {
+        await stopOwnedStart(startTicket);
+        throw StateError('restart cancelled');
+      }
+      if (error != null) Error.throwWithStackTrace(error, stack!);
     } finally {
       sub.close();
     }

@@ -27,6 +27,18 @@ class _Runtime extends RecordingRuntime {
     calls.add(mode.name);
     await super.startIn(mode);
   }
+
+  @override
+  Future<int> startOwned() async {
+    calls.add('start');
+    return super.startOwned();
+  }
+
+  @override
+  Future<int> startInOwned(EngineMode mode) async {
+    calls.add(mode.name);
+    return super.startInOwned(mode);
+  }
 }
 
 class _Bridge extends FakeBridge {

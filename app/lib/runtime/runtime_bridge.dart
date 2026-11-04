@@ -571,12 +571,28 @@ class RuntimeBridge {
     bool phoneStorage = false,
     EngineMode? mode,
     bool visualReplies = true,
-  }) => _methods.invokeMethod<void>('start', {
-    'env': env,
-    'phoneStorage': phoneStorage,
-    'mode': mode?.name,
-    'visualReplies': visualReplies,
-  });
+  }) => _methods.invokeMethod<void>('start', _startArguments(env, phoneStorage, mode, visualReplies));
+
+  Future<int> startOwned({
+    Map<String, String> env = const {},
+    bool phoneStorage = false,
+    EngineMode? mode,
+    bool visualReplies = true,
+  }) async {
+    final arguments = _startArguments(env, phoneStorage, mode, visualReplies)..['returnTicket'] = true;
+    final ticket = await _methods.invokeMethod<int>('start', arguments);
+    if (ticket == null || ticket <= 0) throw StateError('runtime start returned no owner ticket');
+    return ticket;
+  }
+
+  Map<String, Object?> _startArguments(
+    Map<String, String> env,
+    bool phoneStorage,
+    EngineMode? mode,
+    bool visualReplies,
+  ) => {'env': env, 'phoneStorage': phoneStorage, 'mode': mode?.name, 'visualReplies': visualReplies};
+
+  Future<void> stopOwnedStart(int ticket) => _methods.invokeMethod<void>('stop', {'startTicket': ticket});
 
   Future<LastKnownGood> lastKnownGood() async {
     final map = await _methods.invokeMapMethod<Object?, Object?>('lastKnownGood');

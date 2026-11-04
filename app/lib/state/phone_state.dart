@@ -69,9 +69,10 @@ class PhoneState {
 
 /// Outcome of flipping the master switch.
 class PhoneToggleResult {
-  const PhoneToggleResult({required this.ok, this.restarting = false});
+  const PhoneToggleResult({required this.ok, this.restarting = false, this.error});
 
   final bool ok;
+  final String? error;
 
   /// The local engine is restarting so the plugin mounts or unmounts.
   final bool restarting;
@@ -166,6 +167,7 @@ class PhoneController extends Notifier<PhoneState> {
   /// loads plugins anyway: turning on is refused, turning off needs no restart.
   Future<PhoneToggleResult> setEnabled(bool enabled) async {
     if (state.toggling) return const PhoneToggleResult(ok: false);
+    final host = ref.read(activeHostProvider);
     final runtime = ref.read(localRuntimeProvider).status;
     if (enabled && runtime.inSafeMode) {
       return const PhoneToggleResult(ok: false);
@@ -178,12 +180,34 @@ class PhoneController extends Notifier<PhoneState> {
       if (!ok) return const PhoneToggleResult(ok: false);
       state = state.copyWith(status: state.status.copyWith(enabled: enabled));
       final now = ref.read(localRuntimeProvider).status;
-      if (!now.inSafeMode && (now.phase == RuntimePhase.running || now.phase == RuntimePhase.starting)) {
+      if (host.isLocal &&
+          !now.inSafeMode &&
+          (now.phase == RuntimePhase.running ||
+              now.phase == RuntimePhase.starting ||
+              now.phase == RuntimePhase.stopping)) {
         restarting = true;
-        unawaited(EngineControl.restart(ref.container));
+        final cancelRequested = Completer<void>();
+        final hostSubscription = ref.container.listen<HostRef>(activeHostProvider, (_, next) {
+          if (next != host && !cancelRequested.isCompleted) cancelRequested.complete();
+        });
+        ref.onDispose(() {
+          if (!cancelRequested.isCompleted) cancelRequested.complete();
+        });
+        try {
+          await EngineControl.restart(
+            ref.container,
+            isCurrent: () => ref.mounted && ref.read(activeHostProvider) == host,
+            cancelRequested: cancelRequested.future,
+          );
+        } finally {
+          hostSubscription.close();
+        }
       }
       unawaited(refreshStatus());
       return PhoneToggleResult(ok: true, restarting: restarting);
+    } catch (error) {
+      if (ref.mounted) unawaited(refreshStatus());
+      return PhoneToggleResult(ok: false, restarting: restarting, error: error.toString());
     } finally {
       if (ref.mounted) state = state.copyWith(toggling: false);
     }

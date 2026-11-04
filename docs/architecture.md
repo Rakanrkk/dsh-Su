@@ -47,8 +47,8 @@ MethodChannel `dsh/runtime`：
 |---|---|---|
 | `getStatus` | — | `RuntimeStatus` map（见下） |
 | `install` | — | `null`；进度经事件流推送；已安装且版本一致时立即完成 |
-| `start` | `{env: Map<String,String>}`（如 `DEEPSEEK_API_KEY`） | `null`；启动前台服务与进程 |
-| `stop` | — | `null` |
+| `start` | `{env: Map<String,String>}`（如 `DEEPSEEK_API_KEY`） | `null` 表示启动请求已接受；当前阶段不允许启动时抛出 `start_busy` |
+| `stop` | — | 进程退出且 Root 构建的 root 清理确认后返回 `null`；未确认时抛出 `stop_failed` |
 | `getLogs` | `{lines: int}` | `List<String>` |
 | `getLogSnapshot` | `{lines: int}`（默认 300，最多 2000） | `{entries: [LogEntry], throughSeq: int}`：内存里最后几行，`throughSeq` 是同一时刻已接收的最大序号 |
 | `reset` | — | `null`；删除已解压运行时（保留 `/root` 用户数据需另行确认） |

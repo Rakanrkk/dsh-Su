@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.embedding.engine.plugins.FlutterPlugin
@@ -33,6 +35,7 @@ class RuntimePlugin :
     private var activity: ActivityPluginBinding? = null
     private var pendingStorageResult: MethodChannel.Result? = null
     private var managedSkillOwner: ManagedSkillOwner? = null
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -98,17 +101,28 @@ class RuntimePlugin :
             "start" -> {
                 val env = (call.argument<Map<String, Any?>>("env") ?: emptyMap())
                     .mapNotNull { (k, v) -> v?.toString()?.let { k to it } }.toMap()
-                controller.start(
+                val accepted = controller.start(
                     env,
                     phoneStorage = call.argument<Boolean>("phoneStorage") == true,
                     mode = call.argument<String>("mode"),
                     visualReplies = call.argument<Boolean>("visualReplies") != false,
                 )
-                result.success(null)
+                if (accepted != null) {
+                    result.success(if (call.argument<Boolean>("returnTicket") == true) accepted else null)
+                } else {
+                    result.error("start_busy", "runtime cannot start in its current phase", null)
+                }
             }
             "stop" -> {
-                controller.stop()
-                result.success(null)
+                val startTicket = call.argument<Number>("startTicket")?.toLong()
+                val onDone: (Throwable?) -> Unit = { error ->
+                    main.post {
+                        if (error == null) result.success(null)
+                        else result.error("stop_failed", error.message, null)
+                    }
+                }
+                if (startTicket == null) controller.stop(onDone)
+                else controller.stopOwnedStart(startTicket, onDone)
             }
             "getLogs" -> result.success(controller.recentLogs(call.argument<Int>("lines") ?: 500))
             "getLogSnapshot" -> result.success(controller.logSnapshot((call.argument<Int>("lines") ?: 300).coerceIn(0, 2000)))

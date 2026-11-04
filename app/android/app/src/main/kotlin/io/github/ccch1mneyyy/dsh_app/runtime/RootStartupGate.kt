@@ -21,6 +21,12 @@ internal class RootStartupGate {
     }
 
     fun current(ticket: Ticket): Boolean = synchronized(guard) { current == ticket }
+    fun invalidate(ticket: Ticket): Boolean = synchronized(guard) {
+        if (current != ticket) return false
+        current = null
+        prepared = false
+        true
+    }
     fun invalidate() = synchronized(guard) { current = null; prepared = false }
 
     /** The production worker/main-thread seam; cancellation is rechecked after each handoff. */

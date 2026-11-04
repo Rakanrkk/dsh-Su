@@ -23,7 +23,21 @@ class RecordingRuntime extends LocalRuntimeController {
   Future<void> start() async => starts.add('start');
 
   @override
+  Future<int> startOwned() async {
+    starts.add('start');
+    state = state.copyWith(status: const RuntimeStatus(phase: RuntimePhase.running));
+    return starts.length;
+  }
+
+  @override
   Future<void> startIn(EngineMode mode) async => starts.add(mode.name);
+
+  @override
+  Future<int> startInOwned(EngineMode mode) async {
+    starts.add(mode.name);
+    state = state.copyWith(status: const RuntimeStatus(phase: RuntimePhase.running));
+    return starts.length;
+  }
 
   @override
   Future<void> stop() async {

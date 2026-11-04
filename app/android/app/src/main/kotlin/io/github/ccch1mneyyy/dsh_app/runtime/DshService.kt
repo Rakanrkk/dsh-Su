@@ -86,11 +86,13 @@ class DshService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_STOP -> {
-                if (controller.phase == RuntimeController.Phase.INSTALLING) return START_NOT_STICKY
-                controller.stopProcess()
-                running = false
-                stopForegroundCompat()
-                stopSelf()
+                val requestId = intent.getLongExtra(EXTRA_STOP_REQUEST, 0L)
+                val expectedGeneration = intent.getIntExtra(EXTRA_STOP_GENERATION, -1).takeIf { it >= 0 }
+                if (!controller.stopProcess(requestId, expectedGeneration)) return START_NOT_STICKY
+                if (stopSelfResult(startId)) {
+                    running = false
+                    stopForegroundCompat()
+                }
                 return START_NOT_STICKY
             }
             else -> {
@@ -191,6 +193,10 @@ class DshService : Service() {
         const val EXTRA_INSTALL_OK = "ok"
         /** The one-shot ticket the controller stamped on install/start intents. */
         const val EXTRA_TICKET = "ticket"
+        /** Identifies the MethodChannel stop request whose cleanup result must be returned. */
+        const val EXTRA_STOP_REQUEST = "stopRequest"
+        /** Prevents an old stop command from acting on a newer runtime generation. */
+        const val EXTRA_STOP_GENERATION = "stopGeneration"
         private const val CHANNEL_ID = "dsh-runtime"
         private const val NOTIFICATION_ID = 3080
         private const val ALERT_ID = 3081
@@ -285,7 +291,11 @@ class DshService : Service() {
         }
 
         fun stopSelfIfRunning(context: Context) {
-            if (running) context.startService(Intent(context, DshService::class.java).setAction(ACTION_STOP))
+            val controller = RuntimeController.get(context)
+            if (running) context.startService(
+                Intent(context, DshService::class.java).setAction(ACTION_STOP)
+                    .putExtra(EXTRA_STOP_GENERATION, controller.runtimeGeneration),
+            )
         }
 
         private fun ensureChannel(context: Context) {
@@ -311,7 +321,8 @@ class DshService : Service() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val stop = PendingIntent.getService(
-                context, 1, Intent(context, DshService::class.java).setAction(ACTION_STOP),
+                context, 1, Intent(context, DshService::class.java).setAction(ACTION_STOP)
+                    .putExtra(EXTRA_STOP_GENERATION, controller.runtimeGeneration),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -15,7 +15,18 @@ import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+
+internal fun acceptsRunReady(
+    sourceIsCurrent: Boolean,
+    phase: RuntimeController.Phase,
+    runGeneration: Int,
+    stopGeneration: Int,
+    resetting: Boolean,
+): Boolean =
+    sourceIsCurrent && phase != RuntimeController.Phase.STOPPING && stopGeneration < runGeneration && !resetting
 
 /**
  * Process-wide owner of the local runtime: install state, the DSH process, logs, and the
@@ -33,8 +44,23 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         fun emit(event: Map<String, Any?>)
     }
 
+    internal class StopRequest(
+        val runGeneration: Int,
+        val startTicketOwner: Long?,
+        private val onDone: (Throwable?) -> Unit,
+    ) {
+        private val completed = java.util.concurrent.atomic.AtomicBoolean()
+        fun belongsTo(generation: Int): Boolean = runGeneration == generation
+        fun belongsToStart(ticket: Long): Boolean = startTicketOwner == ticket
+        fun finish(error: Throwable?) {
+            if (completed.compareAndSet(false, true)) onDone(error)
+        }
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "dsh-runtime") }
+    private val stopRequestIds = AtomicLong()
+    private val stopRequests = ConcurrentHashMap<Long, StopRequest>()
     private val sinks = LinkedHashSet<EventSink>()
     private val logDir = File(app.filesDir, "runtime/logs")
     private val runtimeLogs = RuntimeLogs(
@@ -90,6 +116,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     /** Mode of the current (or last) launched process. */
     @Volatile private var runSafe = false
     @Volatile private var runGen = 0
+    @Volatile private var activeStartTicket: Long? = null
     @Volatile private var stopGen = -1
     @Volatile private var resetting = false
     @Volatile private var pendingRootCleanup: DshProcess? = null
@@ -117,6 +144,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     /** The process being started or running is a safe-mode one. */
     val safeRun: Boolean get() = runSafe
+    internal val runtimeGeneration: Int get() = runGen
 
     init {
         phase = try {
@@ -305,14 +333,15 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         phoneStorage: Boolean = false,
         mode: String? = null,
         visualReplies: Boolean = pendingVisualReplies,
-    ) {
+    ): Long? {
         pendingPhoneStorage = phoneStorage
         pendingVisualReplies = visualReplies
-        if (phase in setOf(Phase.RUNNING, Phase.STARTING, Phase.INSTALLING, Phase.STOPPING) || resetting) return
+        if (phase in setOf(Phase.RUNNING, Phase.STARTING, Phase.INSTALLING, Phase.STOPPING) || resetting) return null
         pendingEnv = env
         val next = SafePolicy.onStartRequest(safeState, mode)
         if (next != safeState) setSafeState(next, if (next == SafeState.ON) SafePolicy.REASON_MANUAL else safeReason)
         val ticket = rootStartupGate.begin(RootStartupGate.Kind.START)
+        activeStartTicket = ticket.id
         setPhase(Phase.STARTING)
         prepareRootRun(ticket) { accepted ->
             if (!accepted) {
@@ -332,6 +361,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 setPhase(Phase.ERROR)
             }
         }
+        return ticket.id
     }
 
     private fun sendForegroundService(intent: Intent) {
@@ -367,17 +397,50 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         null
     }
 
-    fun stop() {
-        stopGen = runGen
-        managedSkillGate.stop(runGen)
-        rootStartupGate.invalidate()
-        if (phase == Phase.INSTALLING) {
-            setPhase(if (installer.isCurrent()) Phase.INSTALLED else Phase.NOT_INSTALLED)
+    fun stop(onDone: (Throwable?) -> Unit) {
+        requestStop(onDone, startTicketOwner = null)
+    }
+
+    fun stopOwnedStart(ticketId: Long, onDone: (Throwable?) -> Unit) {
+        val ticket = RootStartupGate.Ticket(ticketId, RootStartupGate.Kind.START)
+        if (activeStartTicket != ticketId || !rootStartupGate.invalidate(ticket)) {
+            onDone(IllegalStateException("start request is no longer current"))
+            return
         }
-        cancelPendingInstall()
-        Thread({ PhoneControl.get(app).background.cancelUnwantedPending() }, "dsh-root-cancel").start()
-        val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_STOP)
-        app.startService(intent)
+        requestStop(onDone, startTicketOwner = ticketId, gateInvalidated = true)
+    }
+
+    private fun requestStop(
+        onDone: (Throwable?) -> Unit,
+        startTicketOwner: Long?,
+        gateInvalidated: Boolean = false,
+    ) {
+        val requestId = stopRequestIds.incrementAndGet()
+        val generation = runGen
+        stopRequests[requestId] = StopRequest(generation, startTicketOwner, onDone)
+        try {
+            stopGen = generation
+            managedSkillGate.stop(generation)
+            if (!gateInvalidated) rootStartupGate.invalidate()
+            if (phase == Phase.INSTALLING) {
+                setPhase(if (installer.isCurrent()) Phase.INSTALLED else Phase.NOT_INSTALLED)
+            }
+            cancelPendingInstall()
+            Thread({ PhoneControl.get(app).background.cancelUnwantedPending() }, "dsh-root-cancel").start()
+            val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_STOP)
+                .putExtra(DshService.EXTRA_STOP_REQUEST, requestId)
+                .putExtra(DshService.EXTRA_STOP_GENERATION, generation)
+            if (app.startService(intent) == null) {
+                finishStopRequest(requestId, IllegalStateException("runtime service did not accept stop"))
+            }
+        } catch (error: Throwable) {
+            finishStopRequest(requestId, error)
+        }
+    }
+
+    private fun finishStopRequest(requestId: Long, error: Throwable?) {
+        if (requestId == 0L) return
+        stopRequests.remove(requestId)?.finish(error)
     }
 
     /** Private bundled-skill transaction; never falls back to a different executor/root. */
@@ -514,9 +577,30 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
     }
 
-    @Synchronized internal fun stopProcess() {
-        rootStartupGate.invalidate()
-        if (phase == Phase.INSTALLING) return
+    @Synchronized internal fun stopProcess(requestId: Long = 0L, expectedGeneration: Int? = null): Boolean {
+        if (requestId != 0L) {
+            val request = stopRequests[requestId] ?: return false
+            if (!request.belongsTo(runGen)) {
+                finishStopRequest(requestId, IllegalStateException("stop request belongs to an earlier runtime"))
+                return false
+            }
+            val owner = request.startTicketOwner
+            if (owner != null && !request.belongsToStart(activeStartTicket ?: 0L)) {
+                finishStopRequest(requestId, IllegalStateException("start request is no longer current"))
+                return false
+            }
+        }
+        if (expectedGeneration != null && expectedGeneration != runGen) {
+            if (requestId != 0L) finishStopRequest(requestId, IllegalStateException("stop request belongs to an earlier runtime"))
+            return false
+        }
+        if (requestId == 0L || stopRequests[requestId]?.startTicketOwner == null) {
+            rootStartupGate.invalidate()
+        }
+        if (phase == Phase.INSTALLING) {
+            finishStopRequest(requestId, null)
+            return true
+        }
         stopGen = runGen
         val p = process
         if (p == null) {
@@ -524,29 +608,49 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             if (pending != null) {
                 worker.execute {
                     pending.stop()
-                    if (pending.awaitExit(15_000) && pending.rootCleanupConfirmed) {
+                    val stopped = runCatching { pending.awaitExit(15_000) && pending.rootCleanupConfirmed }
+                    if (stopped.getOrDefault(false)) {
                         clearPendingRootCleanup(pending)
+                        finishStopRequest(requestId, null)
                     } else {
                         log("[dsh-app] previous root cleanup remains unconfirmed; retry stop or reset", "system")
+                        finishStopRequest(requestId, stopped.exceptionOrNull() ?: IllegalStateException("runtime stop or root cleanup is unconfirmed"))
                     }
                 }
-                return
+                return true
             }
             if (phase == Phase.STARTING) {
                 // The launch is still queued on the worker: finish the stop behind it.
                 setPhase(Phase.STOPPING)
                 worker.execute {
                     val launched = process
-                    if (launched != null) launched.stop() else if (!resetting && phase == Phase.STOPPING) setPhase(Phase.INSTALLED)
+                    if (launched != null) {
+                        launched.stop()
+                        finishStopRequest(requestId, awaitStopResult(launched))
+                    } else {
+                        if (!resetting && phase == Phase.STOPPING) setPhase(Phase.INSTALLED)
+                        finishStopRequest(requestId, null)
+                    }
                 }
             } else if (!resetting && phase != Phase.NOT_INSTALLED && phase != Phase.ERROR) {
                 // Keep ERROR: the service's own stop after a crash must not hide the failure.
                 setPhase(Phase.INSTALLED)
+                finishStopRequest(requestId, null)
+            } else {
+                finishStopRequest(requestId, null)
             }
-            return
+            return true
         }
         setPhase(Phase.STOPPING)
         p.stop()
+        worker.execute { finishStopRequest(requestId, awaitStopResult(p)) }
+        return true
+    }
+
+    private fun awaitStopResult(process: DshProcess): Throwable? = try {
+        if (process.awaitExit()) null else IllegalStateException("runtime stop or root cleanup is unconfirmed")
+    } catch (error: Throwable) {
+        error
     }
 
     /** The default network changed: point the guest's resolv.conf at its DNS. */
@@ -876,7 +980,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     @Synchronized override fun onReady(source: DshProcess, baseUrl: String, token: String) {
         // A late report from a stopped or replaced process.
-        if (source !== process || phase == Phase.STOPPING) return
+        if (!acceptsRunReady(source === process, phase, runGen, stopGen, resetting)) return
         DshService.cancelStoppedAlert(app)
         this.baseUrl = baseUrl
         this.token = token

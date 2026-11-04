@@ -92,4 +92,49 @@ class RootStartupGateTest {
         assertFalse(s.gate.consume(0, RootStartupGate.Kind.INSTALL))
         assertFalse(s.gate.consume(fresh.id, RootStartupGate.Kind.START))
     }
+
+    @Test fun ownerCancellationInvalidatesOnlyItsTicket() {
+        val s = Startup()
+        val old = s.request(RootStartupGate.Kind.START)
+        s.worker.run(); s.main.run()
+        val fresh = s.request(RootStartupGate.Kind.START)
+        s.worker.run(); s.main.run()
+
+        assertFalse(s.gate.invalidate(old))
+        assertTrue(s.gate.current(fresh))
+        assertTrue(s.gate.consume(fresh.id, RootStartupGate.Kind.START))
+    }
+
+    @Test fun consumedTicketRemainsCancellableByItsOwner() {
+        val s = Startup()
+        val ticket = s.request(RootStartupGate.Kind.START)
+        s.worker.run(); s.main.run()
+
+        assertTrue(s.gate.consume(ticket.id, RootStartupGate.Kind.START))
+        assertTrue(s.gate.invalidate(ticket))
+        assertFalse(s.gate.current(ticket))
+    }
+
+    @Test fun ownerCancellationDuringPreparationRejectsLateDispatch() {
+        val s = Startup()
+        val ticket = s.request(RootStartupGate.Kind.START)
+        s.worker.run()
+
+        assertTrue(s.gate.invalidate(ticket))
+        s.main.run()
+        s.service(ticket)
+
+        assertEquals(listOf("prepare", "rejected:${ticket.id}"), s.effects)
+    }
+
+    @Test fun ownerCancellationAfterDispatchRejectsServiceStart() {
+        val s = Startup()
+        val ticket = s.request(RootStartupGate.Kind.START)
+        s.worker.run(); s.main.run()
+
+        assertTrue(s.gate.invalidate(ticket))
+        s.service(ticket)
+
+        assertEquals(listOf("prepare", "intent:${ticket.id}"), s.effects)
+    }
 }

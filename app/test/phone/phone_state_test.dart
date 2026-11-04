@@ -1,6 +1,8 @@
 // PhoneController: loading, events, the master switch and its engine restart,
 // safe mode and remote hosts, app rules.
 
+import 'dart:async';
+
 import 'package:dsh_app/runtime/runtime_bridge.dart';
 import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
@@ -15,14 +17,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late PhoneTestRuntime runtime;
+  late _MutableActiveHost activeHost;
 
   ProviderContainer make({RuntimeStatus engine = runningRuntime, HostRef host = HostRef.local}) {
     runtime = PhoneTestRuntime(LocalRuntimeState(loaded: true, status: engine));
+    activeHost = _MutableActiveHost(host);
     final c = ProviderContainer(
-      overrides: [
-        localRuntimeProvider.overrideWith(() => runtime),
-        activeHostProvider.overrideWith(() => FixedActiveHost(host)),
-      ],
+      overrides: [localRuntimeProvider.overrideWith(() => runtime), activeHostProvider.overrideWith(() => activeHost)],
     );
     addTearDown(c.dispose);
     return c;
@@ -89,6 +90,95 @@ void main() {
     expect(c.read(phoneProvider).status.enabled, isTrue);
     expect(runtime.stops, 1);
     expect(runtime.starts, ['start']);
+  });
+
+  test('toggle remains busy until the restarted engine is ready', () async {
+    FakePhoneNative(status: phoneStatus(enabled: false)).install();
+    final c = make();
+    c.read(phoneProvider);
+    await settle();
+    runtime.deferReady = true;
+
+    var completed = false;
+    final toggling = c.read(phoneProvider.notifier).setEnabled(true).then((result) {
+      completed = true;
+      return result;
+    });
+    await settle();
+    expect(runtime.starts, ['start']);
+    expect(completed, isFalse);
+    expect(c.read(phoneProvider).toggling, isTrue);
+
+    runtime.markReady();
+    final result = await toggling;
+    expect(result.ok, isTrue);
+    expect(c.read(phoneProvider).toggling, isFalse);
+  });
+
+  test('host change during old stop cancels the new start', () async {
+    FakePhoneNative(status: phoneStatus(enabled: false)).install();
+    final c = make();
+    c.read(phoneProvider);
+    await settle();
+    runtime.onStop = () => activeHost.change(const HostRef.ssh('lab'));
+
+    final result = await c.read(phoneProvider.notifier).setEnabled(true);
+    expect(result.ok, isFalse);
+    expect(result.error, contains('restart cancelled'));
+    expect(runtime.starts, isEmpty);
+    expect(c.read(phoneProvider).toggling, isFalse);
+  });
+
+  test('host change after start acceptance stops that run before toggle settles', () async {
+    FakePhoneNative(status: phoneStatus(enabled: false)).install();
+    final c = make();
+    c.read(phoneProvider);
+    await settle();
+    runtime.deferReady = true;
+    runtime.ownedStopBarrier = Completer<void>();
+
+    var completed = false;
+    final toggling = c.read(phoneProvider.notifier).setEnabled(true).then((result) {
+      completed = true;
+      return result;
+    });
+    await settle();
+    expect(runtime.starts, ['start']);
+    expect(runtime.stoppedOwners, isEmpty);
+
+    activeHost.change(const HostRef.ssh('lab'));
+    await settle();
+    expect(runtime.stoppedOwners, [1]);
+    expect(completed, isFalse);
+    expect(c.read(phoneProvider).toggling, isTrue);
+
+    runtime.markReady();
+    await settle();
+    expect(completed, isFalse);
+    expect(c.read(phoneProvider).toggling, isTrue);
+
+    runtime.ownedStopBarrier!.complete();
+    final result = await toggling;
+    expect(result.ok, isFalse);
+    expect(result.error, contains('restart cancelled'));
+    expect(c.read(phoneProvider).toggling, isFalse);
+    expect(runtime.stoppedOwners, [1]);
+  });
+
+  test('a failed restarted engine is returned to the toggle result', () async {
+    FakePhoneNative(status: phoneStatus(enabled: false)).install();
+    final c = make();
+    c.read(phoneProvider);
+    await settle();
+    runtime.deferReady = true;
+
+    final toggling = c.read(phoneProvider.notifier).setEnabled(true);
+    await settle();
+    runtime.markFailed('root startup failed');
+    final result = await toggling;
+    expect(result.ok, isFalse);
+    expect(result.error, contains('root startup failed'));
+    expect(c.read(phoneProvider).toggling, isFalse);
   });
 
   test('turning on with the engine stopped does not start it', () async {
@@ -202,4 +292,18 @@ void main() {
     expect(native.callsOf('status').length, before + 1);
     expect(c.read(phoneProvider).status.background.mode, PhoneBackgroundMode.shizuku);
   });
+}
+
+class _MutableActiveHost extends ActiveHostController {
+  _MutableActiveHost(this.host);
+
+  HostRef host;
+
+  @override
+  HostRef build() => host;
+
+  void change(HostRef next) {
+    host = next;
+    state = next;
+  }
 }

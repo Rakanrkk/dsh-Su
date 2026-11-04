@@ -225,6 +225,14 @@ class ProcessLaunchGuardTest {
     ): Set<Token> {
         if (path != rootProbeService) return emptySet()
         val start = sourceSection(source, "override fun start(", "override fun stop(")
+        val recovery = sourceSection(
+            source,
+            "check(OwnedRuncStateRecovery.recover(",
+            "}) { \"owned root containers could not be recovered\" }",
+        )
+        check(recovery.start >= start.start && recovery.end <= start.end) {
+            "Review the owned runc recovery placement"
+        }
         val stop = sourceSection(source, "override fun stop(", "override fun waitExit(")
         val delete = sourceSection(source, "private fun delete(", "override fun onDestroy()")
         val destroy = sourceSection(source, "override fun onDestroy()", "private fun resolveRunc()")
@@ -237,6 +245,11 @@ class ProcessLaunchGuardTest {
                 "val p = builder.start()" in start.text,
         ) {
             "Review the root runc launch argv handoff"
+        }
+        check(
+            "ProcessBuilder(commandArgv).redirectErrorStream(true).start()" in recovery.text,
+        ) {
+            "Review the owned runc state recovery command"
         }
         check(
             "val runcPath = resolveRunc()" in stop.text &&
@@ -266,15 +279,20 @@ class ProcessLaunchGuardTest {
         }
 
         val runcCalls = calls.filter { it.text == "ProcessBuilder" }
-        check(runcCalls.size == 5) { "Review all RootProbeService process launches" }
+        check(runcCalls.size == 6) { "Review all RootProbeService process launches" }
         val startCalls = callsInSection(runcCalls, start, "ProcessBuilder")
+        val recoveryCalls = callsInSection(runcCalls, recovery, "ProcessBuilder")
+        val engineStartCalls = startCalls - recoveryCalls
         val stopCalls = callsInSection(runcCalls, stop, "ProcessBuilder")
         val deleteCalls = callsInSection(runcCalls, delete, "ProcessBuilder")
         val destroyCalls = callsInSection(runcCalls, destroy, "ProcessBuilder")
-        check(startCalls.size == 1 && stopCalls.size == 1 && deleteCalls.size == 1 && destroyCalls.size == 2) {
+        check(
+            engineStartCalls.size == 1 && recoveryCalls.size == 1 && stopCalls.size == 1 &&
+                deleteCalls.size == 1 && destroyCalls.size == 2,
+        ) {
             "Review RootProbeService launch methods and counts"
         }
-        val reviewed = startCalls + stopCalls + deleteCalls + destroyCalls
+        val reviewed = engineStartCalls + recoveryCalls + stopCalls + deleteCalls + destroyCalls
 
         val client = File(root, rootRuncClient).readText()
         val fixedRuncArgv = Regex(

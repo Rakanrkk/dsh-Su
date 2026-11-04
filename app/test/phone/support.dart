@@ -2,6 +2,8 @@
 // PhonePlugin.kt implements), plus a runtime that records restarts. Widget
 // tests run the real PhoneChannel against it, so parsing is exercised too.
 
+import 'dart:async';
+
 import 'package:dsh_app/runtime/runtime_bridge.dart';
 import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
@@ -327,7 +329,12 @@ class PhoneTestRuntime extends LocalRuntimeController {
 
   final LocalRuntimeState initial;
   final starts = <String>[];
+  final stoppedOwners = <int>[];
   int stops = 0;
+  int nextTicket = 1;
+  bool deferReady = false;
+  void Function()? onStop;
+  Completer<void>? ownedStopBarrier;
 
   @override
   LocalRuntimeState build() => initial;
@@ -337,16 +344,47 @@ class PhoneTestRuntime extends LocalRuntimeController {
 
   @override
   Future<void> start() async {
-    starts.add('start');
-    state = state.copyWith(status: _with(RuntimePhase.running));
+    await startOwned();
   }
 
   @override
-  Future<void> startIn(EngineMode mode) async => starts.add(mode.name);
+  Future<int> startOwned() async {
+    starts.add('start');
+    final ticket = nextTicket++;
+    state = state.copyWith(status: _with(deferReady ? RuntimePhase.starting : RuntimePhase.running));
+    return ticket;
+  }
+
+  void markReady() => state = state.copyWith(status: _with(RuntimePhase.running));
+
+  void markFailed(String error) => state = state.copyWith(
+    status: RuntimeStatus(phase: RuntimePhase.error, error: error),
+  );
+
+  @override
+  Future<void> startIn(EngineMode mode) async {
+    await startInOwned(mode);
+  }
+
+  @override
+  Future<int> startInOwned(EngineMode mode) async {
+    starts.add(mode.name);
+    final ticket = nextTicket++;
+    state = state.copyWith(status: _with(deferReady ? RuntimePhase.starting : RuntimePhase.running));
+    return ticket;
+  }
 
   @override
   Future<void> stop() async {
     stops++;
+    onStop?.call();
+    state = state.copyWith(status: _with(RuntimePhase.installed));
+  }
+
+  @override
+  Future<void> stopOwnedStart(int ticket) async {
+    stoppedOwners.add(ticket);
+    await ownedStopBarrier?.future;
     state = state.copyWith(status: _with(RuntimePhase.installed));
   }
 

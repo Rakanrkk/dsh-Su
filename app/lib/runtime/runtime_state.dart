@@ -109,13 +109,25 @@ class LocalRuntimeController extends Notifier<LocalRuntimeState> {
     return _bridge.start(phoneStorage: settings.phoneStorage, visualReplies: settings.visualReplies);
   }
 
+  Future<int> startOwned() {
+    final settings = ref.read(settingsProvider);
+    return _bridge.startOwned(phoneStorage: settings.phoneStorage, visualReplies: settings.visualReplies);
+  }
+
   /// Starts in [mode]; [EngineMode.normal] from safe mode begins the two-minute trial.
   Future<void> startIn(EngineMode mode) {
     final settings = ref.read(settingsProvider);
     return _bridge.start(phoneStorage: settings.phoneStorage, visualReplies: settings.visualReplies, mode: mode);
   }
 
+  Future<int> startInOwned(EngineMode mode) {
+    final settings = ref.read(settingsProvider);
+    return _bridge.startOwned(phoneStorage: settings.phoneStorage, visualReplies: settings.visualReplies, mode: mode);
+  }
+
   Future<void> stop() => _bridge.stop();
+
+  Future<void> stopOwnedStart(int ticket) => _bridge.stopOwnedStart(ticket);
 
   Future<void> reset() => resetKeeping(const ResetKeep());
 
