@@ -11,12 +11,8 @@ object PrivilegedCommands {
     private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 }
 
-/** `su -c` takes exactly one shell command on Magisk, KernelSU and APatch. */
+/** The managers start their default shell; the fixed app_process command goes through stdin. */
 internal object RootCommands {
     val suEntries = listOf("su", "/system/bin/su", "/debug_ramdisk/su")
-
-    fun appProcess(sourceDir: String, splitSourceDirs: List<String> = emptyList()): List<List<String>> =
-        suEntries.map { entry ->
-            listOf(entry, "-c", PrivilegedCommands.appProcess(sourceDir, splitSourceDirs))
-        }
+    fun shell(): List<List<String>> = suEntries.map { listOf(it) }
 }

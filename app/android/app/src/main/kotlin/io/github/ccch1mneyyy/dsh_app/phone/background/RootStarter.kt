@@ -1,5 +1,4 @@
-// Root app_process path. Magisk/KernelSU/APatch command syntax checked against upstream
-// source; authorization UI, SELinux and display behavior have NOT been verified on devices.
+// Root app_process transport over the manager's default shell.
 package io.github.ccch1mneyyy.dsh_app.phone.background
 
 import android.content.Context
@@ -50,7 +49,10 @@ class RootStarter(private val context: Context, private val onChanged: () -> Uni
         if (!stillAccepted) { onChanged(); return@start null }
         val info = context.applicationInfo
         val process = try {
-            RootProcess.launchEach(RootCommands.appProcess(info.sourceDir, info.splitSourceDirs?.toList().orEmpty()))
+            RootProcess.launchEach(
+                RootCommands.shell(),
+                bootstrap = PrivilegedCommands.appProcess(info.sourceDir, info.splitSourceDirs?.toList().orEmpty()),
+            )
         } catch (error: Exception) {
             synchronized(guard) { if (state.current(ticket)) { pendingAllowed = null; state.finish(ticket, reason(error)) } }
             onChanged()

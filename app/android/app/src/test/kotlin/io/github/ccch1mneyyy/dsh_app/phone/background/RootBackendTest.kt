@@ -8,14 +8,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class RootBackendTest {
-    @Test fun commandHasOneShellArgumentAndFixedEntrypoint() {
-        val argv = RootCommands.appProcess("/data/app/base.apk", listOf("/data/app/split.apk"))
-        assertEquals(listOf("su", "/system/bin/su", "/debug_ramdisk/su"), argv.map { it.first() })
-        for (candidate in argv) {
-            assertEquals(3, candidate.size)
-            assertEquals("-c", candidate[1])
-            assertEquals("CLASSPATH='/data/app/base.apk:/data/app/split.apk' exec /system/bin/app_process /system/bin io.github.ccch1mneyyy.dsh_app.phone.background.PrivilegedDisplayMain", candidate[2])
-        }
+    @Test fun suEntriesStartDefaultShellWithoutCommandFlags() {
+        assertEquals(listOf(listOf("su"), listOf("/system/bin/su"), listOf("/debug_ramdisk/su")), RootCommands.shell())
     }
     @Test fun shellQuotesOsPathsWithoutExecutingTheirContents() {
         val marker = File.createTempFile("root-command-", ".must-not-exist").apply { delete() }

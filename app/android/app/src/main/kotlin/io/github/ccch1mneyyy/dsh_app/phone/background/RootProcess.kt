@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /** A root child on private pipes. Only fixed reason codes leave it, never what su printed. */
-internal class RootProcess private constructor(private val process: Process) : Closeable {
+internal class RootProcess private constructor(private val process: Process, private val bootstrap: String? = null) : Closeable {
     private val closed = AtomicBoolean(false)
     private val io = Executors.newSingleThreadExecutor { task -> Thread(task, "dsh-root-pipe").apply { isDaemon = true } }
     private var synced = false
@@ -27,6 +27,10 @@ internal class RootProcess private constructor(private val process: Process) : C
 
     fun exchange(request: ByteArray, timeoutMs: Long): ByteArray = bounded(timeoutMs) {
         if (!synced) {
+            bootstrap?.let {
+                process.outputStream.write((it + "\n").toByteArray(Charsets.UTF_8))
+                process.outputStream.flush()
+            }
             if (!Frames.syncToMagic(process.inputStream)) throw IOException("rootStartFailed")
             synced = true
         }
@@ -63,10 +67,10 @@ internal class RootProcess private constructor(private val process: Process) : C
     }
 
     companion object {
-        fun launch(command: List<String>, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess =
-            try { RootProcess(spawn(command)) } catch (_: Exception) { throw IOException("rootStartFailed") }
+        fun launch(command: List<String>, bootstrap: String? = null, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess =
+            try { RootProcess(spawn(command), bootstrap) } catch (_: Exception) { throw IOException("rootStartFailed") }
 
-        fun launchEach(commands: List<List<String>>, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess {
+        fun launchEach(commands: List<List<String>>, bootstrap: String? = null, spawn: (List<String>) -> Process = { ProcessBuilder(it).start() }): RootProcess {
             var lastError: IOException? = null
             for (command in commands) {
                 val process = try {
@@ -75,7 +79,7 @@ internal class RootProcess private constructor(private val process: Process) : C
                     lastError = IOException("rootStartFailed")
                     continue
                 }
-                return RootProcess(process)
+                return RootProcess(process, bootstrap)
             }
             throw lastError ?: IOException("rootStartFailed")
         }
