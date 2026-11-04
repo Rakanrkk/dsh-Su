@@ -67,6 +67,7 @@ String? humanizeRuntimeError(String? raw) {
   for (final prefix in const ['install failed: ', 'start failed: ']) {
     if (text.startsWith(prefix)) text = text.substring(prefix.length);
   }
+  if (text == 'root unavailable') return appL10n.a11yRestoreNeedsGrant;
   // l10n:keep native engine error prefix
   if (text.startsWith('存储空间不足')) {
     if (!AppLocale.isEnglish) return text;
