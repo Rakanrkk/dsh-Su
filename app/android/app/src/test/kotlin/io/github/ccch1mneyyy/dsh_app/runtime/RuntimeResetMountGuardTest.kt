@@ -15,6 +15,7 @@ class RuntimeResetMountGuardTest {
 
     private class RecordingFileAccess : RuntimeFileAccess {
         val touched = mutableListOf<String>()
+        val deletes = mutableListOf<Pair<String, Boolean>>()
         override fun file(file: File): File {
             touched += file.path
             return file
@@ -23,8 +24,10 @@ class RuntimeResetMountGuardTest {
             touched += file.path
             return Files.isSymbolicLink(file.toPath())
         }
-        override fun delete(file: File, recursive: Boolean): Boolean =
-            if (recursive) file.deleteRecursively() else file.delete()
+        override fun delete(file: File, recursive: Boolean): Boolean {
+            deletes += file.path to recursive
+            return if (recursive) file.deleteRecursively() else file.delete()
+        }
         override fun readText(file: File): String {
             touched += file.path
             return file.readText()
@@ -149,7 +152,7 @@ class RuntimeResetMountGuardTest {
             assertFalse(runtime.exists())
             assertFalse(retired.exists())
             assertEquals("{}", File(keep, "root/.dsh/dsh-go/ui.json").readText())
-            assertTrue(files.touched.any { it.endsWith("/rootfs/root/.dsh") })
+            assertEquals(listOf(retired.path to true), files.deletes)
         } finally {
             base.deleteRecursively()
         }

@@ -1,7 +1,11 @@
 package io.github.ccch1mneyyy.dsh_app.runtime
 
 import java.io.File
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
+import java.nio.file.attribute.BasicFileAttributes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -80,10 +84,24 @@ class RuntimeMountGuardTest {
             val keep = File(tree, "root/data.txt")
             keep.writeText("user data")
             val mounts = MountGuard(emptyList(), listOf(MountEntry(File(tree, "dev").absolutePath, shared = true)))
-            val e = assertThrows(IllegalStateException::class.java) { tree.deleteRecursivelySafely(mounts) }
+            val deletes = mutableListOf<Pair<String, Boolean>>()
+            val access = object : RuntimeFileAccess {
+                override fun file(file: File): File = file
+                override fun isSymlink(file: File): Boolean = Files.isSymbolicLink(file.toPath())
+                override fun delete(file: File, recursive: Boolean): Boolean {
+                    deletes += file.path to recursive
+                    return false
+                }
+                override fun readText(file: File): String = file.readText()
+                override fun close() {}
+            }
+            val e = assertThrows(IllegalStateException::class.java) {
+                tree.deleteRecursivelySafely(mounts, files = access)
+            }
             assertTrue(e.message!!.contains("mounted there"))
             assertTrue(keep.exists())
             assertTrue(tree.exists())
+            assertTrue(deletes.isEmpty())
         } finally { base.deleteRecursively() }
     }
 
@@ -109,7 +127,7 @@ class RuntimeMountGuardTest {
         } finally { base.deleteRecursively() }
     }
 
-    @Test fun rootFileAccessDeletesEmptyDirectoriesAndDoesNotFollowSymlinks() {
+    @Test fun rootFileAccessDeletesTheGuardedTreeOnceWithoutFollowingSymlinks() {
         val base = tempDir("root-delete")
         try {
             val tree = File(base, "staging")
@@ -123,14 +141,33 @@ class RuntimeMountGuardTest {
             target.writeText("keep")
             val link = File(tree, "outside-link")
             Files.createSymbolicLink(link.toPath(), target.toPath())
+            val outsideDir = File(base, "outside-dir").apply { mkdirs() }
+            val outsideData = File(outsideDir, "keep.txt").apply { writeText("keep") }
+            Files.createSymbolicLink(File(tree, "outside-dir-link").toPath(), outsideDir.toPath())
+            Files.createSymbolicLink(File(nested, "dangling-link").toPath(), File(base, "missing").toPath())
             val access = object : RuntimeFileAccess {
-                val recursiveDeletes = mutableSetOf<String>()
-                val ordinaryDeletes = mutableSetOf<String>()
+                val deletes = mutableListOf<Pair<String, Boolean>>()
                 override fun file(file: File): File = file
                 override fun isSymlink(file: File): Boolean = Files.isSymbolicLink(file.toPath())
                 override fun delete(file: File, recursive: Boolean): Boolean {
-                    if (recursive) recursiveDeletes += file.path else ordinaryDeletes += file.path
-                    return if (recursive) file.deleteRecursively() else file.delete()
+                    deletes += file.path to recursive
+                    if (!recursive) return file.delete()
+                    return try {
+                        Files.walkFileTree(file.toPath(), object : SimpleFileVisitor<Path>() {
+                            override fun visitFile(path: Path, attrs: BasicFileAttributes): FileVisitResult {
+                                Files.deleteIfExists(path)
+                                return FileVisitResult.CONTINUE
+                            }
+                            override fun postVisitDirectory(path: Path, error: java.io.IOException?): FileVisitResult {
+                                if (error != null) throw error
+                                Files.deleteIfExists(path)
+                                return FileVisitResult.CONTINUE
+                            }
+                        })
+                        true
+                    } catch (_: java.io.IOException) {
+                        false
+                    }
                 }
                 override fun readText(file: File): String = file.readText()
                 override fun close() {}
@@ -143,11 +180,13 @@ class RuntimeMountGuardTest {
 
             assertFalse(tree.exists())
             assertTrue(target.exists())
+            assertTrue(outsideData.exists())
             assertFalse(link.exists())
-            assertTrue(access.recursiveDeletes.contains(empty.path))
-            assertTrue(access.recursiveDeletes.contains(nested.path))
-            assertTrue(access.recursiveDeletes.contains(tree.path))
-            assertTrue(access.ordinaryDeletes.contains(ordinary.path))
+            assertFalse(Files.isSymbolicLink(File(nested, "dangling-link").toPath()))
+            assertFalse(Files.isSymbolicLink(File(tree, "outside-dir-link").toPath()))
+            assertTrue(access.deletes.contains(tree.path to true))
+            assertEquals(listOf(tree.path to true), access.deletes)
+            assertFalse(ordinary.exists())
         } finally { base.deleteRecursively() }
     }
 
@@ -172,6 +211,36 @@ class RuntimeMountGuardTest {
             File(tree, "root").mkdirs()
             tree.deleteRecursivelySafely(MountGuard(emptyList(), emptyList(), strict = true))
             assertFalse(tree.exists())
+        } finally { base.deleteRecursively() }
+    }
+
+    @Test fun strictRootDeletionReportsWhenTheRecursiveBackendLeavesTheTree() {
+        val base = tempDir("guard-root-delete-failed")
+        try {
+            val tree = File(base, "rootfs")
+            File(tree, "root/data.txt").apply { parentFile!!.mkdirs(); writeText("keep") }
+            val deletes = mutableListOf<Pair<String, Boolean>>()
+            val access = object : RuntimeFileAccess {
+                override fun file(file: File): File = file
+                override fun isSymlink(file: File): Boolean = Files.isSymbolicLink(file.toPath())
+                override fun delete(file: File, recursive: Boolean): Boolean {
+                    deletes += file.path to recursive
+                    return false
+                }
+                override fun readText(file: File): String = file.readText()
+                override fun close() {}
+            }
+
+            val error = assertThrows(IllegalStateException::class.java) {
+                tree.deleteRecursivelySafely(
+                    MountGuard(emptyList(), emptyList(), strict = true),
+                    files = access,
+                )
+            }
+
+            assertTrue(error.message!!.contains("could not delete"))
+            assertTrue(File(tree, "root/data.txt").exists())
+            assertEquals(listOf(tree.path to true), deletes)
         } finally { base.deleteRecursively() }
     }
 

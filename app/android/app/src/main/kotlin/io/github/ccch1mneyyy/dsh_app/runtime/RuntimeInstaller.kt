@@ -404,7 +404,7 @@ internal fun File.deleteRecursivelySafely(
     // A mount keeps its directory alive, so a missing tree has nothing mounted under it.
     if (!present(files)) return
     mounts.assertDeletable(this, allowWithoutHostProof)
-    deleteRecursivelyLenient(files)
+    if (files == null) deleteRecursivelyLenient() else files.delete(this, recursive = true)
     if (mounts.strict && present(files)) {
         throw IllegalStateException(
             "could not delete $path completely; what remains is likely root-owned and needs the root-side " +
