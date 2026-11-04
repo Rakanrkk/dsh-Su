@@ -191,17 +191,7 @@ jobs:
           gradle \
             --project-dir "$GITHUB_WORKSPACE/app/android" \
             --project-prop=dsh.rootRuntime=true \
-            :app:testX64DebugUnitTest \
-            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsTest \
-            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SelfGrantsResultTest \
-            --tests io.github.ccch1mneyyy.dsh_app.phone.background.SecureSettingsGrantTest \
-            --tests io.github.ccch1mneyyy.dsh_app.phone.background.RootShellBootstrapTest \
-            --tests io.github.ccch1mneyyy.dsh_app.phone.background.RootBackendTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.RootLaunchTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeProcessOwnershipTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeMountGuardTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.RuntimeResetMountGuardTest \
-            --tests io.github.ccch1mneyyy.dsh_app.runtime.GuestAgentsModeTest
+            :app:testX64DebugUnitTest
       - name: l10n merge check
         run: python3 app/tool/l10n_merge.py --check
       - name: Upload root post-check failure evidence
