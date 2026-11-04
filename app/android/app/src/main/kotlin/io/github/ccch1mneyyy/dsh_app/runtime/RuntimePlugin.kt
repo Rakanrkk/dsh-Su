@@ -113,6 +113,12 @@ class RuntimePlugin :
                     result.error("start_busy", "runtime cannot start in its current phase", null)
                 }
             }
+            "ensureRootAccess" -> {
+                controller.ensureRootAccess { code, reason, missing ->
+                    if (code == null) result.success(null)
+                    else result.error(code, reason, mapOf("reason" to reason, "missing" to missing))
+                }
+            }
             "stop" -> {
                 val startTicket = call.argument<Number>("startTicket")?.toLong()
                 val onDone: (Throwable?) -> Unit = { error ->

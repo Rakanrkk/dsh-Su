@@ -17,6 +17,7 @@ import android.net.NetworkRequest
 import android.os.Environment
 import android.provider.Settings
 import io.github.ccch1mneyyy.dsh_app.BuildConfig
+import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -296,6 +297,48 @@ class BackgroundControl private constructor(context: Context) {
             grantSelf = root::grantSelf,
             alive = { it.alive() },
             notificationsGranted = ::notificationsGranted,
+        )
+    }
+
+    internal fun prepareRootAccessForStartup(mayStart: () -> Boolean): RootAccessSnapshot? {
+        if (!BuildConfig.ROOT_RUNTIME) return null
+        val channel = prepareRootForStartup(mayStart) ?: return null
+        return appRootAccess(rootConnected = true)
+    }
+
+    internal fun currentRootAccess(): RootAccessSnapshot? =
+        if (!BuildConfig.ROOT_RUNTIME) null else appRootAccess(root.status().connected)
+
+    internal fun currentRootFailureCode(): String? =
+        if (root.status().connected) null else root.status().reasonCode
+
+    /** Fixed startup preflight for Flutter's explicit retry; the real readback decides success. */
+    fun ensureRootAccessForStartup(onDone: (code: String?, reason: String?, missing: List<String>) -> Unit) {
+        Thread({
+            val result = prepareRootAccessForStartup { true }
+            val failureCode = currentRootFailureCode()
+            val current = result ?: currentRootAccess()
+            when {
+                result == null && root.status().connected ->
+                    onDone("root_setup_failed", "missingRequirements", current?.missing ?: emptyList())
+                result == null -> onDone("root_unavailable", rootAccessFailureReason(failureCode), emptyList())
+                !result.configured -> onDone("root_setup_failed", "missingRequirements", result.missing)
+                else -> onDone(null, null, emptyList())
+            }
+        }, "dsh-root-access").start()
+    }
+
+    private fun appRootAccess(rootConnected: Boolean): RootAccessSnapshot {
+        val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return rootAccessSnapshot(
+            rootConnected = rootConnected,
+            notificationsGranted = notificationsGranted(),
+            permissionGranted = { permission -> app.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED },
+            storageGranted = PhoneStorage.isGranted(app),
+            overlayGranted = Settings.canDrawOverlays(app),
+            canRequestPackageInstalls = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                app.packageManager.canRequestPackageInstalls(),
+            ignoresBatteryOptimizations = power.isIgnoringBatteryOptimizations(app.packageName),
         )
     }
 

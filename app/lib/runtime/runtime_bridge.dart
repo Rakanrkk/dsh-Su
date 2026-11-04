@@ -708,6 +708,11 @@ class RuntimeBridge {
     }
   }
 
+  /// Connects the Root channel, runs the App's fixed self grants and returns only after
+  /// the OS reports every required item granted. `root_unavailable` means Root refused,
+  /// timed out or disconnected; `root_setup_failed` details the missing items.
+  Future<void> ensureRootAccess() => _methods.invokeMethod<void>('ensureRootAccess');
+
   Future<void> stop() => _methods.invokeMethod<void>('stop');
 
   /// Deletes the runtime with everything in /root except [keep].

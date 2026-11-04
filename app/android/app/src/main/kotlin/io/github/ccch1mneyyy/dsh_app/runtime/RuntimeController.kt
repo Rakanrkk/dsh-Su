@@ -381,6 +381,12 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         )
     }
 
+    fun ensureRootAccess(onDone: (code: String?, reason: String?, missing: List<String>) -> Unit) {
+        PhoneControl.get(app).background.ensureRootAccessForStartup { code, reason, missing ->
+            main.post { onDone(code, reason, missing) }
+        }
+    }
+
     /**
      * Writes the app's diagnostics snapshot where the engine's agent can read it
      * (`$DSH_HOME/dsh-app/diagnostics.md`). A few KB on the platform thread, after the
