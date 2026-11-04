@@ -51,25 +51,30 @@ flowchart TB
 
 ## 兼容目标与当前验证状态
 
-SukiSU Ultra、KernelSU、Magisk、KernelSU Next 与 APatch 均为 `dsh-Su` 的兼容目标；实际验证结论按具体版本、ABI 与构建分开记录，不将单一框架或旧构建的结果外推为全框架兼容。当前唯一公开预发布版为 [`v1.0.9-internal.6`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6)（源码提交 `f5632ddae46d8b8bdc35f16e6f041aef712fb0cb`，`versionCode` `11031064`），Release 同时提供 `x86_64`（内置 runtime `r12`）与 `arm64-v8a`（内置 runtime `r15`）正式签名 APK、`public-metadata-x86_64.json`、`public-metadata-arm64-v8a.json` 及对应 `.apk.sha256` 校验文件。
+SukiSU Ultra、KernelSU、Magisk、KernelSU Next 与 APatch 均为 `dsh-Su` 的兼容目标；验证结论按版本、ABI、Root 框架与 Android 版本分别记录。当前公开预发布版为 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)（源码提交 `0eb20499d3c9e392e1c561ad55ab1d315729ea94`，`versionCode` `11041140`），提供正式签名的 `x86_64` 与 `arm64-v8a` APK、公开元数据及 SHA-256 校验文件。
 
 ### Root 框架兼容状态
 
 | Root 框架 | 适用版本与环境 | 已验证范围与当前边界 |
 | --- | --- | --- |
-| **SukiSU Ultra（x86_64 Release）** | `v1.0.9-internal.6` · Android 16（API 36）· APK SHA-256 `59e19d6686f1dea33fadda956ec31dab23ce7d859f9f8f97f112783d25667338` | 全新安装并在 SukiSU Ultra `41100-6` 开启 `DSH SU` 的 Superuser Default 后，首次引导即便拒绝系统通知弹窗，引擎启动后仍完成 RootReady（`RootService`、`runc` 与 Node 均为 UID 0，监听 `127.0.0.1:3080`）、无障碍服务自动恢复与五项平台状态回读（未知来源安装、电池优化豁免、`WRITE_SECURE_SETTINGS`、`POST_NOTIFICATIONS`、`RECORD_AUDIO`）。Phone MCP 列出 13 项工具，`apps` 与 `screen` 语义返回通过；UID 0 PTY、Node `crypto`、`/system/bin/getprop`、`cmd package path`、`pm path`、DNS 解析与 HTTPS 200、root-owned `0600` 10 字节文本预览，以及 UI 正常 Stop/Start 与停止后 30 秒稳定性检查均通过。16 字节二进制文件仅在容器内读取并计算哈希，Files 显示 `Not a text file`，未验收 Files 二进制读回、`Open` / `Open with` 与 `Share`；内置 `r12` 不含后续 Files 符号链接修复。 |
-| **APatch（arm64-v8a Release）** | `v1.0.9-internal.6` · Android 14（API 34 Cuttlefish）· APK SHA-256 `e8329dfbba5e1de9c13e91b7de53cddc3a4550f7628219f6ff35d948ef6bad11` | 在 APatch `11282`（KernelPatch `0.13.9`）授权 App UID 后，普通界面 Retry 进入 RootReady（UID 0 `RootService` / `runc` / Node，监听 `127.0.0.1:3080`）；Phone MCP `apps`（15 个已知包）与 `screen`（10 个设置页节点）语义返回、UID 0 PTY、Node `crypto`、DNS 与 HTTPS 200，以及共享存储文本/二进制读写哈希一致性均通过。将 APatch Manager 的 Legacy `su` compatibility 切为 Off 后，冷启动 RootReady、五项平台状态回读为 true 及 UI Stop 后 30 秒无残留检查通过；原生 Files 预览尚未验收。 |
-| **SukiSU Ultra（arm64-v8a Release）** | `v1.0.9-internal.6` · Android 14（API 34 Cuttlefish）· APK SHA-256 `e8329dfbba5e1de9c13e91b7de53cddc3a4550f7628219f6ff35d948ef6bad11` | 在 SukiSU Ultra `v4.3.0`（`41100-6`）`android14-6.1` LKM 环境将 App UID 设为永久 Superuser Default（关闭 Temporary Root）后，经 `/system/bin/su` 进入 RootReady（UID 0 `runc` / Node 与独立 `dsh-*` cgroup）；五项平台状态经 root 诊断读回为 true（普通 helper 调用 `canRequestPackageInstalls` 曾因调用身份抛 `SecurityException`），首轮曾验证通知栏 `STOP` 回收。当前产品端 Node 的 DNS/HTTPS、PTY、Phone MCP、共享存储及最终 UI Stop 回收仍在进行。 |
-| **KernelSU / Magisk / KernelSU Next（历史记录）** | `v1.0.9-internal.4` 同代 x86_64 模拟器构建（非 `internal.6` APK） | KernelSU `3.3.1`（`32680`，UAPI 5，LKM，SELinux Enforcing，x86_64 debug）、Magisk（x86_64 debug）与 KernelSU Next（x86_64 release）在 `internal.4` 同代构建上曾通过 UID 0 主链、13 项 Phone MCP 工具列表、Android 宿主视图、DNS/HTTPS 与 Stop 回收；这些记录仅代表对应历史构建，`v1.0.9-internal.6` 在上述三个框架上的全新安装验收尚未归档。 |
+| **SukiSU Ultra（x86_64，当前公开包）** | `v1.0.9-internal.9` · Android 16（API 36） | 从 `internal.8` 覆盖升级并保留 UID `10156` 后，进入 RootReady；RootTerminal 为 UID 0，宿主 Node 为 UID 0，普通停止后 30 秒检查通过。 |
+| **SukiSU Ultra（x86_64，当前公开包）** | `v1.0.9-internal.9` · Android 17（API 37）模拟器 | SukiSU Ultra `41140` LKM 环境、ANGLE/swangle 配置下，重置产品数据、重新解包后进入 RootReady；Node SDK 37、Node crypto、DNS、HTTPS 与停止后 30 秒检查通过。 |
+| **SukiSU Ultra（x86_64，前一构建）** | `v1.0.9-internal.8` · Android 16（API 36） | RootReady 后五项平台 API、Node crypto、Android 绝对路径工具、DNS/HTTPS、Phone MCP `apps` / `screen` 语义返回及 Files 文本预览通过；38 字节文本与 256 字节零值文件通过 Files 四种 `Open` / `Share` 路径读回及哈希核对。`handoff` 回复与停止通知完成时，运行中的 3080 服务仍在，App 行按钮消失；普通停止通过。此行记录为前一构建结果，不表示这些项目均在 `internal.9` 重测。 |
+| **SukiSU Ultra（arm64-v8a，当前公开包）** | `v1.0.9-internal.9` · Root 框架验收进行中 | SukiSU Ultra 的核心检查点已通过，完整功能验收尚未完成。 |
+| **APatch（arm64-v8a，当前公开包）** | `v1.0.9-internal.9` · Root 框架验收进行中 | 当前检查停留在启动画面首帧，尚未完成 Root 运行验收。 |
+| **SukiSU Ultra（x86_64，历史包）** | `v1.0.9-internal.6` · Android 16（API 36） | 已验证 RootReady、五项平台状态、Phone MCP `apps` / `screen`、UID 0 PTY、Node crypto、DNS/HTTPS、文本预览与正常 UI Stop。该包的 Files 二进制 `Open` / `Share` 及符号链接跟随未验收。 |
+| **APatch（arm64-v8a，历史包）** | `v1.0.9-internal.6` · Android 14（API 34） | APatch `11282` / KernelPatch `0.13.9` 下，已验证 RootReady、平台状态、Phone MCP `apps` / `screen`、UID 0 PTY、Node crypto、DNS/HTTPS、共享存储读写，以及关闭 Legacy `su` compatibility 后的冷启动和 UI Stop。 |
+| **SukiSU Ultra（arm64-v8a，历史包）** | `v1.0.9-internal.6` · Android 14（API 34） | 已验证 RootReady、平台状态诊断回读与通知栏 Stop；产品端网络、PTY、Phone MCP、共享存储及最终 UI Stop 未完成。 |
+| **KernelSU / Magisk / KernelSU Next（历史记录）** | `v1.0.9-internal.4` · x86_64 模拟器 | 当时的同代构建通过 UID 0 主链、Phone MCP 工具列表、Android 宿主视图、DNS/HTTPS 与 Stop 回收；这些结果不代表对当前公开包的验证。 |
 | **启动兼容性开发验证** | 下一预发布构建待验收 | APatch 官方 `apd` 支持 `-c`；API 34 模拟器中实际 `su` 分发到启动入口时的参数差异仍待确认。无参 `su` + stdin bootstrap 修复已通过 Native 120 suites / 894 tests，新预发布包尚待全新安装验收。Android 17（API 37）模拟器在宿主 QEMU 启动阶段异常退出，兼容验证未完成。 |
 
 ### 功能模块进展
 
 | 模块 | 状态 | 说明 |
 | --- | --- | --- |
-| 公开预发布制品（`v1.0.9-internal.6`） | 双架构已发布 | [Release `v1.0.9-internal.6`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6) 提供 `x86_64` APK（SHA-256 `59e19d6686f1dea33fadda956ec31dab23ce7d859f9f8f97f112783d25667338`，内置 `r12`）与 `arm64-v8a` APK（SHA-256 `e8329dfbba5e1de9c13e91b7de53cddc3a4550f7628219f6ff35d948ef6bad11`，内置 `r15`），签名证书 SHA-256 均为 `d50d7e0ee50acd5f012829a8d7e7d187402facfb770ebb0e7f04754b6fb64dc4`，附 `public-metadata-*.json` 与 `.apk.sha256`。 |
-| `RootService` + `runc` 启动链 | `internal.6` 已在 SukiSU（x64/ARM64）与 APatch（ARM64）验证 | `DshRuncClient` 与 `RootProbeService` 支持默认绑定与 `su` 候选回退、启动期取消 FD 门控、PFD 标准流转发及 `runc kill/delete` 退出回收。 |
-| 权限、文件与手机工具 | 按模块推进 | 五项平台状态回读已在 `internal.6` 的 SukiSU Ultra x86_64、APatch ARM64 与 SukiSU Ultra ARM64 验证。10 字节文本预览及 APatch 共享存储读写哈希一致已通过；二进制 Files 读回/`Open`/`Share` 与符号链接跟随尚未验收。x86_64 的 13 项工具列表、`apps` / `screen` 与 `handoff` Stop 收尾已验证，最终 normal runtime Stop 验收仍在进行。 |
+| 公开预发布制品（`v1.0.9-internal.9`） | 双架构已发布 | [Release `v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9) 提供 `x86_64` 与 `arm64-v8a` APK、公开元数据及 SHA-256 校验文件。 |
+| `RootService` + `runc` 启动链 | 当前包 x86_64 已验证 | `internal.9` 在 SukiSU Ultra Android 16、17 模拟器验证启动与停止；arm64-v8a 的当前包验收仍在进行。历史 `internal.6` 记录见上表。 |
+| 权限、文件与手机工具 | 按版本记录 | `internal.8` 在 SukiSU Ultra x86_64 / Android 16 验证五项平台 API、Node crypto、Android 绝对路径工具、DNS/HTTPS、Phone MCP `apps` / `screen` 及 Files 文本和二进制预览读回。`handoff` 回复与停止通知完成时，3080 服务仍在运行且 App 行按钮消失；同构建普通 Stop 通过。`internal.9` 已通过 x86_64 覆盖升级后的 RootReady、UID 检查、普通停止及 Android 17 模拟器启动和停止检查；未将 `internal.8` 的其他功能检查外推到当前包。 |
 
 ## 构建与验证命令
 

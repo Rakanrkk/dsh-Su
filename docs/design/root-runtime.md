@@ -64,12 +64,15 @@ flowchart TB
 | 容器路径 | 类型 / 来源 | 挂载选项 | 说明 |
 |---|---|---|---|
 | `/` | `filesDir/runtime/rootfs` | `readonly: false` | 复用原版解压的 Ubuntu 24.04 rootfs |
-| `/dev` | `tmpfs` | `nosuid, noexec, mode=755` | 由 `runc` 在私有 tmpfs 上自动创建标准设备节点（`null`、`zero`、`full`、`random`、`urandom`、`tty`）与标准流符号链接，不整体 bind 宿主 `/dev` |
+| `/dev` | 宿主 `/dev` | `rbind, rprivate` | 将宿主 `/dev` 及其子挂载 bind 到容器 |
 | `/proc` | `proc` | `nosuid, noexec, nodev` | 容器内 procfs 挂载 |
 | `/dev/pts` | `devpts` | `nosuid, noexec, newinstance, ptmxmode=0666, mode=0620` | 独立伪终端实例 |
-| `/dev/shm` | `tmpfs` | `nosuid, noexec, nodev, mode=1777, size=16m` | 共享内存 |
-| `/sys` | `sysfs` | `nosuid, noexec, nodev, ro` | 只读 sysfs |
+| `/dev/shm` | `tmpfs` | `nosuid, noexec, nodev, mode=1777` | 共享内存 |
+| `/sys` | 宿主 `/sys` | `rbind, rprivate` | 将宿主 `/sys` 及其子挂载 bind 到容器 |
+| `/system`、`/apex`、`/linkerconfig` | 同名宿主路径（存在时） | `rbind, rprivate` | `DshRuncClient` 按路径是否存在添加挂载 |
 | 调用方额外挂载（当前开启共享存储时为 `PhoneStorage.binds()`） | `bind`（消费调用方全部 `RootLaunch.Bind`） | `rbind, rprivate` | `rbind` 保留 `/storage` 下各 FUSE 子挂载可见性，`rprivate` 防止挂载传播回宿主；关闭时传空表 |
+
+OCI `linux.resources.devices` 规则允许所有设备类型以 `rwm` 访问。
 
 4. **DNS 与 Node.js 解析**：
    - 启动前由 `RuntimeController` 调用 `GuestSetup.writeResolvConf(app, installer.rootfs)` 写入 DNS 配置。
@@ -103,9 +106,9 @@ Android 真机 `/proc` 通常挂载为 `hidepid=invisible`，普通 App UID 无�
 
 | 项目 | 当前状态与说明 |
 |---|---|---|
-| **Android 系统命令（Binder / `cmd` / `am` / `pm`）** | 当前 OCI 模板仅挂载 Ubuntu 基础环境与可选共享存储，未将宿主 `/system`、`/apex` 或 `/dev/binder` 注入容器；Android 手机操控继续由宿主侧 App 无障碍 / 特权通道执行。 |
+| **Android 系统命令（`cmd` / `am` / `pm`）** | 宿主 `/dev`、`/sys` 与存在时的 `/system`、`/apex`、`/linkerconfig` 挂载规则见上表。容器默认 `PATH` 不含 `/system/bin`；Root PTY 调用 Android 命令时使用绝对路径（如 `/system/bin/cmd`），或仅为该命令设置 `PATH`。手机操控仍由宿主侧 App 处理。 |
 | **PRoot 伪硬链接迁移（`.l2s`）** | 若已有 rootfs 含 `.l2s` 文件，启动前会被 `DirectLaunch.compatibilityReason` 拦截并报 `L2S_PRESENT`，需先完成链接迁移或重置运行时。 |
-| **Root 框架与架构验证范围** | 公开预发布 `v1.0.9-internal.4` 仅含 ARM64 APK；签名、ABI、资源和 SHA-256 静态检查通过，尚无 ARM64 设备运行验证。x86_64 验收使用同源码模拟器包。**SukiSU Ultra（debug）**：UID 0 主链、PTY、Phone MCP、宿主视图、网络、权限、存储关闭与生命周期通过；**标准 KernelSU（debug）**：同源码调试 APK 下 UID 0 主链、PTY、Phone MCP、宿主视图、网络与清理通过；**Magisk（debug）**：UID 0 Main、13 项 Phone MCP、宿主视图、DNS/HTTPS 与通知 Stop 清理通过；**KernelSU Next（x86_64 release）**：UID 0 Main、PTY、13 项 Phone MCP、宿主视图、DNS/HTTPS、UI Stop/Start 通过，一次 `pm list packages -U` 查询超时且未重试；**APatch**：Android 16 已到 Package Manager 就绪，但普通 App `su` 到 `RootService` 主链尚未通过，没有 App UID 0 运行证据。 |
+| **Root 框架与架构验证范围** | 较早 `v1.0.9-internal.4` 的多框架结果只适用于对应模拟器构建。当前公开预发布包的框架、ABI 与 Android 版本验证记录见 [dsh-su 架构与开发说明](../dsh-su.md)。 |
 | **文件属主与升级重置** | 容器以 UID 0 写入 rootfs（如 `/root`、`/tmp/dsh-web.pid`）；App 侧跳过启动前 `dsh-web.pid` 删除检查，重置与升级时需确保容器已停止且无残留挂载。 |
 
 ## 参考规范与上游组件

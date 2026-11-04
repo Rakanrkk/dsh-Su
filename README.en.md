@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6"><img alt="dsh-Su v1.0.9-internal.6 prerelease" src="https://img.shields.io/badge/dsh--Su-v1.0.9--internal.6-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9"><img alt="dsh-Su v1.0.9-internal.9 prerelease" src="https://img.shields.io/badge/dsh--Su-v1.0.9--internal.9-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/upstream-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
   <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -36,7 +36,7 @@ flowchart LR
 
 - **Architecture**: `RootService` acts purely as a UID 0 process bridge rather than reimplementing DSH. It uses a `libsu` `6.0.0` non-daemon `RootService` and official `runc` `1.4.3` over the embedded Ubuntu 24.04 rootfs in a mount-only private namespace (no PID namespace, running as `UID/GID 0` with inherited capabilities preserved).
 - **Identity and Build Isolation**: Built via `tooling/build-root-apk.sh` (which fetches and verifies official `runc` 1.4.3 binaries through `tooling/fetch-runc-assets.sh`), with package name `io.github.rakanrkk.dsh_su` and launcher label `DSH SU` for side-by-side installation with upstream `DSH Go`. Update sources are isolated to `Rakanrkk/dsh-Su`.
-- **Compatibility Targets & Verified Scope**: The dual-ABI `v1.0.9-internal.6` APK has passed core runtime checks on SukiSU Ultra x86_64 and APatch arm64-v8a. SukiSU Ultra arm64-v8a has passed RootReady and platform-state readbacks. KernelSU, Magisk, and KernelSU Next have records from an earlier build only. See [docs/dsh-su.md](docs/dsh-su.md) for verification by framework, version, and ABI.
+- **Compatibility Targets & Verified Scope**: The current public prerelease, `v1.0.9-internal.9`, provides x86_64 and arm64-v8a APKs. The x86_64 build has passed runtime checks on Android 16 and Android 17 emulators; arm64-v8a framework acceptance is ongoing. See [docs/dsh-su.md](docs/dsh-su.md) for results by version, ABI, and root framework.
 
 <br>
 
@@ -57,7 +57,7 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">Downloads & Builds</h3>
 
-<p align="center">The current public prerelease of <code>dsh-Su</code> is <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6"><code>v1.0.9-internal.6</code></a>. Releases provides both <code>arm64-v8a</code> and <code>x86_64</code> APKs alongside public metadata and SHA-256 checksum files; see <a href="docs/dsh-su.md">Architecture &amp; Status</a> for per-framework test scope. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
+<p align="center">The current public prerelease of <code>dsh-Su</code> is <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9"><code>v1.0.9-internal.9</code></a>. Releases provides <code>x86_64</code> and <code>arm64-v8a</code> APKs, public metadata and SHA-256 checksum files; see <a href="docs/dsh-su.md">Architecture &amp; Status</a> for per-framework test scope. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
 
 <p align="center">
   <a href="#build-from-source"><img alt="Build dsh-Su from Source" src="https://img.shields.io/badge/dsh--Su-Build%20from%20Source-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Upstream%20Site-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
@@ -193,9 +193,9 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 ## Install
 
-Installation requires Android 8.0 (API 26) or later. The current `v1.0.9-internal.6` prerelease provides both an **arm64-v8a** APK for 64-bit Android phones and an **x86_64** APK for emulators, along with matching `.apk.sha256` sidecars and public metadata JSON files. This repository has no 32-bit ARM build.
+Installation requires Android 8.0 (API 26) or later. The current `v1.0.9-internal.9` prerelease provides **arm64-v8a** and **x86_64** APKs, each with a SHA-256 checksum and public metadata JSON file. This repository has no 32-bit ARM build.
 
-1. Download the APK for your ABI from [dsh-Su `v1.0.9-internal.6` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.6) and follow Android's prompt to allow that installation source; allow `DSH SU` in your root manager when starting the on-device engine. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
+1. Download the APK for your ABI from [dsh-Su `v1.0.9-internal.9` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). When you first start the on-device engine, allow `DSH SU` in your root manager. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
