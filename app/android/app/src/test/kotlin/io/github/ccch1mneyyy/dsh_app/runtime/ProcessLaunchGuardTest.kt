@@ -227,8 +227,8 @@ class ProcessLaunchGuardTest {
         val start = sourceSection(source, "override fun start(", "override fun stop(")
         val recovery = sourceSection(
             source,
-            "check(OwnedRuncStateRecovery.recover(",
-            "}) { \"owned root containers could not be recovered\" }",
+            "recovered = OwnedRuncStateRecovery.recover(",
+            "\n                    ) {",
         )
         check(recovery.start >= start.start && recovery.end <= start.end) {
             "Review the owned runc recovery placement"

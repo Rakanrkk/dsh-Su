@@ -12,6 +12,7 @@ import android.util.Log
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
 import io.github.ccch1mneyyy.dsh_app.rootprobe.IRootProbe
+import io.github.ccch1mneyyy.dsh_app.rootprobe.RootProbeStartResult
 import java.io.File
 import kotlin.concurrent.thread
 import org.json.JSONArray
@@ -155,6 +156,7 @@ internal object DshRuncClient {
         // Guards only the remote p.start submission+publication window against kill();
         // never hold it across binder waits, prepare work or file IO.
         private val startGate = RootStartGate()
+        @Volatile private var startResponse: String? = null
         @Volatile private var started = false
         @Volatile private var exited = false
         @Volatile private var disconnected = false
@@ -321,7 +323,12 @@ internal object DshRuncClient {
             val appStdout = ParcelFileDescriptor.createPipe()
             val appStderr = ParcelFileDescriptor.createPipe()
             val submitted = startGate.submit(canSubmit = { !released }) {
-                p.start(runcArgv, containerId, stateRoot.canonicalPath, appStdin[0], appStdout[1], appStderr[1])
+                val response = p.start(runcArgv, containerId, stateRoot.canonicalPath, appStdin[0], appStdout[1], appStderr[1])
+                startResponse = response
+                if (response == RootProbeStartResult.RECOVERY_REJECTED) {
+                    throw IllegalStateException("owned root containers could not be recovered")
+                }
+                check(response == containerId) { "runc start response invalid" }
                 this.appStdin = appStdin[1]
                 started = true
             }
@@ -429,8 +436,15 @@ internal object DshRuncClient {
 
         /** runc kill + delete; the result is the Service's stop status. */
         fun kill(): String {
-            val active: IRootProbe?
             val cancelResult = startGate.cancel()
+            val rejectedStatus = RootProbeStartResult.cleanupStatus(startResponse)
+            if (rejectedStatus != null) {
+                cancelPendingStart()
+                stopStdin()
+                release()
+                return rejectedStatus
+            }
+            val active: IRootProbe?
             val current = probe
             active = if (current != null && (started || cancelResult == RootStartGate.CancelResult.SUBMISSION_ATTEMPTED)) {
                 current

@@ -1,6 +1,6 @@
 package io.github.ccch1mneyyy.dsh_app.rootprobe
 
-import org.json.JSONArray
+import io.github.ccch1mneyyy.dsh_app.phone.Json
 import java.io.File
 
 internal object OwnedRuncStateRecovery {
@@ -32,20 +32,35 @@ internal object OwnedRuncStateRecovery {
         return remainingIds.isEmpty() && remainingDirectories.isEmpty()
     }
 
-    private fun parseList(output: String): Set<String>? = try {
-        val rows = JSONArray(output)
-        buildSet {
-            for (index in 0 until rows.length()) {
-                val row = rows.optJSONObject(index) ?: return null
-                val id = row.optString("id").takeIf(String::isNotBlank) ?: return null
-                if (row.optString("status").isBlank() || !add(id)) return null
+    internal fun parseList(output: String): Set<String>? {
+        val decoded = try {
+            Json.parse(output)
+        } catch (_: Exception) {
+            return null
+        }
+        if (decoded == null) return emptySet()
+        val rows = decoded as? List<*> ?: return null
+        return buildSet {
+            for (value in rows) {
+                val row = value as? Map<*, *> ?: return null
+                val id = row["id"] as? String ?: return null
+                val status = row["status"] as? String ?: return null
+                if (id.isBlank() || status.isBlank() || !add(id)) return null
             }
         }
-    } catch (_: Exception) {
-        null
     }
 
     private fun isOwnedId(id: String): Boolean = id.matches(Regex("dsh-[0-9a-f]{8}-[0-9a-f]{3}"))
+}
+
+internal object RootProbeStartResult {
+    const val RECOVERY_REJECTED = "notSubmitted:ownedRecovery"
+
+    fun <T : Any> runIfRecovered(recovered: Boolean, run: () -> T): T? =
+        if (recovered) run() else null
+
+    fun cleanupStatus(response: String?): String? =
+        if (response == RECOVERY_REJECTED) "notSubmitted" else null
 }
 
 internal object RootProbeExitWait {

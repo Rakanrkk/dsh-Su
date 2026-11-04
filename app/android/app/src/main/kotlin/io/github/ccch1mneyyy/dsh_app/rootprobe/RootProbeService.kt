@@ -50,31 +50,35 @@ class RootProbeService : RootService() {
                         "invalid root state"
                     }
                     val previous = instance
-                    check(OwnedRuncStateRecovery.recover(runcPath, File(stateRoot)) { commandArgv ->
-                        val command = try {
-                            ProcessBuilder(commandArgv).redirectErrorStream(true).start()
-                        } catch (_: Exception) {
-                            return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
-                        }
-                        val output = java.util.concurrent.atomic.AtomicReference<String?>()
-                        val reader = thread(name = "runc-recovery-output", isDaemon = true) {
-                            output.set(command.inputStream.bufferedReader().use { it.readText() })
-                        }
-                        if (!command.waitFor(10, TimeUnit.SECONDS)) {
-                            command.destroyForcibly()
+                    val launch = RootProbeStartResult.runIfRecovered(
+                        recovered = OwnedRuncStateRecovery.recover(runcPath, File(stateRoot)) { commandArgv ->
+                            val command = try {
+                                ProcessBuilder(commandArgv).redirectErrorStream(true).start()
+                            } catch (_: Exception) {
+                                return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
+                            }
+                            val output = java.util.concurrent.atomic.AtomicReference<String?>()
+                            val reader = thread(name = "runc-recovery-output", isDaemon = true) {
+                                output.set(command.inputStream.bufferedReader().use { it.readText() })
+                            }
+                            if (!command.waitFor(10, TimeUnit.SECONDS)) {
+                                command.destroyForcibly()
+                                reader.join(1000)
+                                return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
+                            }
                             reader.join(1000)
-                            return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
-                        }
-                        reader.join(1000)
-                        val captured = output.get() ?: return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
-                        OwnedRuncStateRecovery.CommandResult(command.exitValue(), captured)
-                    }) { "owned root containers could not be recovered" }
-                    previous?.deleted = true
-                    val builder = ProcessBuilder(argv).redirectErrorStream(false)
-                    val p = builder.start()
-                    val entry = Instance(containerId, stateRoot, p)
-                    instance = entry
-                    p to entry
+                            val captured = output.get() ?: return@recover OwnedRuncStateRecovery.CommandResult(-1, "")
+                            OwnedRuncStateRecovery.CommandResult(command.exitValue(), captured)
+                        },
+                    ) {
+                        previous?.deleted = true
+                        val builder = ProcessBuilder(argv).redirectErrorStream(false)
+                        val p = builder.start()
+                        val entry = Instance(containerId, stateRoot, p)
+                        instance = entry
+                        p to entry
+                    } ?: return RootProbeStartResult.RECOVERY_REJECTED
+                    launch
                 }
                 thread(name = "runc-stdin", isDaemon = true) {
                     ParcelFileDescriptor.AutoCloseInputStream(stdin).use { input ->
