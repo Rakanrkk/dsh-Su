@@ -13,6 +13,7 @@ import 'package:dsh_app/ui/chat/widgets/artifact_card.dart';
 import 'package:dsh_app/ui/session/session_artifacts.dart';
 import 'package:dsh_app/ui/theme/theme.dart';
 import 'package:dsh_app/state/connection_state.dart';
+import 'package:dsh_app/state/hosts_state.dart';
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +22,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../files/support/memory_workspace.dart';
 import 'support/harness.dart';
+
+class _OfficeHost extends ActiveHostController {
+  @override
+  HostRef build() => const HostRef.ssh('office-host');
+}
 
 const _ws = '/root/workspace';
 
@@ -253,7 +259,13 @@ void main() {
 
     testWidgets('Office conversion wait ($suffix)', (tester) async {
       usePhoneView(tester);
-      final remote = HostConnection(client: DshClient.withCarrier(_NeverCarrier()), label: '工作站', isLocal: false);
+      final remote = HostConnection(
+        client: DshClient.withCarrier(_NeverCarrier()),
+        label: '工作站',
+        isLocal: false,
+        kind: HostKind.ssh,
+        hostId: 'office-host',
+      );
       await tester.pumpWidget(
         testApp(
           const ArtifactPreviewPage(
@@ -261,7 +273,10 @@ void main() {
             artifact: Artifact(path: '/home/me/out/review-deck.pptx', origin: ArtifactOrigin.delivered, turn: 1),
           ),
           brightness: brightness,
-          overrides: [activeConnectionProvider.overrideWithValue(AsyncData<HostConnection?>(remote))],
+          overrides: [
+            activeHostProvider.overrideWith(_OfficeHost.new),
+            activeConnectionProvider.overrideWithValue(AsyncData<HostConnection?>(remote)),
+          ],
         ),
       );
       await pumpFrames(tester, 6);
