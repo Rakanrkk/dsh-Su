@@ -6,12 +6,16 @@ import 'package:dsh_app/state/artifacts.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _artifact = Artifact(path: '/home/me/a.png', origin: ArtifactOrigin.linked, turn: 1);
 
 class _Carrier extends DshCarrier {
   String version = 'v1';
+  String absolutePath = _artifact.path;
+  bool failStat = false;
+  int statCalls = 0;
   int? size = 4;
   final requests = <Completer<RpcResult>>[];
   final entered = List.generate(8, (_) => Completer<void>());
@@ -24,7 +28,9 @@ class _Carrier extends DshCarrier {
   @override
   Future<RpcResult> call(String endpoint, Map<String, Object?> args, {Duration? timeout}) async {
     if (endpoint == 'workspaceFiles/stat') {
-      return RpcOk({'absolutePath': _artifact.path, 'version': version, 'bytes': size});
+      statCalls++;
+      if (failStat) throw const DshTransportException('offline');
+      return RpcOk({'absolutePath': absolutePath, 'version': version, 'bytes': size});
     }
     if (endpoint == 'workspaceFiles/readBytes') {
       final request = Completer<RpcResult>();
@@ -71,6 +77,37 @@ class _Rig {
     cacheRoot: () async => cache,
   );
 
+  ArtifactFiles forLocal({String hostId = 'local'}) => ArtifactFiles(
+    connection: HostConnection(client: client, label: hostId, isLocal: true, hostId: hostId),
+    channel: const FilesChannel(),
+    cacheRoot: () async => cache,
+  );
+
+  int resolveCalls = 0;
+  Completer<void>? resolverEntered;
+  Completer<void>? resolverRelease;
+  List<int> localBytes = [8, 8, 8, 8];
+  String? nativePathOverride;
+
+  Future<void> installNativeResolver() async {
+    const channel = MethodChannel('dsh/files');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method != 'resolveGuest') return null;
+      resolveCalls++;
+      if (nativePathOverride case final path?) return path;
+      final callIndex = resolveCalls;
+      if (resolverEntered != null && callIndex == 2) resolverEntered!.complete();
+      if (resolverRelease != null) await resolverRelease!.future;
+      final directory = Directory('${cache.path}/artifacts');
+      await directory.create(recursive: true);
+      final file = File('${directory.path}/guest-artifact-$callIndex.tmp');
+      await file.writeAsBytes(localBytes);
+      return file.path;
+    });
+  }
+
+  Future<int> cachedFileCount() async => cache.list(recursive: true).where((entry) => entry is File).length;
+
   Future<void> noStagingLeft() async {
     final staging = await cache
         .list(recursive: true)
@@ -90,8 +127,101 @@ void main() {
     rig = _Rig(await Directory.systemTemp.createTemp('artifact-download-test-'));
   });
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('dsh/files'),
+      null,
+    );
     await rig.client.close();
     await rig.cache.delete(recursive: true);
+  });
+
+  test('local Root export is reused until its stat version changes', () async {
+    await rig.installNativeResolver();
+    final local = rig.forLocal();
+    final first = await local.materialize('s1', _artifact);
+    for (var index = 0; index < 9; index++) {
+      expect((await local.materialize('s1', _artifact)).path, first.path);
+    }
+    expect(rig.resolveCalls, 1);
+    expect(await first.readAsBytes(), [8, 8, 8, 8]);
+    expect(await rig.cachedFileCount(), 1);
+
+    rig.carrier.version = 'v2';
+    rig.localBytes = [2, 2, 2, 2];
+    final refreshed = await local.materialize('s1', _artifact);
+    expect(refreshed.path, isNot(first.path));
+    expect(await refreshed.readAsBytes(), [2, 2, 2, 2]);
+    expect(rig.resolveCalls, 2);
+    expect(await rig.cachedFileCount(), 2);
+    await rig.noStagingLeft();
+  });
+
+  test('ordinary native paths are returned without moving or caching', () async {
+    await rig.installNativeResolver();
+    final ordinary = File('${rig.cache.path}/ordinary.png');
+    await ordinary.writeAsBytes([4, 4, 4, 4]);
+    rig.nativePathOverride = ordinary.path;
+
+    final resolved = await rig.forLocal().materialize('s1', _artifact);
+    expect(resolved.path, ordinary.path);
+    expect(await resolved.readAsBytes(), [4, 4, 4, 4]);
+    expect(await Directory('${rig.cache.path}/artifacts').exists(), isFalse);
+    expect(rig.resolveCalls, 1);
+  });
+
+  test('local cache separates host, session, and resolved path sources', () async {
+    await rig.installNativeResolver();
+    final first = await rig.forLocal(hostId: 'host-a').materialize('s1', _artifact);
+    final otherHost = await rig.forLocal(hostId: 'host-b').materialize('s1', _artifact);
+    final otherSession = await rig.forLocal(hostId: 'host-a').materialize('s2', _artifact);
+    rig.carrier.absolutePath = '/home/me/other.png';
+    final otherPath = await rig.forLocal(hostId: 'host-a').materialize('s1', _artifact);
+    expect({first.path, otherHost.path, otherSession.path, otherPath.path}.length, 4);
+    expect(await rig.cachedFileCount(), 4);
+    expect(rig.resolveCalls, 4);
+  });
+
+  test('overlapping local resolves publish one target and clean native staging', () async {
+    await rig.installNativeResolver();
+    rig.resolverEntered = Completer<void>();
+    rig.resolverRelease = Completer<void>();
+    final local = rig.forLocal();
+    final first = local.materialize('s1', _artifact);
+    final second = local.materialize('s1', _artifact);
+    await rig.resolverEntered!.future;
+    rig.resolverRelease!.complete();
+    final files = await Future.wait([first, second]);
+    expect(files[0].path, files[1].path);
+    expect(await files[0].readAsBytes(), [8, 8, 8, 8]);
+    expect(rig.resolveCalls, 2);
+    expect(await rig.cachedFileCount(), 1);
+    await rig.noStagingLeft();
+  });
+
+  test('failed cache publication removes the native Root temp file', () async {
+    await rig.installNativeResolver();
+    final local = rig.forLocal();
+    final cached = await local.materialize('s1', _artifact);
+    final targetDirectory = cached.parent;
+    await targetDirectory.delete(recursive: true);
+    await File(targetDirectory.path).writeAsString('blocked');
+
+    await expectLater(local.materialize('s1', _artifact), throwsA(isA<FileSystemException>()));
+    final remaining = await Directory('${rig.cache.path}/artifacts').list().toList();
+    expect(remaining.where((entry) => entry.path.split('/').last.startsWith('guest-artifact-')), isEmpty);
+  });
+
+  test('local stat failure preserves native resolution and does not trust old versions', () async {
+    await rig.installNativeResolver();
+    final local = rig.forLocal();
+    final cached = await local.materialize('s1', _artifact);
+    rig.carrier.failStat = true;
+    rig.localBytes = [3, 3, 3, 3];
+    final fallback = await local.materialize('s1', _artifact);
+    expect(await cached.readAsBytes(), [8, 8, 8, 8]);
+    expect(await fallback.readAsBytes(), [3, 3, 3, 3]);
+    expect(fallback.path, isNot(cached.path));
+    expect(rig.resolveCalls, 2);
   });
 
   for (final thumbnailFirst in [true, false]) {

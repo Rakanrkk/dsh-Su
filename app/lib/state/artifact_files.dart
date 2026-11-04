@@ -123,9 +123,39 @@ class ArtifactFiles {
     final conn = connection;
     if (conn == null) throw const ArtifactError('offline');
     if (conn.isLocal) {
+      DshFileStat? stat;
+      try {
+        stat = await conn.client.statFile(sessionId, artifact.path);
+      } catch (_) {}
+      if (stat == null || stat.absolutePath.isEmpty || stat.version.isEmpty) {
+        final host = await channel.resolveGuest(artifact.path);
+        if (host == null) throw const ArtifactError('missing');
+        return File(host);
+      }
+      final root = await _cacheRoot();
+      final key = _fnv('local\n${conn.hostId ?? 'local'}\n$sessionId\n${stat.absolutePath}\n${stat.version}');
+      final dir = Directory('${root.path}/artifacts/$key');
+      final target = File('${dir.path}/${_safeName(artifact.name)}');
+      if (target.existsSync()) return target;
+
       final host = await channel.resolveGuest(artifact.path);
       if (host == null) throw const ArtifactError('missing');
-      return File(host);
+      final resolved = File(host);
+      if (!_isManagedRootArtifact(resolved, root)) return resolved;
+
+      Directory? staging;
+      try {
+        await dir.create(recursive: true);
+        staging = await dir.createTemp('.part-');
+        final staged = File('${staging.path}/${_safeName(artifact.name)}');
+        if (target.existsSync()) return target;
+        await resolved.rename(staged.path);
+        staged.renameSync(target.path);
+        return target;
+      } finally {
+        if (staging != null && await staging.exists()) await staging.delete(recursive: true);
+        if (await resolved.exists()) await resolved.delete();
+      }
     }
     final client = conn.client;
     if (!client.canReadFileBytes) throw const ArtifactError('unsupported');
@@ -223,6 +253,13 @@ class ArtifactFiles {
     if (await file.length() > maxThumbnailBytes) return null;
     return FileImage(file);
   }
+}
+
+bool _isManagedRootArtifact(File file, Directory cacheRoot) {
+  final name = file.uri.pathSegments.last;
+  return file.parent.absolute.path == Directory('${cacheRoot.path}/artifacts').absolute.path &&
+      name.startsWith('guest-artifact-') &&
+      name.endsWith('.tmp');
 }
 
 String _safeName(String name) {
