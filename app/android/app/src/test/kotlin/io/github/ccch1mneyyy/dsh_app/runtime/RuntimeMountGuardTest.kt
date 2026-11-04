@@ -1,6 +1,7 @@
 package io.github.ccch1mneyyy.dsh_app.runtime
 
 import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -105,6 +106,48 @@ class RuntimeMountGuardTest {
             val mounts = MountGuard(listOf(MountEntry("/app-only")), listOf(MountEntry("/host-only")))
             tree.deleteRecursivelySafely(mounts)
             assertFalse(tree.exists())
+        } finally { base.deleteRecursively() }
+    }
+
+    @Test fun rootFileAccessDeletesEmptyDirectoriesAndDoesNotFollowSymlinks() {
+        val base = tempDir("root-delete")
+        try {
+            val tree = File(base, "staging")
+            val empty = File(tree, "empty")
+            val nested = File(tree, "nested")
+            assertTrue(empty.mkdirs())
+            assertTrue(nested.mkdirs())
+            val ordinary = File(nested, "data.txt")
+            ordinary.writeText("staged")
+            val target = File(base, "outside.txt")
+            target.writeText("keep")
+            val link = File(tree, "outside-link")
+            Files.createSymbolicLink(link.toPath(), target.toPath())
+            val access = object : RuntimeFileAccess {
+                val recursiveDeletes = mutableSetOf<String>()
+                val ordinaryDeletes = mutableSetOf<String>()
+                override fun file(file: File): File = file
+                override fun isSymlink(file: File): Boolean = Files.isSymbolicLink(file.toPath())
+                override fun delete(file: File, recursive: Boolean): Boolean {
+                    if (recursive) recursiveDeletes += file.path else ordinaryDeletes += file.path
+                    return if (recursive) file.deleteRecursively() else file.delete()
+                }
+                override fun readText(file: File): String = file.readText()
+                override fun close() {}
+            }
+
+            tree.deleteRecursivelySafely(
+                MountGuard(emptyList(), emptyList(), strict = true),
+                files = access,
+            )
+
+            assertFalse(tree.exists())
+            assertTrue(target.exists())
+            assertFalse(link.exists())
+            assertTrue(access.recursiveDeletes.contains(empty.path))
+            assertTrue(access.recursiveDeletes.contains(nested.path))
+            assertTrue(access.recursiveDeletes.contains(tree.path))
+            assertTrue(access.ordinaryDeletes.contains(ordinary.path))
         } finally { base.deleteRecursively() }
     }
 

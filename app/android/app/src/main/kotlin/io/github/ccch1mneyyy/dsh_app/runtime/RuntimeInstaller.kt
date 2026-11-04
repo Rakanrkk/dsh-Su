@@ -151,6 +151,7 @@ class RuntimeInstaller(
 internal interface RuntimeFileAccess : AutoCloseable {
     fun file(file: File): File
     fun isSymlink(file: File): Boolean
+    fun delete(file: File, recursive: Boolean): Boolean
     fun readText(file: File): String
 }
 
@@ -160,6 +161,11 @@ private fun openRootFileAccess(context: Context): RuntimeFileAccess {
         override fun file(file: File): File = SuFile(file.path).apply { setShell(selection.shell) }
 
         override fun isSymlink(file: File): Boolean = (this.file(file) as SuFile).isSymlink()
+
+        override fun delete(file: File, recursive: Boolean): Boolean {
+            val rootFile = this.file(file) as SuFile
+            return if (recursive) rootFile.deleteRecursive() else rootFile.delete()
+        }
 
         override fun readText(file: File): String =
             SuFileInputStream.open(this.file(file)).bufferedReader().use { it.readText() }
@@ -420,7 +426,7 @@ private fun File.deleteRecursivelyLenient(files: RuntimeFileAccess? = null) {
         }
         current.listFiles()?.forEach { File(it.path).deleteRecursivelyLenient(files) }
     }
-    current.delete()
+    if (files == null) current.delete() else files.delete(this, recursive = current.isDirectory)
 }
 
 private fun File.isSymlink(): Boolean = try {

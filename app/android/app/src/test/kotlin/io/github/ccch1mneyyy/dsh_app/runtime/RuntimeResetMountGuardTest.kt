@@ -23,6 +23,8 @@ class RuntimeResetMountGuardTest {
             touched += file.path
             return Files.isSymbolicLink(file.toPath())
         }
+        override fun delete(file: File, recursive: Boolean): Boolean =
+            if (recursive) file.deleteRecursively() else file.delete()
         override fun readText(file: File): String {
             touched += file.path
             return file.readText()
