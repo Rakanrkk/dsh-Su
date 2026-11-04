@@ -29,6 +29,15 @@ import '../common/brief_notice.dart';
 class DiagnosticsPage extends ConsumerWidget {
   const DiagnosticsPage({super.key});
 
+  static Uri? localRuntimeLaunchUri(RuntimeStatus status) {
+    if (!status.rootRuntime || !status.isRunning) return null;
+    final base = Uri.tryParse(status.baseUrl!);
+    if (base == null || base.scheme != 'http' || (base.host != '127.0.0.1' && base.host != 'localhost')) {
+      return null;
+    }
+    return base.replace(path: '/', queryParameters: {'token': status.token!});
+  }
+
   static Map<String, Object?> report({
     required LocalRuntimeState runtime,
     required AppSettings settings,
@@ -93,10 +102,14 @@ class DiagnosticsPage extends ConsumerWidget {
     Future<void> publishForAi() async {
       final published = await ref.read(diagnosticsPublisherProvider).publish();
       if (!context.mounted) return;
-      showBriefNotice(
-        context,
-        published == null ? l10n.diagnosticsForAiFailed : l10n.diagnosticsForAiDone,
-      );
+      showBriefNotice(context, published == null ? l10n.diagnosticsForAiFailed : l10n.diagnosticsForAiDone);
+    }
+
+    Future<void> copyLocalRuntimeLink() async {
+      final uri = localRuntimeLaunchUri(ref.read(localRuntimeProvider).status);
+      if (uri == null) return;
+      await Clipboard.setData(ClipboardData(text: uri.toString()));
+      if (context.mounted) showBriefNotice(context, l10n.commonCopied);
     }
 
     return AppPage.list(
@@ -126,6 +139,8 @@ class DiagnosticsPage extends ConsumerWidget {
             InfoRow(label: l10n.pluginsAddress, value: status.baseUrl ?? '—', mono: true),
             InfoRow(label: l10n.pluginsClient, value: connection),
             InfoRow(label: 'API Key', value: settings.hasApiKey ? l10n.pluginsConfigured : l10n.commonNotSet),
+            if (localRuntimeLaunchUri(status) != null)
+              ListPageRow(icon: AppIcons.copy, title: l10n.commonCopyLink, onTap: copyLocalRuntimeLink),
           ],
         ),
         DiagnosticsExportCard(
