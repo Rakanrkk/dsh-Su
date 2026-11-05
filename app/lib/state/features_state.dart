@@ -4,6 +4,8 @@ import 'package:dsh_client/dsh_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'connection_state.dart';
+import 'hosts_state.dart';
+import 'job_watch_state.dart';
 
 /// The active host's client, or null while not connected.
 DshClient? _client(Ref ref) => ref.watch(activeConnectionProvider).value?.client;
@@ -51,7 +53,64 @@ final scheduleHistoryProvider = FutureProvider.autoDispose.family<ScheduleHistor
 final jobsProvider = StreamProvider.autoDispose.family<List<JobInfo>, String>((ref, sessionId) {
   final client = _client(ref);
   if (client == null) return const Stream.empty();
-  return client.watchJobs(sessionId).map((jobs) {
+  final host = ref.watch(activeHostProvider);
+  final mux = client.mux;
+  var disposed = false;
+  MuxGeneration? processingGeneration;
+  ref.onDispose(() => disposed = true);
+  bool isCurrent() =>
+      !disposed && (processingGeneration == null || identical(mux.generation, processingGeneration));
+  final controller = JobWatchController(
+    JobObservationStore(JobObservationStore.keyFor(host, sessionId), isCurrent: isCurrent),
+    isCurrent: isCurrent,
+  );
+  final ready = controller.load();
+  var generation = mux.generation;
+  var current = generation != null;
+  return Stream.multi((output) {
+    var active = true;
+    late StreamSubscription<MuxGeneration> generations;
+    StreamSubscription<(MuxGeneration, List<JobInfo>)>? jobs;
+    Future<void> watch(MuxGeneration next) async {
+      generation = next;
+      await ready;
+      if (!active || !identical(generation, next)) return;
+      await jobs?.cancel();
+      if (!active || !identical(generation, next)) return;
+      final nextGeneration = next;
+      jobs = client
+          .watchJobs(sessionId)
+          .handleError((Object error, StackTrace stackTrace) {
+            if (error is DshCarrierLostException || error is DshClosedException) return;
+            Error.throwWithStackTrace(error, stackTrace);
+          })
+          .where((_) => active && identical(generation, nextGeneration))
+          .map((jobs) => (nextGeneration, jobs))
+          .listen(output.add, onError: output.addError, onDone: () {});
+    }
+
+    generations = mux.generations.listen(watch, onError: output.addError, onDone: () {
+      active = false;
+      output.close();
+    });
+    if (current && generation != null) unawaited(watch(generation!));
+    output.onCancel = () async {
+      disposed = true;
+      active = false;
+      await generations.cancel();
+      await jobs?.cancel();
+    };
+  })
+      .cast<(MuxGeneration, List<JobInfo>)>()
+      .asyncMap((record) async {
+        processingGeneration = record.$1;
+        if (!isCurrent() || !identical(mux.generation, record.$1)) return null;
+        final jobs = await controller.reconcile(record.$1, record.$2);
+        return isCurrent() && identical(mux.generation, record.$1) ? jobs : null;
+      })
+      .where((jobs) => jobs != null)
+      .cast<List<JobInfo>>()
+      .map((jobs) {
     final sorted = [...jobs]
       ..sort((a, b) {
         if (a.live != b.live) return a.live ? -1 : 1;

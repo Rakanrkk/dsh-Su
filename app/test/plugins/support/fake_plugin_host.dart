@@ -14,10 +14,11 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 /// a [DshCarrier] answering `pluginManager/*` from [handlers] and a mux link
 /// that can push `$events` items.
 class FakePluginCarrier extends DshCarrier {
-  FakePluginCarrier({this.allowInstall = true});
+  FakePluginCarrier({this.allowInstall = true, this.hostInstanceId});
 
   /// False imitates the relay allow-list (no install/remove/inspect).
   final bool allowInstall;
+  final String? hostInstanceId;
 
   final List<(String endpoint, Map<String, Object?> args)> calls = [];
   final Map<String, FutureOr<Object?> Function(Map<String, Object?> args)> handlers = {};
@@ -63,7 +64,7 @@ class FakePluginCarrier extends DshCarrier {
   }
 
   @override
-  Future<DshMuxLink> openLink(MuxOptions options) async => link = FakeMuxLink();
+  Future<DshMuxLink> openLink(MuxOptions options) async => link = FakeMuxLink(hostInstanceId: hostInstanceId);
 
   @override
   Future<void> close() async {}
@@ -77,11 +78,20 @@ class FakePluginCarrier extends DshCarrier {
 }
 
 class FakeMuxLink implements DshMuxLink {
+  FakeMuxLink({this.hostInstanceId});
+
+  final String? hostInstanceId;
   DshMuxFrameHandler? _onFrame;
+  DshMuxLossHandler? _onLost;
   String? _eventsId;
+  bool started = false;
 
   @override
-  void start({required DshMuxFrameHandler onFrame, required DshMuxLossHandler onLost}) => _onFrame = onFrame;
+  void start({required DshMuxFrameHandler onFrame, required DshMuxLossHandler onLost}) {
+    _onFrame = onFrame;
+    _onLost = onLost;
+    started = true;
+  }
 
   @override
   void open(String streamId, String endpoint, Map<String, Object?> payload) {
@@ -91,7 +101,7 @@ class FakeMuxLink implements DshMuxLink {
       () => push({
         'type': 'ready',
         'clientId': 'client-1',
-        'host': {'home': '/home/u'},
+        'host': {'home': '/home/u', 'hostInstanceId': ?hostInstanceId},
       }),
     );
   }
@@ -108,7 +118,9 @@ class FakeMuxLink implements DshMuxLink {
   void cancel(String streamId) {}
 
   @override
-  Future<void> close(int code, String reason) async {}
+  Future<void> close(int code, String reason) async {
+    _onLost?.call(DshCarrierLostException(reason), null);
+  }
 }
 
 HostConnection fakeHost(DshClient client, {HostKind kind = HostKind.local, String label = '本机'}) => HostConnection(

@@ -59,6 +59,7 @@
   "featuresJobsEmpty": "No background jobs",
   "featuresJobsEmptyHint": "Commands such as dev servers appear here",
   "featuresJobsEndedCount": "{count, plural, =1{Ended · 1} other{Ended · {count}}}",
+  "featuresJobInterrupted": "Interrupted",
   "featuresJobStopTitle": "Stop this job?",
   "featuresJobAlreadyEnded": "This job has already ended",
   "featuresJobStopFailed": "Couldn’t stop",

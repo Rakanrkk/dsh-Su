@@ -174,7 +174,10 @@ class _PhoneDndPageState extends ConsumerState<PhoneDndPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final rootRuntime = ref.watch(phoneProvider.select((s) => s.status.rootRuntime));
+    final notifications = ref.watch(phoneProvider.select((s) => s.status.notifications));
     final bg = ref.watch(phoneProvider.select((s) => s.status.background));
+    final rootAutoReady = rootRuntime && bg.androidOk && bg.effectiveMode == PhonePrivilegedMode.off;
     final using = bg.effectiveMode;
     final waiting = using == PhonePrivilegedMode.root && bg.root.starting;
     final open = _open ?? (bg.effectiveReady ? PhonePrivilegedMode.off : using);
@@ -186,6 +189,9 @@ class _PhoneDndPageState extends ConsumerState<PhoneDndPage> {
       subtitle: Text(l10n.phoneDndSubtitle),
       children: [
         if (!bg.androidOk) PhoneNote(tone: NoteTone.warn, text: l10n.phoneDndUnsupported),
+        if (rootAutoReady) ...[
+          PhoneNote(tone: NoteTone.info, text: notifications ? l10n.phoneDndRootAutoReady : l10n.phoneDndRootAutoBlocked),
+        ],
         if (using != PhonePrivilegedMode.off) ...[
           ListPageCard(
             margin: _groupMargin,

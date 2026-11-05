@@ -5841,6 +5841,9 @@ class L10nZh extends L10n {
   }
 
   @override
+  String get featuresJobInterrupted => '已中断';
+
+  @override
   String get featuresJobStopTitle => '停止这个任务？';
 
   @override
@@ -8830,6 +8833,12 @@ class L10nZh extends L10n {
 
   @override
   String get phoneDndRequirements => '使用条件';
+
+  @override
+  String get phoneDndRootAutoReady => '任务明确请求后台操作时，会按需尝试准备 Root。';
+
+  @override
+  String get phoneDndRootAutoBlocked => '通知已关闭，任务通知无法显示。';
 
   @override
   String get phoneDndKeepUnlocked => '保持亮屏、解锁。';

@@ -10730,6 +10730,12 @@ abstract class L10n {
   /// **'已结束 · {count}'**
   String featuresJobsEndedCount(int count);
 
+  /// No description provided for @featuresJobInterrupted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已中断'**
+  String get featuresJobInterrupted;
+
   /// No description provided for @featuresJobStopTitle.
   ///
   /// In zh, this message translates to:
@@ -16285,6 +16291,18 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'使用条件'**
   String get phoneDndRequirements;
+
+  /// No description provided for @phoneDndRootAutoReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务明确请求后台操作时，会按需尝试准备 Root。'**
+  String get phoneDndRootAutoReady;
+
+  /// No description provided for @phoneDndRootAutoBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知已关闭，任务通知无法显示。'**
+  String get phoneDndRootAutoBlocked;
 
   /// No description provided for @phoneDndKeepUnlocked.
   ///

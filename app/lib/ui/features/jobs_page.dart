@@ -28,6 +28,7 @@ StatusTone _tone(JobInfo job) => switch (job.status) {
   'running' || 'stopping' => StatusTone.busy,
   'completed' => StatusTone.ok,
   'failed' => StatusTone.error,
+  'interrupted' => StatusTone.warn,
   _ => StatusTone.idle,
 };
 
@@ -107,7 +108,7 @@ class _JobRow extends StatelessWidget {
       titleStyle: AppType.monoLabel(color: theme.colorScheme.onSurface).copyWith(fontSize: 13, height: 1.45),
       subtitle: jobSummary(job, now: now),
       subtitleColor: job.status == 'failed' ? colors.danger : null,
-      onTap: onTap,
+      onTap: job.status == 'interrupted' ? null : onTap,
     );
   }
 }

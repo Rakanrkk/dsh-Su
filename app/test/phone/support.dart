@@ -81,12 +81,15 @@ Map<String, Object?> privilegedStatus({
   bool paired = false,
   bool adbConnected = false,
   bool androidOk = true,
+  bool rootRuntime = false,
+  bool notifications = true,
   bool enabled = true,
   Map<String, Object?>? keep,
 }) {
   final base = phoneStatus(
     enabled: enabled,
     androidOk: androidOk,
+    notifications: notifications,
     wirelessDebugging: wirelessDebugging,
     paired: paired,
     adbConnected: adbConnected,
@@ -98,6 +101,7 @@ Map<String, Object?> privilegedStatus({
   };
   return {
     ...base,
+    'rootRuntime': rootRuntime,
     'background': {
       ...(base['background'] as Map).cast<String, Object?>(),
       'mode': legacy,

@@ -139,6 +139,7 @@
   "featuresJobsEmpty": "没有后台任务",
   "featuresJobsEmptyHint": "开发服务器这类命令会在这里",
   "featuresJobsEndedCount": "已结束 · {count}",
+  "featuresJobInterrupted": "已中断",
   "@featuresJobsEndedCount": {
     "placeholders": {
       "count": {

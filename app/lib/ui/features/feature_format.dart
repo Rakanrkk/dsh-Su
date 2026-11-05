@@ -68,6 +68,7 @@ String jobStatusLabel(String status) => switch (status) {
   'completed' => appL10n.commonCompleted,
   'killed' => appL10n.commonStopped,
   'failed' => appL10n.commonFailed,
+  'interrupted' => appL10n.featuresJobInterrupted,
   _ => status,
 };
 

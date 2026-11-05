@@ -6174,6 +6174,9 @@ class L10nEn extends L10n {
   }
 
   @override
+  String get featuresJobInterrupted => 'Interrupted';
+
+  @override
   String get featuresJobStopTitle => 'Stop this job?';
 
   @override
@@ -9290,6 +9293,13 @@ class L10nEn extends L10n {
 
   @override
   String get phoneDndRequirements => 'Requirements';
+
+  @override
+  String get phoneDndRootAutoReady =>
+      'When a task explicitly asks to work in the background, Root is prepared on demand.';
+
+  @override
+  String get phoneDndRootAutoBlocked => 'Notifications are off; task notifications can’t be shown.';
 
   @override
   String get phoneDndKeepUnlocked => 'Keep the screen on and unlocked.';

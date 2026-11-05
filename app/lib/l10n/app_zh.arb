@@ -3710,6 +3710,7 @@
       }
     }
   },
+  "featuresJobInterrupted": "已中断",
   "featuresJobStopTitle": "停止这个任务？",
   "featuresJobAlreadyEnded": "任务已经结束了",
   "featuresJobStopFailed": "没能停止",
@@ -5480,6 +5481,8 @@
   "phoneDndSubtitle": "在看不见的屏幕上操作，不耽误你用手机",
   "phoneDndUnsupported": "这台手机用不了：需要 Android 14 及以上。",
   "phoneDndRequirements": "使用条件",
+  "phoneDndRootAutoReady": "任务明确请求后台操作时，会按需尝试准备 Root。",
+  "phoneDndRootAutoBlocked": "通知已关闭，任务通知无法显示。",
   "phoneDndKeepUnlocked": "保持亮屏、解锁。",
   "phoneDndReactivate": "重启手机后重新激活。",
   "phoneDndKeepDebugging": "用 Shizuku 或自连 ADB 时，连接 Wi‑Fi 并保持无线调试开启。",

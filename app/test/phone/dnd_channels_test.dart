@@ -98,6 +98,35 @@ void main() {
     expect(acting(h.native!), isEmpty);
   });
 
+  testWidgets('root auto preparation is shown only for a Root build while mode stays off', (tester) async {
+    final h = await pumpPhone(
+      tester,
+      const PhoneDndPage(),
+      native: FakePhoneNative(
+        status: privilegedStatus(rootRuntime: true, notifications: false),
+      ),
+    );
+    expect(find.text('通知已关闭，任务通知无法显示。'), findsOneWidget);
+    expect(find.text('任务明确请求后台操作时，会按需尝试准备 Root。'), findsNothing);
+    expect(acting(h.native!), isEmpty);
+
+    h.native!.push(privilegedStatus(rootRuntime: true, notifications: true));
+    await settlePhone(tester);
+    expect(find.text('任务明确请求后台操作时，会按需尝试准备 Root。'), findsOneWidget);
+    expect(find.textContaining('通知已关闭'), findsNothing);
+    expect(acting(h.native!), isEmpty);
+
+    h.native!.push(privilegedStatus(rootRuntime: true, androidOk: false, notifications: true));
+    await settlePhone(tester);
+    expect(find.textContaining('任务明确请求后台操作时'), findsNothing);
+    expect(acting(h.native!), isEmpty);
+
+    h.native!.push(privilegedStatus(notifications: true));
+    await settlePhone(tester);
+    expect(find.textContaining('任务明确请求后台操作时'), findsNothing);
+    expect(acting(h.native!), isEmpty);
+  });
+
   testWidgets('root is picked only after its notice, then the root manager asks', (tester) async {
     final h = await pumpPhone(tester, const PhoneDndPage(), native: FakePhoneNative(status: privilegedStatus()));
     await open(tester, 'Root');

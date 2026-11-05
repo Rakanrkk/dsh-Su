@@ -209,6 +209,18 @@ class JobInfo {
   final int outputBytes;
 
   bool get live => status == 'running' || status == 'stopping';
+
+  JobInfo copyWith({String? status, DateTime? finishedAt}) => JobInfo(
+    id: id,
+    kind: kind,
+    label: label,
+    status: status ?? this.status,
+    progress: progress,
+    detail: detail,
+    startedAt: startedAt,
+    finishedAt: finishedAt ?? this.finishedAt,
+    outputBytes: outputBytes,
+  );
 }
 
 /// One `job/follow` frame.
