@@ -14,8 +14,13 @@ test('inspect reports actual availability and tolerates missing executables', as
   assert.match(result.checkedAt, /^\d{4}-\d{2}-\d{2}T/)
   assert.equal(result.tools[0].name, 'curl')
   assert.equal(result.tools[1].available, false)
-  assert.equal(result.tools[1].version, undefined)
+  assert.equal(result.tools[1].version, null)
   if (result.tools[0].available) assert.equal(typeof result.tools[0].version, 'string')
+})
+
+test('inspectTools result survives JSON roundtrip with deep equality', async () => {
+  const result = await inspectTools(['curl', 'dsh-su-missing-tool'])
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), result)
 })
 
 test('view and result data stay lossless and avoid root claims', () => {

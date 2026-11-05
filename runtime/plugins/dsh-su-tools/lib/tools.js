@@ -11,7 +11,7 @@ function plainText(value) {
 
 function shortVersion(value) {
   const line = plainText(value).split(/\s{2,}/)[0]
-  return line === '' ? undefined : line.slice(0, VERSION_LIMIT)
+  return line === '' ? null : line.slice(0, VERSION_LIMIT)
 }
 
 function run(args, signal) {
@@ -64,7 +64,7 @@ export async function inspectTools(tools = TOOLS, options = {}) {
       return {
         name,
         available,
-        version: available ? shortVersion(probe.stdout) : undefined,
+        version: available ? shortVersion(probe.stdout) : null,
       }
     }))
     return {

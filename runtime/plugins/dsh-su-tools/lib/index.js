@@ -40,18 +40,23 @@ export function apply(ctx, options = {}) {
       parameters: {},
       output: {
         schema: {
-          checkedAt: { type: 'string', required: true },
-          availableCount: { type: 'integer', required: true },
-          totalCount: { type: 'integer', required: true },
-          tools: {
-            type: 'array',
-            required: true,
-            items: {
-              type: 'object',
-              properties: {
-                name: { type: 'string', required: true },
-                available: { type: 'boolean', required: true },
-                version: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            checkedAt: { type: 'string', required: true },
+            availableCount: { type: 'integer', required: true },
+            totalCount: { type: 'integer', required: true },
+            tools: {
+              type: 'array',
+              required: true,
+              items: {
+                type: 'object',
+                additionalProperties: true,
+                properties: {
+                  name: { type: 'string', required: true },
+                  available: { type: 'boolean', required: true },
+                  version: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                },
               },
             },
           },
