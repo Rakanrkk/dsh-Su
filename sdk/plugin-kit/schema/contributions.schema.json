@@ -19,6 +19,10 @@
       "type": "string",
       "description": "dsh-go-bridge version"
     },
+    "hostInstanceId": {
+      "type": "string",
+      "description": "Stable identity of the bridge's Host process; changes on process restart"
+    },
     "rev": {
       "type": "string",
       "description": "Content hash; also the ETag"

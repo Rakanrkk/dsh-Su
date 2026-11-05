@@ -179,6 +179,7 @@ section("contributions");
 await sleep(300);
 const c1 = await contributions();
 check(c1.status === 200 && c1.json?.v === 1 && typeof c1.json?.rev === "string", `GET contributions -> ${c1.status} rev=${c1.json?.rev} in ${c1.ms} ms`);
+check(typeof c1.json?.hostInstanceId === "string" && c1.json.hostInstanceId.length >= 32, `hostInstanceId present: ${c1.json?.hostInstanceId}`);
 check(c1.ms < 300, `local round trip ${c1.ms} ms < 300 ms`);
 const plugins = c1.json?.plugins ?? [];
 const pkgs = plugins.map((p) => p.pkg);

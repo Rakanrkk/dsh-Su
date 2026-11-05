@@ -1,7 +1,7 @@
 // Native plugin core (docs/design/native-plugins-protocol.md): which enabled plugins declare
 // `dshGo`, what they registered through the `dshGo` service, their health (violations ->
 // degraded), and the data feeds shared by GET views and stream subscriptions.
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join } from "node:path";
@@ -14,6 +14,10 @@ import {
 } from "./util.js";
 
 const TRACKER = Symbol.for("cordis.tracker");
+// Stable per-process identity for contributions (docs/design/native-plugins-protocol.md §4.1):
+// survives bridge reloads, changes on Host restart.
+const HOST_INSTANCE = Symbol.for("dsh-go.hostInstanceId");
+const hostInstanceId = () => (globalThis[HOST_INSTANCE] ??= randomUUID());
 const SCAN_MAX_AGE_MS = 2000;
 const CHANGED_DEBOUNCE_MS = 300;
 const SELF = "dsh-go-bridge";
@@ -223,9 +227,10 @@ export class NativeCore {
     if (hit) return hit;
     const plugins = [...s.plugins.values()].sort((a, b) => a.pkg.localeCompare(b.pkg))
       .map((rec) => renderPlugin(rec.parsed, caps, this.#liveOf(rec.pkg)));
-    const body = { v: PROTOCOL, bridge: this.version, bootRev: s.graphRev, limits: this.limits, plugins };
+    const instanceId = hostInstanceId();
+    const body = { v: PROTOCOL, bridge: this.version, bootRev: s.graphRev, limits: this.limits, plugins, hostInstanceId: instanceId };
     const rev = shortHash(JSON.stringify(body));
-    const out = { v: PROTOCOL, bridge: this.version, rev, bootRev: s.graphRev, limits: this.limits, plugins };
+    const out = { v: PROTOCOL, bridge: this.version, rev, bootRev: s.graphRev, limits: this.limits, plugins, hostInstanceId: instanceId };
     if (this.contribMemo.size > 32) this.contribMemo.clear();
     this.contribMemo.set(key, out);
     return out;

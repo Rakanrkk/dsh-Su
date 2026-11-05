@@ -279,6 +279,19 @@ test("core: scan, cache invalidation by toggle and package.json edit", async () 
   core.dispose();
 });
 
+test("core: hostInstanceId is stable across bridge reloads and enters body/out", () => {
+  const a = pkgDir("hostid-a", { v: 1, contributes: { panels: [{ id: "p", title: "P" }] } });
+  const host = fakeHost([a]);
+  const core1 = new NativeCore(host.ctx, LIMITS, "test");
+  const c1 = core1.contributions(CAPS);
+  assert.ok(typeof c1.hostInstanceId === "string" && c1.hostInstanceId.length >= 32);
+  const core2 = new NativeCore(host.ctx, LIMITS, "test");
+  const c2 = core2.contributions(CAPS);
+  assert.equal(c2.hostInstanceId, c1.hostInstanceId, "same process → same identity");
+  core1.dispose();
+  core2.dispose();
+});
+
 test("core: service attribution, registration lifecycle, undeclared", () => {
   const a = pkgDir("svc-a", { v: 1, contributes: { panels: [{ id: "p", title: "P" }], "composer.actions": [{ id: "x", label: "X" }] } });
   const host = fakeHost([a]);
