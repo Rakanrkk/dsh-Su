@@ -375,9 +375,8 @@ void main() {
         await tester.pumpAndSettle();
         if (turnsOneShot) {
           mode = SubagentMode.oneShot;
-          ProviderScope.containerOf(
-            tester.element(find.byType(ConversationOverview)),
-          ).invalidate(subagentParentProvider);
+          ProviderScope.containerOf(tester.element(find.byType(ConversationOverview)))
+              .invalidate(subagentParentProvider);
           await tester.pump();
         }
         await tester.tap(find.text('V41 Flash'));
@@ -385,6 +384,62 @@ void main() {
         expect(harness.controllers['s1']!.models, hasLength(picks));
       });
     }
+
+    testWidgets('a plugin\'s conversation action is a row on 信息, signed with its name', (tester) async {
+      await panel(
+        tester,
+        harness: _harness(
+          extra: [
+            nativeSessionActionsProvider.overrideWithValue(const [
+              NativeAction(package: 'toolbox', surface: NativeSurface.sessionActions, id: 'mark', label: '标记这段对话'),
+            ]),
+          ],
+        ),
+      );
+      final row = find.byKey(const ValueKey('overview-action|toolbox|mark'));
+      expect(row, findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('标记这段对话')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('toolbox')), findsOneWidget);
+    });
+
+    testWidgets('a long action label at a large text size stays inside its row', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await panel(
+        tester,
+        harness: _harness(
+          extra: [
+            nativeSessionActionsProvider.overrideWithValue(const [
+              NativeAction(
+                package: 'toolbox',
+                surface: NativeSurface.sessionActions,
+                id: 'mark',
+                label: '一二三四五六七八九十一二',
+              ),
+            ]),
+          ],
+        ),
+      );
+      final row = find.byKey(const ValueKey('overview-action|toolbox|mark'));
+      final name = find.descendant(of: row, matching: find.text('toolbox'));
+      expect(tester.getTopRight(name).dx, lessThanOrEqualTo(tester.getTopRight(row).dx));
+    });
+
+    testWidgets('a panel that asked only for its plugin page stays out of 插件', (tester) async {
+      await panel(
+        tester,
+        harness: _harness(
+          extra: [
+            nativePanelsProvider.overrideWithValue(const [
+              NativePanel(package: 'toolbox', id: 'about', title: '状态', placement: {DshGoPanel.pluginPage}),
+            ]),
+          ],
+        ),
+      );
+      await tester.tap(find.text('插件').first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('pane-find-plugins')), findsOneWidget);
+    });
 
     testWidgets('插件 is there with no plugins, and says where they come from', (tester) async {
       final opened = await panel(tester);

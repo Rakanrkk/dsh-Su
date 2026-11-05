@@ -1,131 +1,119 @@
-# CI——按改动面选择检查，不做无谓全量。
-# changes job 依 diff 算出各改动面的 true/false，后续 job 只跑受影响的面：
-#   - dart-packages: packages/dsh_client、packages/dsh_remote（纯 Dart，按包矩阵跑）
-#   - flutter-app:   app/；client/remote 是 app 的 path 依赖，二者改动也联动 app
-#   - plugin-kit:    sdk/plugin-kit/
-#   - runtime:       runtime/（node --test）
-#   - guide:         docs/guide/ 或 guide_sync.py 本身（--check）
-# 本 workflow 或 docs/guide 等共享输入变动时相应放大；手动 dispatch 全量运行。
-# Flutter 钉在 3.47.7（本机验证所用版本），不跟随 stable 漂移；升级时同步两处 flutter-version 与本注释。
+# A PR runs what it touches; a push to main runs everything, which also catches
+# whatever the path filters below miss. `CI OK` is the one result to look at.
+# External PRs are closed by pr-gate.yml and spend no runner here.
+# dsh-go: keeps the fork-only root-mode checks as a separate job after the
+# normal Flutter shards; it still runs only when the app surface changed.
 name: CI
 
 on:
   pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  NODE_VERSION: 24.22.1
+  GRADLE_VERSION: 9.3.1
+  TZ: Asia/Shanghai
+
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
-      app: ${{ steps.sel.outputs.app }}
-      dart: ${{ steps.sel.outputs.dart }}
-      pluginkit: ${{ steps.sel.outputs.pluginkit }}
-      runtime: ${{ steps.sel.outputs.runtime }}
-      tooling: ${{ steps.sel.outputs.tooling }}
-      guide: ${{ steps.sel.outputs.guide }}
+      app: ${{ github.event_name != 'pull_request' || steps.filter.outputs.app == 'true' }}
+      packages: ${{ github.event_name != 'pull_request' || steps.filter.outputs.packages == 'true' }}
+      runtime: ${{ github.event_name != 'pull_request' || steps.filter.outputs.runtime == 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
-          fetch-depth: 0
+          # The paths outside each area's own are files its tests read.
+          filters: |
+            ci: &ci .github/workflows/ci.yml
+            app: [*ci, 'app/**', 'packages/**', 'sdk/plugin-kit/**', 'site/share/**', 'docs/guide/**', 'THIRD_PARTY_NOTICES.md']
+            packages: [*ci, 'packages/**']
+            runtime: [*ci, 'runtime/**', 'examples/**', 'sdk/plugin-kit/**', 'app/tool/engine_auth/**', 'app/test/plugin_config/fixtures/**', 'app/test/media/fixtures/**']
 
-      - name: List changed files
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          BEFORE: ${{ github.event.before }}
-        run: |
-          if [ "$EVENT" = "pull_request" ]; then
-            BASE=$(git merge-base "origin/$BASE_REF" HEAD)
-          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            BASE="$BEFORE"
-          else
-            echo "ALL=true" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          git diff --name-only "$BASE" HEAD > /tmp/changed.txt
-          wc -l /tmp/changed.txt
-
-      - name: Select surfaces
-        id: sel
-        run: |
-          if [ -f /tmp/changed.txt ] && grep -Eq '^\.github/workflows/ci\.yml$' /tmp/changed.txt; then
-            for k in app dart pluginkit runtime tooling guide; do
-              echo "$k=true" >> "$GITHUB_OUTPUT"
-            done
-            exit 0
-          fi
-          if [ -n "${ALL:-}" ]; then
-            for k in app dart pluginkit runtime tooling guide; do
-              echo "$k=true" >> "$GITHUB_OUTPUT"
-            done
-            exit 0
-          fi
-          sel() {
-            if grep -Eq "$2" /tmp/changed.txt; then
-              echo "$1=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "$1=false" >> "$GITHUB_OUTPUT"
-            fi
-          }
-          sel app '^(app/|packages/dsh_client/|packages/dsh_remote/)'
-          sel dart '^packages/(dsh_client|dsh_remote)/'
-          sel pluginkit '^sdk/plugin-kit/'
-          sel runtime '^runtime/'
-          sel tooling '^tooling/'
-          sel guide '^(docs/guide/|app/tool/guide_sync\.py$)'
-          cat "$GITHUB_OUTPUT"
-
-  dart-packages:
-    if: needs.changes.outputs.dart == 'true'
+  checks:
+    name: Generated files, tooling, SDK, web
     needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [dsh_client, dsh_remote]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          flutter-version: '3.47.7'
-          channel: stable
-          cache: true
-      - name: dart pub get / analyze / test (${{ matrix.package }})
-        working-directory: packages/${{ matrix.package }}
+          persist-credentials: false
+      - &node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Generated files are in sync
         run: |
-          dart pub get
-          dart analyze
-          dart test
+          python3 app/tool/l10n_merge.py --check
+          python3 app/tool/guide_sync.py --check
+          node sdk/plugin-kit/scripts/sync-skill.mjs --check
+          # Not --check: this also writes site/build/share, which the share worker builds from.
+          python3 app/tool/make_replay_viewer.py
+          git diff --exit-code -- app/lib/share_code/replay_viewer.g.dart
+      - name: Python tooling
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q Pillow==13.0.0 numpy==2.4.0
+          for dir in tooling runtime/tests app/tool; do
+            "$RUNNER_TEMP/venv/bin/python" -m unittest discover -s "$dir" -p 'test_*.py'
+          done
+      - name: Plugin SDK
+        working-directory: sdk/plugin-kit
+        run: |
+          npm install --ignore-scripts --no-package-lock --no-audit --no-fund
+          npm test
+      - name: Market, sites, share worker
+        run: |
+          (cd market && npm ci --ignore-scripts --no-audit --no-fund && npm test)
+          (cd site/home && npm run check && npm run check:content && npm test)
+          (cd services/share-worker && npm ci --ignore-scripts --no-audit --no-fund && npm run build && npm run typecheck && npm test)
+          node --test site/share/test/viewer_test.mjs
 
-  flutter-app-normal:
+  flutter:
+    name: Flutter ${{ matrix.shard }}
+    needs: changes
     if: needs.changes.outputs.app == 'true'
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard-index: [0, 1, 2, 3]
+        shard: [0, 1, 2]
     env:
       DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
       NOTO_CJK_VERSION: 1:20230817+repack1-3
       NOTO_EMOJI_VERSION: v2.051
-      TZ: Asia/Shanghai
+    defaults:
+      run:
+        working-directory: app
     steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
+      - *checkout
+      - *node
+      - &flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
-          flutter-version: '3.47.7'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       # The goldens have Noto Color Emoji 2.051; Ubuntu's 2.047 draws the glyphs differently.
@@ -159,45 +147,59 @@ jobs:
         run: |
           sudo install -Dm644 -t "$DSH_TEST_FONT_DIR" ~/test-fonts/NotoSansCJK-*.ttc
           sudo install -Dm644 ~/test-fonts/NotoColorEmoji.ttf /usr/share/fonts/noto/NotoColorEmoji.ttf
-      - name: flutter pub get / analyze / test (app, shard)
-        working-directory: app
-        env:
-          SHARD_INDEX: ${{ matrix.shard-index }}
+      - run: flutter pub get --enforce-lockfile
+      - name: Analyze, and generated localization matches its source
+        if: matrix.shard == 0
         run: |
-          flutter pub get
-          if [ "$SHARD_INDEX" = "0" ]; then flutter analyze; fi
-          printf "TZ=%s\n" "$TZ"
-          date +"timezone_offset=%z timezone=%Z"
-          flutter test --total-shards 4 --shard-index "$SHARD_INDEX"
-      - name: Upload shard failure evidence
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+          flutter analyze --no-pub
+          python3 tool/l10n_merge.py
+          git diff --exit-code -- lib/l10n
+      # Split by file, not with --total-shards: that still compiles every file on every shard.
+      - name: Test every third file
+        run: flutter test --no-pub --concurrency=4 --reporter github $(find test -name '*_test.dart' | sort | awk 'NR % 3 == ${{ matrix.shard }}')
+      - name: Keep golden diffs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: flutter-app-normal-shard-${{ matrix.shard-index }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: app/test/**/failures/
+          name: golden-failures-${{ matrix.shard }}
+          path: app/test/**/failures/*.png
           if-no-files-found: ignore
+          retention-days: 7
+
+  dart:
+    name: Dart packages
+    needs: changes
+    if: needs.changes.outputs.packages == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PUB_HOSTED_URL: https://pub.flutter-io.cn # The registry these two lockfiles were resolved from.
+    steps:
+      - *checkout
+      - *flutter
+      - run: |
+          for pkg in packages/dsh_client packages/dsh_remote; do
+            (cd "$pkg" && dart pub get --enforce-lockfile && dart analyze && dart test)
+          done
 
   flutter-app-root:
-    needs: [changes, flutter-app-normal]
+    name: Root-mode Flutter
+    needs: [changes, flutter]
     if: always() && !cancelled() && needs.changes.outputs.app == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     env:
+      DSH_MAVEN_MIRRORS: 0 # The Aliyun mirrors are slow and unreliable from a US runner.
       DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
       NOTO_CJK_VERSION: 1:20230817+repack1-3
       NOTO_EMOJI_VERSION: v2.051
-      TZ: Asia/Shanghai
+    defaults:
+      run:
+        working-directory: app
     steps:
-      - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.47.7'
-          channel: stable
-          cache: true
-      # The goldens have Noto Color Emoji 2.051; Ubuntu's 2.047 draws the glyphs differently.
-      # Only the files the tests read, cached: the 206 MB of packages sometimes take apt's
-      # mirror longer than the job's whole timeout. Saved right after the download, so a
-      # job that fails or times out later doesn't lose it.
+      - *checkout
+      - *node
+      - *flutter
       - name: Restore the fonts the goldens were drawn with
         id: fonts
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -225,94 +227,118 @@ jobs:
         run: |
           sudo install -Dm644 -t "$DSH_TEST_FONT_DIR" ~/test-fonts/NotoSansCJK-*.ttc
           sudo install -Dm644 ~/test-fonts/NotoColorEmoji.ttf /usr/share/fonts/noto/NotoColorEmoji.ttf
+      - run: flutter pub get --enforce-lockfile
       - name: Root-mode Flutter checks
-        working-directory: app
         run: |
-          flutter test test/access/access_step_root_storage_test.dart \
+          flutter test --no-pub test/access/access_step_root_storage_test.dart \
             --dart-define=DSH_ROOT_RUNTIME=true \
             --dart-define=DSH_UPDATE_REPO=Rakanrkk/dsh-Su
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '17'
-      - name: Setup Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v6.4.1
+      # gradlew is not tracked, so Gradle comes from here. The root check uses the
+      # fork's x64 JVM flavor rather than upstream's Arm64 job.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          gradle-version: '9.3.1'
-          cache-disabled: true
+          gradle-version: ${{ env.GRADLE_VERSION }}
       - name: Root-mode Android unit tests
         run: |
-          {
-            printf 'flutter.sdk=%s\n' "$FLUTTER_ROOT"
-            if [ -n "${ANDROID_HOME:-}" ]; then printf 'sdk.dir=%s\n' "$ANDROID_HOME"; fi
-          } > app/android/local.properties
-          gradle \
-            --project-dir "$GITHUB_WORKSPACE/app/android" \
-            --project-prop=dsh.rootRuntime=true \
-            :app:testX64DebugUnitTest
-      - name: l10n merge check
-        run: python3 app/tool/l10n_merge.py --check
-      - name: Upload root post-check failure evidence
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+          gradle --stacktrace --project-dir android --project-prop=dsh.rootRuntime=true :app:testX64DebugUnitTest
+      - name: Keep root failure evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: flutter-app-root-${{ github.run_id }}-${{ github.run_attempt }}
+          name: flutter-app-root-failures
           path: |
-            app/test/**/failures/
+            app/test/**/failures/*.png
             app/android/app/build/reports/
             app/android/app/build/test-results/
           if-no-files-found: ignore
-
-  plugin-kit:
-    if: needs.changes.outputs.pluginkit == 'true'
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-        working-directory: sdk/plugin-kit
-      - run: npm test
-        working-directory: sdk/plugin-kit
+          retention-days: 7
 
   runtime:
+    name: Runtime and bridge
+    needs: changes
     if: needs.changes.outputs.runtime == 'true'
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UV_USE_IO_URING: 0
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24.22.1'
-      - name: Install the locked patched DSH test candidate
+      - *checkout
+      - *node
+      - name: Install a throwaway patched DSH
         run: |
-          prefix="$RUNNER_TEMP/dsh-prefix"
-          mkdir -p "$prefix"
-          cp runtime/locks/dsh-0.2.1-rc.4/package.json runtime/locks/dsh-0.2.1-rc.4/package-lock.json "$prefix/"
-          (cd "$prefix" && npm ci --ignore-scripts --no-audit --no-fund)
-          python3 -I runtime/lib/rtbuild.py patch-dsh --prefix "$prefix" --dsh-version 0.2.1-rc.4
-          echo "DSH_PREFIX=$prefix" >> "$GITHUB_ENV"
-          echo "DSH_TEST_PREFIX=$prefix" >> "$GITHUB_ENV"
-      - run: node --test runtime/tests/*.test.mjs
+          version=$(sed -nE 's/^DSH_VERSION="\$\{DSH_VERSION:-(.+)\}"$/\1/p' runtime/build-runtime.sh)
+          prefix="$RUNNER_TEMP/dsh"
+          mkdir "$prefix"
+          cp "runtime/locks/dsh-$version/package.json" "runtime/locks/dsh-$version/package-lock.json" "$prefix/"
+          npm ci --prefix "$prefix" --ignore-scripts --no-audit --no-fund
+          cp "$prefix/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js" "$prefix/fs-local-original.js"
+          python3 -I runtime/lib/rtbuild.py patch-dsh --prefix "$prefix" --dsh-version "$version"
+          pnpm_version=$(sed -nE 's/^PNPM_VERSION="\$\{PNPM_VERSION:-(.+)\}"$/\1/p' runtime/build-runtime.sh)
+          pnpm_prefix="$RUNNER_TEMP/pnpm"
+          mkdir "$pnpm_prefix"
+          cp "runtime/locks/pnpm-$pnpm_version/package.json" "runtime/locks/pnpm-$pnpm_version/package-lock.json" "$pnpm_prefix/"
+          npm ci --prefix "$pnpm_prefix" --ignore-scripts --no-audit --no-fund
+          {
+            echo "DSH_PREFIX=$prefix"
+            echo "DSH_TEST_PREFIX=$prefix"
+            echo "PNPM_BIN=$pnpm_prefix/node_modules/pnpm/bin/pnpm.mjs"
+            echo "DSH_INSTALL=$prefix/node_modules/@deepseek-ai/dsh"
+            echo "DSH_TOOLS_DIR=$prefix/node_modules/@deepseek-ai/dsh-tools"
+            echo "DSH_FS_LOCAL_ORIGINAL_JS=$prefix/fs-local-original.js"
+          } >> "$GITHUB_ENV"
+      - name: Unit tests
+        run: |
+          node --test runtime/tests/*.test.mjs app/tool/engine_auth/*.test.mjs
+          python3 -I runtime/tests/test_patch_dsh.py
+      - name: Media and example plugins
+        run: |
+          (cd runtime/media/dsh-media && npm install --ignore-scripts --no-package-lock --no-audit --no-fund && npm test)
+          for plugin in examples/plugins/dsh-go-example-*/; do
+            (cd "$plugin" && npm test && npm run check)
+          done
+      - name: Route guard and native bridge against a real host
+        run: |
+          bash runtime/tests/run-guard-tests.sh "$DSH_PREFIX"
+          bash runtime/tests/run-native-tests.sh "$DSH_PREFIX"
 
-  tooling:
-    if: needs.changes.outputs.tooling == 'true'
+  android:
+    name: Android JVM
     needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DSH_MAVEN_MIRRORS: 0 # The Aliyun mirrors are slow and unreliable from a US runner.
     steps:
-      - uses: actions/checkout@v7
-      - run: python3 -m unittest discover -s tooling -p 'test_*.py' -v
+      - *checkout
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - *flutter
+      - name: Flutter plugins and local.properties
+        working-directory: app
+        run: |
+          flutter pub get --enforce-lockfile
+          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+      # gradlew is not tracked, so Gradle comes from here. The two flavors differ only in ABI.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+      - working-directory: app/android
+        run: gradle --stacktrace :app:testArm64DebugUnitTest
 
-  guide:
-    if: needs.changes.outputs.guide == 'true'
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [changes, checks, flutter, dart, flutter-app-root, runtime, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - run: python3 app/tool/guide_sync.py --check
+      - if: needs.changes.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

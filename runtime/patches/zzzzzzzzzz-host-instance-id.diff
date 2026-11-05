@@ -1,6 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js
-@@ -766,6 +766,7 @@ var TypertGatewayService = class extends Service {
+@@ -766,6 +766,7 @@
  	constructor(ctx, config) {
  		super(ctx, "typertGateway");
  		const resolved = config;
@@ -8,7 +8,7 @@
  		ctx.on("internal/service", () => {
  			this.srcClaims = void 0;
  		});
-@@ -1016,7 +1017,10 @@ var TypertGatewayService = class extends Service {
+@@ -1016,7 +1017,10 @@
  			yield {
  				...REMOTE_EVENT_STREAM_READY,
  				clientId,
@@ -20,3 +20,13 @@
  			};
  			yield* client.queue.iterate(lifetime);
  		} finally {
+--- a/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.node.js
++++ b/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.node.js
+@@ -746 +746 @@
+-	]) || value.type !== "ready" || !isRemoteEventClientId(value.clientId) || !isRemoteEventRecord(value.host) || !hasExactRemoteEventKeys(value.host, ["home"]) || typeof value.host.home !== "string") throw new TypeError("client api: forwarded Remote event stream did not begin with ready");
++	]) || value.type !== "ready" || !isRemoteEventClientId(value.clientId) || !isRemoteEventRecord(value.host) || !(hasExactRemoteEventKeys(value.host, ["home"]) || hasExactRemoteEventKeys(value.host, ["home", "hostInstanceId"])) || typeof value.host.home !== "string") throw new TypeError("client api: forwarded Remote event stream did not begin with ready");
+--- a/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js
++++ b/node_modules/@deepseek-ai/dsh-api-gateway/lib/client.browser.js
+@@ -930 +930 @@
+-		]) || value.type !== "ready" || !isRemoteEventClientId(value.clientId) || !isRemoteEventRecord(value.host) || !hasExactRemoteEventKeys(value.host, ["home"]) || typeof value.host.home !== "string") throw new TypeError("client api: forwarded Remote event stream did not begin with ready");
++		]) || value.type !== "ready" || !isRemoteEventClientId(value.clientId) || !isRemoteEventRecord(value.host) || !(hasExactRemoteEventKeys(value.host, ["home"]) || hasExactRemoteEventKeys(value.host, ["home", "hostInstanceId"])) || typeof value.host.home !== "string") throw new TypeError("client api: forwarded Remote event stream did not begin with ready");
