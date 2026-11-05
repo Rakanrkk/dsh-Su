@@ -283,7 +283,7 @@ def main() -> None:
         "schema": 1,
         "version": f"{name}+{build}",
         "tag": tag,
-        "title": f"DSH Go {name}",
+        "title": f"DSH SU {name}",
         "publishedAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "notes": args.notes.read_text(encoding="utf-8").strip() if args.notes else "",
         "page": f"https://github.com/{REPO}/releases/tag/{tag}",
@@ -297,13 +297,13 @@ def main() -> None:
         built = f"{decode(build):%Y-%m-%d %H:%M} UTC+8"
     except ValueError:
         built = "custom build number"
-    print(f"DSH Go {name}+{build} ({built})")
+    print(f"DSH SU {name}+{build} ({built})")
     print(f"{args.out}:")
     for line in sums:
         print("  " + line)
     print("  update.json")
     notes = f" --notes-file {args.notes}" if args.notes else ""
-    print(f"\ngh release create {tag} {args.out}/* --repo {REPO} --title 'DSH Go {name}'{notes}")
+    print(f"\ngh release create {tag} {args.out}/* --repo {REPO} --title 'DSH SU {name}'{notes}")
 
 
 if __name__ == "__main__":
