@@ -30,7 +30,7 @@ private class TestContext(
     override fun getFilesDir(): File = root
     override fun getCacheDir(): File = File(root, "cache")
     override fun getApplicationContext(): Context = this
-    override fun checkSelfPermission(permission: String?): Int = PackageManager.PERMISSION_DENIED
+    override fun checkSelfPermission(permission: String): Int = PackageManager.PERMISSION_DENIED
 }
 
 private class RecordingResult : MethodChannel.Result {
@@ -55,7 +55,7 @@ private fun testRootFiles(context: TestContext): FilesPlugin.RootFiles {
     return FilesPlugin.RootFiles(
         context,
         rootRuntime = false,
-        selector = context.onSelector,
+        selector = { context.onSelector() },
     )
 }
 
@@ -70,7 +70,7 @@ class RootFilesTest {
         })
 
         assertNull(access.resolve("ordinary.txt"))
-        assertFalse(selected)
+        assertFalse(selected.get())
     }
 
     @Test fun normalSaveOrAskUsesLegacyPermissionFlowWithoutRootSelector() {

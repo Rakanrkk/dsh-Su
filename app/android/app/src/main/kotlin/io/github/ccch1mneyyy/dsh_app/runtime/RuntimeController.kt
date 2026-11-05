@@ -220,16 +220,6 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         return if (active) runSafe else safeState == SafeState.ON
     }
 
-    internal fun installAllowed(
-        phase: Phase,
-        resetting: Boolean,
-        processActive: Boolean,
-    ): Boolean =
-        phase != Phase.INSTALLING &&
-            phase !in setOf(Phase.RUNNING, Phase.STARTING, Phase.STOPPING) &&
-            !resetting &&
-            !(phase == Phase.ERROR && processActive)
-
     /** [dropKept]: give up what a reset kept but cannot be put back (see [KeepFailed]). */
     @Synchronized fun install(dropKept: Boolean = false, onDone: (Throwable?) -> Unit) {
         if (!installAllowed(phase, resetting, process != null)) {
@@ -1172,6 +1162,16 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     companion object {
+        internal fun installAllowed(
+            phase: Phase,
+            resetting: Boolean,
+            processActive: Boolean,
+        ): Boolean =
+            phase != Phase.INSTALLING &&
+                phase !in setOf(Phase.RUNNING, Phase.STARTING, Phase.STOPPING) &&
+                !resetting &&
+                !(phase == Phase.ERROR && processActive)
+
         private const val PREFS = "dsh_runtime"
         private const val K_SAFE_STATE = "safeState"
         private const val K_SAFE_REASON = "safeReason"
