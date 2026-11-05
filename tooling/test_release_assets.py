@@ -20,6 +20,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import apk_delta
+import release_assets
 from build_number import MAX_VERSION_CODE
 from release_assets import (
     BADGING_RE,
@@ -262,6 +263,44 @@ class PublishedTest(unittest.TestCase):
     def test_gh_failing_says_how_to_go_without(self):
         with self.assertRaisesRegex(ReleaseError, "--delta-from 0"):
             published_apk("v0.1.0", self.dir / "cache")
+
+
+class ReleaseCommandTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.apks = {flavor: root_apk(self.dir / f"{flavor}.apk", flavor) for flavor in FLAVOR_ABI}
+
+    def create(self, version, code):
+        badging = f"package: name='{ROOT_APPLICATION_ID}' versionCode='{code}' versionName='{version}'\n"
+        out = self.dir / f"dist-{version}"
+        argv = [
+            "release_assets.py", "--version", version, "--delta-from", "0", "--out", str(out),
+            f"arm64={self.apks['arm64']}", f"x64={self.apks['x64']}",
+        ]
+        stdout = io.StringIO()
+        try:
+            with mock.patch.object(release_assets.subprocess, "run", return_value=SimpleNamespace(stdout=badging)), \
+                 mock.patch.object(release_assets, "find_aapt2", return_value="aapt2"), \
+                 mock.patch.object(sys, "argv", argv), \
+                 contextlib.redirect_stdout(stdout):
+                release_assets.main()
+        except BaseException as e:
+            self.fail(f"main failed for {version}: {e!r}")
+        self.assertTrue((out / "update.json").is_file())
+        self.assertTrue((out / "SHA256SUMS").is_file())
+        return stdout.getvalue()
+
+    def test_prerelease_adds_the_flag_and_stable_does_not(self):
+        for version in ("1.2.0-dev.1", "1.2.0-rc.1"):
+            command = next(line for line in self.create(version, 11060910).splitlines() if line.startswith("gh release create "))
+            self.assertIn(f"gh release create v{version} ", command)
+            self.assertIn(" --verify-tag", command)
+            self.assertIn(" --prerelease", command)
+        command = next(line for line in self.create("1.2.0", 11060912).splitlines() if line.startswith("gh release create "))
+        self.assertIn("gh release create v1.2.0 ", command)
+        self.assertIn(" --verify-tag", command)
+        self.assertNotIn(" --prerelease", command)
 
 
 if __name__ == "__main__":

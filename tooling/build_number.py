@@ -14,6 +14,7 @@ so a timezone or DST change can't make it go backwards.
 
     python3 tooling/build_number.py                              # now
     python3 tooling/build_number.py --at 2026-10-25T12:34+08:00
+    python3 tooling/build_number.py --after 10251234             # now or one later
     python3 tooling/build_number.py --decode 10251234
     python3 tooling/build_number.py --check 10251234             # exit 1 if not a valid versionCode
 """
@@ -28,8 +29,12 @@ MAX_VERSION_CODE = 2_100_000_000
 YEAR_SPAN = 100_000_000
 
 
-def build_number(at: datetime.datetime | None = None) -> int:
-    """The versionCode for a build at [at] (timezone-aware; default now)."""
+def build_number(at: datetime.datetime | None = None, after: int | None = None) -> int:
+    """The versionCode for a build at [at] (timezone-aware; default now), but never
+    lower than [after] + 1. A release passes [after] as the highest versionCode
+    already distributed under the package name and gives the returned number to
+    both ABIs in one release.
+    """
     if at is None:
         at = datetime.datetime.now(datetime.timezone.utc)
     if at.tzinfo is None or at.utcoffset() is None:
@@ -38,6 +43,9 @@ def build_number(at: datetime.datetime | None = None) -> int:
     if t.year < EPOCH_YEAR:
         raise ValueError(f"{t:%Y-%m-%d %H:%M} is before {EPOCH_YEAR}")
     code = (t.year - EPOCH_YEAR) * YEAR_SPAN + int(t.strftime("%m%d%H%M"))
+    if after is not None:
+        check(after)
+        code = max(code, after + 1)
     if code > MAX_VERSION_CODE:
         raise ValueError(f"{code} is over Android's versionCode limit {MAX_VERSION_CODE}")
     return code
@@ -69,14 +77,18 @@ def main() -> None:
     group.add_argument("--at", help="ISO time with offset, e.g. 2026-10-25T12:34+08:00")
     group.add_argument("--decode", type=int, metavar="CODE", help="print the build time a versionCode stands for")
     group.add_argument("--check", type=int, metavar="CODE", help="exit 1 unless CODE is a valid versionCode")
+    parser.add_argument("--after", type=int, metavar="LAST", help="LAST is the highest versionCode already "
+                       "distributed under this package name; return at least LAST + 1")
     args = parser.parse_args()
+    if args.after is not None and (args.decode is not None or args.check is not None):
+        parser.error("--after cannot be combined with --decode/--check")
     try:
         if args.decode is not None:
             print(f"{decode(args.decode):%Y-%m-%d %H:%M} UTC+8")
         elif args.check is not None:
             check(args.check)
         else:
-            print(build_number(datetime.datetime.fromisoformat(args.at) if args.at else None))
+            print(build_number(datetime.datetime.fromisoformat(args.at) if args.at else None, args.after))
     except ValueError as e:
         sys.exit(f"build_number: {e}")
 

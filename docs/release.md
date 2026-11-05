@@ -4,6 +4,48 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
 
 > **正式发版前必须先换成固定的发布密钥**（见「签名」）。存在 `app/android/key.properties` 时 release 使用其中的发布密钥；缺少配置时仅为本地构建回落到 debug key，不可用于正式发布。
 
+## DSH SU 版号约定
+
+对外使用可读的版本名，不用构建时间戳或工作树编号代替版本。一个版本可以包含多个并行开发成果；里程碑进度另行记录。DSH SU 应用版号独立于 DSH 引擎和插件版号；下载、反馈和进度沟通以应用版号为准，依赖版本仅在诊断需要时附带。
+
+| 阶段 | 版本名 | 对外名称 |
+| --- | --- | --- |
+| 开发版 | `1.2.0-dev.1`、`1.2.0-dev.2` | DSH SU 1.2.0 开发版 1、开发版 2 |
+| 发布候选 | `1.2.0-rc.1`、`1.2.0-rc.2` | DSH SU 1.2.0 候选版 1、候选版 2 |
+| 正式版 | `1.2.0` | DSH SU 1.2.0 |
+
+开发版持续增加和调整功能；进入 rc 前冻结本轮计划功能，之后集中修复发布问题；完成该版本的必要验收后发布正式版。
+
+- 下一轮开发从 **1.2.0-dev.1** 开始。已有 `1.1.0+1105…`、`1.1.0+1106…` 包保留实际原号作为旧制候选；不改 APK、清单或旧 tag 来补造新版本。已有无后缀的 1.1.0 比 1.1.0-dev/rc 更新，因此不倒退到同一基础版本的预发布名。
+- 同一基础版本按 dev → rc → 正式推进，不回退阶段。
+- 同阶段每次交付不同内容，递增 `dev.N` 或 `rc.N`；N 从 1 开始。同一轮开发中的普通源码提交不逐次占号。正式版后的修复升补丁位（1.2.1），功能增量升次版本位（1.3.0）；主版本位留给实际不兼容变更。
+- 一个已交付版本名只对应一组冻结的普通 release 产物。若交付多个 ABI，它们使用相同 versionName 和 versionCode。尚未交付时的同输入重试复用本组编号；源码、依赖或打包输入变化后重新冻结。已交付的 APK 和 tag 不覆盖、不改指向。
+- debug/probe 是诊断构建类型，不是对外交付阶段。内部记录须带实际版本与构建类型，不能把诊断包当作普通候选。
+- tag 使用 `v<版本名>`。dev/rc 发布为 GitHub prerelease，正式版不加预发布标记。阶段命名不等于三个自动更新通道：默认更新仍沿现有正式源，开发版和候选版通过对应预发布链接安装。
+- tag 必须指向该组 APK 的冻结源码提交；先由 Git 发布负责人创建并推送正确 tag，再使用带 `--verify-tag` 的发布命令。不能让 GitHub 从默认分支自动创建 tag，也不能把旧包 tag 指向已经升版的当前 HEAD。
+- Android versionCode 是内部升级序号，保留在 APK、更新清单和诊断中；版本说明和进度表优先写版本名。每个新交付组分配一个大于同包名此前已分发最高值的 code，再显式传给全部 ABI。
+
+版本名只在 `app/pubspec.yaml` 维护。统一入口同时更新指南版本并运行现有生成器：
+
+```sh
+python3 tooling/set_version.py 1.2.0-dev.1
+```
+
+构建号继续使用现有时间编码，跨年已有年偏移；同一分钟不会自动产生不同值。发布时用 `--after LAST` 在时钟号与 `LAST+1` 中取较大者，无须另建计数服务。LAST 是上一组已分发最高码，必须覆盖同包名此前已分发的普通包和诊断包；它由发布负责人从交付记录取得，不由脚本猜测。本批已分配后的各 ABI 和同输入重试只复用 `--build-number`，不再次分配。
+
+首次采用此约定时，已交付普通候选的 code 为 11060554。以下是这一批之后的构建示例；后续批次使用届时真实的最高值：
+
+```sh
+dsh_su_code=$(python3 tooling/build_number.py --after 11060554)
+tooling/build-root-apk.sh -f all --build-number "$dsh_su_code"
+python3 tooling/release_assets.py --version "1.2.0-dev.1+$dsh_su_code" \
+  --out dist/1.2.0-dev.1 --delta-from 0 \
+  arm64=app/build/app/outputs/flutter-apk/app-arm64-release.apk \
+  x64=app/build/app/outputs/flutter-apk/app-x64-release.apk
+```
+
+只有需要多 ABI 交付时才使用 `-f all`。分开构建 ABI 时复用同一个已分配 code；不要各自按时钟取号。发布资产脚本继续从 APK 读取实际版本并检查一致性，不用文件名伪装版本。
+
 ## 资产约定
 
 每个版本一个 GitHub Release，仓库 `Rakanrkk/dsh-Su`，必须公开（私有仓库匿名访问一律 404，App 只会显示「暂时检查不了」）。同一组文件也放在公开下载桶：`https://dl.dshtui.com/download/<版本>/<文件>`，最新版的清单在 `https://dl.dshtui.com/update.json`（见「公开下载桶 dl」）。
@@ -12,9 +54,9 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
 
 | 项 | 约定 | 例子 |
 |---|---|---|
-| 版本名 | `app/pubspec.yaml` 的 `version: X.Y.Z[-pre]`，即 versionName；后面的 `+1` 只是占位 | `1.2.0` |
+| 版本名 | `app/pubspec.yaml` 的 versionName；新包使用正式版、`-dev.N` 或 `-rc.N`，`+1` 仍是内部占位 | `1.2.0-dev.1` |
 | 构建号 | Android versionCode，由 `tooling/build-apk.sh` 按构建时间生成，见「构建号」 | `10251234` |
-| tag | `v` + 版本名（不带 `+N`） | `v1.2.0`、`v1.3.0-beta.1` |
+| tag | `v` + 版本名（不带内部构建号），指向本批产物的冻结源码 | `v1.2.0-dev.1`、`v1.2.0-rc.1`、`v1.2.0` |
 | APK | `dsh-go-<版本名>-<flavor>.apk`，正式版 flavor 固定为 `arm64`；文件名不带 `+N`（GitHub 会改写 `+`） | `dsh-go-1.2.0-arm64.apk` |
 | 增量补丁 | `dsh-go-<版本名>-from-<旧版本名>-arm64.dshdelta`，只发不到整包 60 % 的 | `dsh-go-1.2.0-from-1.1.0-arm64.dshdelta` |
 | 校验和 | `SHA256SUMS`，`sha256sum` 的标准输出，APK 和补丁都在里面 | `<hex>  dsh-go-1.2.0-arm64.apk` |
@@ -46,7 +88,7 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
 
 `assets.*.url` 可省：省略时 App 用 tag 和文件名拼 GitHub 下载地址；自托管时写绝对地址或相对 `update.json` 的地址（脚本的 `--base-url`）。公开下载桶的清单写绝对地址（`https://dl.dshtui.com/download/<版本>/<文件>`）。`patches` 没有补丁时不出现，条目不带 `url`：补丁在每条线路上都和 APK 在同一目录。旧版 App 不认识它，照常下整包。
 
-版本比较按 semver：预发布版低于正式版（`1.3.0-beta.1 < 1.3.0`），`+N` 只在两边都有时才参与比较（GitHub API 只给 tag，不带 `+N`）。所以 **同一个版本名重新打包不会被当成新版本**，要发就升版本名。
+版本比较按 semver：`1.2.0-dev.1 < 1.2.0-dev.2 < 1.2.0-rc.1 < 1.2.0`，`+N` 只在两边都有时才参与比较（GitHub API 只给 tag，不带 `+N`）。所以 **同一个版本名重新打包不会被当成新版本**，要发就升版本名。
 
 ## 构建号
 
@@ -66,17 +108,16 @@ versionCode = (年 - 2026) × 10^8 + MMDDhhmm      时钟固定按 UTC+8
 2026-10-25 12:34 → 10251234    2027-01-02 03:04 → 101020304    2046-12-31 23:59 → 2012312359
 ```
 
-- **一条序列**：开发包和正式包按同一个时钟编号，后打的包号一定更大，正式包总能覆盖之前装的开发包。
-- **每次都变**：系统和厂商 ROM 常按「包名 + versionCode」决定要不要刷新缓存的图标。号一直不变时，换了图标资源，通知和状态栏也可能一直显示旧的（vivo OriginOS 上出现过）。
-- **看得懂**：设置里显示 `1.0.0 (10251234)`，一眼知道是 10 月 25 日 12:34 打的包；`python3 tooling/build_number.py --decode N` 可反查。
+- **一条序列**：开发包、候选包和正式包共用 Android 升级序号。新交付使用 `--after LAST` 分配并显式传入；默认分钟号只保证更晚分钟更大，不保证同分钟唯一。
+- **每批独立编号**：不同内容的新交付使用更高 code；同批多 ABI 共用 code。系统和厂商 ROM 可能缓存同包名、同 code 的资源，因此不能用相同编号覆盖已交付的新内容。
+- **诊断用途**：对外用 `1.2.0-dev.1` 等版本名说明交付。时间编码的 code 可用 `python3 tooling/build_number.py --decode N` 反查；`--after` 产生的合法自定义整数可能不对应日期，仍可正常安装和比较。
 - **上限**：Android 限 2,100,000,000，这套编码用到 2046 年底。
 - **绕过脚本时**（`flutter run`、IDE）：`build.gradle.kts` 发现 versionCode 还是占位的 `1`，就按同一公式现算。否则装到已有新号的设备上会被当成降级，`flutter run` 会先卸载旧版再装，数据全清。
 - 测试：`python3 -m unittest discover -s tooling -p 'test_*.py'`。
 
 ## 发版步骤
 
-1. **改版本名**：`app/pubspec.yaml` 的 `version:`，版本名按 semver 升；`+1` 不动。之后打的开发包也带新版本名，不会被提示「更新」到这一版。
-   - **同步使用说明**：按本版界面改动更新 `docs/guide/`，把 `docs/guide/README.md` 的 `> dsh-go X.Y.Z` 改成新版本名，`python3 app/tool/guide_sync.py` 重新生成 App 内置技能，`python3 app/tool/guide_sync.py --check` 通过再打包（它核对入口路径、界面文字、页面链接与版本号）。
+1. **设定版本名**：用 `python3 tooling/set_version.py <版本名>` 同步 pubspec 与指南版本，保留 `+1` 占位并生成内置指南。阶段递进按上方 DSH SU 约定；本版其他界面说明仍在 `docs/guide/` 更新。输入固定后记录本批源码、版本名和分配的 code，再开始构建。
 2. **只打包 arm64 正式版**（运行时要先 `runtime/build-runtime.sh` 产出 `runtime/out/`）。x64 仅供必要的本地模拟器验证，不上传、不放入正式更新清单：
 
    ```sh

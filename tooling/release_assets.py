@@ -303,7 +303,8 @@ def main() -> None:
         print("  " + line)
     print("  update.json")
     notes = f" --notes-file {args.notes}" if args.notes else ""
-    print(f"\ngh release create {tag} {args.out}/* --repo {REPO} --title 'DSH SU {name}'{notes}")
+    flags = " --verify-tag" + (" --prerelease" if "-" in name else "")
+    print(f"\ngh release create {tag} {args.out}/* --repo {REPO} --title 'DSH SU {name}'{flags}{notes}")
 
 
 if __name__ == "__main__":

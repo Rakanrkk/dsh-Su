@@ -7,6 +7,7 @@ import datetime
 import pathlib
 import re
 import subprocess
+import sys
 import unittest
 
 from build_number import MAX_VERSION_CODE, UTC_OFFSET, build_number, check, decode
@@ -35,6 +36,32 @@ class BuildNumberTest(unittest.TestCase):
     def test_needs_a_timezone(self):
         with self.assertRaises(ValueError):
             build_number(datetime.datetime(2026, 10, 25, 12, 34))
+
+    def test_after_allocates_above_the_last_distributed_code(self):
+        # LAST was already distributed, even when the clock is in that minute.
+        self.assertEqual(build_number(at("2026-10-25T12:34+08:00"), 10251234), 10251235)
+        # A clock behind LAST still gets the next number, including custom numbers.
+        self.assertEqual(build_number(at("2026-01-01T00:00+08:00"), 10251234), 10251235)
+        self.assertEqual(build_number(at("2026-01-01T00:00+08:00"), 10321234), 10321235)
+        # Existing year-boundary ordering remains; LAST can be near it.
+        self.assertEqual(build_number(at("2026-12-31T16:29Z"), 101010029), 101010030)
+        # Android's range bounds LAST and the allocation.
+        self.assertEqual(build_number(at("2046-12-31T23:59+08:00"), 2012312358), 2012312359)
+        with self.assertRaises(ValueError):
+            build_number(at("2046-12-31T23:59+08:00"), MAX_VERSION_CODE)
+        with self.assertRaises(ValueError):
+            build_number(at("2026-01-01T00:00+08:00"), MAX_VERSION_CODE + 1)
+
+    def test_cli_combines_after_with_at_but_not_decode_or_check(self):
+        def run(*args):
+            return subprocess.run([sys.executable, str(ROOT / "tooling" / "build_number.py"), *args],
+                                  capture_output=True, text=True)
+
+        ok = run("--at", "2026-10-25T12:34+08:00", "--after", "10251234")
+        self.assertEqual((ok.returncode, ok.stdout.strip()), (0, "10251235"))
+        for mode in ("--decode", "--check"):
+            refused = run("--after", "10251234", mode, "10251235")
+            self.assertNotEqual(refused.returncode, 0, refused.stderr)
 
     def test_bounded_by_epoch_and_android_limit(self):
         with self.assertRaises(ValueError):
