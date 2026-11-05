@@ -76,8 +76,8 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private var activity: ActivityPluginBinding? = null
     private var pendingSave: (() -> Unit)? = null
     private var pendingDenied: (() -> Unit)? = null
-    private val main = Handler(Looper.getMainLooper())
-    private val pdfPages = PdfPages()
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private val pdfPages by lazy { PdfPages() }
     private val rootAccess by lazy { RootFiles(context) }
     private val rootRuntime = BuildConfig.ROOT_RUNTIME
     private var reply: (() -> Unit) -> Unit = { action -> main.post(action) }
