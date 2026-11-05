@@ -1,0 +1,49 @@
+{
+  "name": "dsh-su-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "只读检查 DSH SU 运行时常用命令行工具是否可用及其版本。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "package.json"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node ../../../sdk/plugin-kit/bin/check.mjs . --load"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0"
+  },
+  "dshGo": {
+    "v": 1,
+    "title": { "zh": "工具环境", "en": "Tool environment" },
+    "icon": "wrench",
+    "contributes": {
+      "panels": [
+        {
+          "id": "tools",
+          "title": { "zh": "工具环境", "en": "Tool environment" },
+          "icon": "wrench",
+          "placement": ["session.tab", "features"]
+        }
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22.19",
+    "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+  }
+}
