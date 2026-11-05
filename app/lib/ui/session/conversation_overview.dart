@@ -12,7 +12,9 @@ import '../../state/connection_state.dart';
 import '../../state/models_state.dart';
 import '../../state/session_search.dart' show folderLabel;
 import '../../state/sessions_state.dart';
+import '../../plugins/native/native_state.dart';
 import '../chat/model_sheet.dart';
+import '../plugins/native/native_taps.dart' show runNativeAction;
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import 'session_detail_page.dart';
@@ -79,6 +81,15 @@ class ConversationOverview extends ConsumerWidget {
           onTap: readOnly ? null : () => _pickModel(context, ref, effective),
         ),
         _Row(icon: AppIcons.remoteHosts, label: l10n.shellPanelHost, value: host ?? l10n.commonThisPhone),
+        // What plugins can do to this conversation, each signed with whose it is.
+        for (final action in ref.watch(nativeSessionActionsProvider))
+          _Row(
+            key: ValueKey('overview-action|${action.package}|${action.id}'),
+            icon: action.icon ?? AppIcons.plugin,
+            label: action.label,
+            value: ref.watch(nativePluginTitleProvider(action.package)),
+            onTap: () => runNativeAction(context, ref, action, scope: DshGoScope(sessionId: sessionId)),
+          ),
       ],
     );
   }
@@ -106,23 +117,29 @@ class _Row extends StatelessWidget {
         customBorder: Squircle.border(AppShape.md),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 44),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: muted),
-              const SizedBox(width: 10),
-              Text(label, style: theme.textTheme.bodyMedium),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+          child: LayoutBuilder(
+            builder: (context, constraints) => Row(
+              children: [
+                Icon(icon, size: 18, color: muted),
+                const SizedBox(width: 10),
+                // A plugin's label at a large text size: it stops short of pushing the value out.
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.6),
+                  child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium),
                 ),
-              ),
-              if (onTap != null) Icon(AppIcons.expand, size: 16, color: muted),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+                  ),
+                ),
+                if (onTap != null) Icon(AppIcons.expand, size: 16, color: muted),
+              ],
+            ),
           ),
         ),
       ),

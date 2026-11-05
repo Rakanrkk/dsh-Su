@@ -182,6 +182,16 @@ body > [class*="_overlay"] {
   box-sizing: border-box !important;
 }
 
+/* The right panel is fullscreen on a phone: its tab strip starts at the
+   panel's left edge, exactly where the app's back / drawer buttons float.
+   Keep the panel's top row where it is (no empty band above the page) and
+   start the strip past the buttons instead (--dsh-app-lead = their right
+   edge plus a gap). The body keeps the official layout: the strip's own
+   height still separates it from the buttons. */
+:root[data-dsh-app-layout="drawer"] [data-sidebar-right-panel="fullscreen"] [data-dockkit-strip] {
+  padding-left: var(--dsh-app-lead, 0px) !important;
+}
+
 /* Typing on a phone on its side (data-dsh-app-compact, set while the keyboard
    leaves the page too short): the header row steps aside so the composer
    stays in view; it comes back with the app's buttons when the keyboard

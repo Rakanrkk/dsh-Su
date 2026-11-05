@@ -277,7 +277,7 @@ class _SessionImage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bytes = ref.watch(sessionImageProvider((sessionId, attachment.attachmentId)));
+    final bytes = ref.watch(sessionImageProvider((sessionId, attachment)));
     final w = attachment.width, h = attachment.height;
     final aspect = (w != null && h != null && h > 0) ? w / h : 1.0;
     final box = single ? null : const Size.square(88);

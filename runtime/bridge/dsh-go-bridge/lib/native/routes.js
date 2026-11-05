@@ -7,15 +7,15 @@ import { randomBytes } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { extname, sep } from "node:path";
 import { normalize as normalizeEffects, splitPending } from "./effects.js";
-import { ID, PKG, PROTOCOL, SEMVER } from "./limits.js";
+import { ID, NEGOTIATED_PLACEMENTS, PKG, PROTOCOL, SEMVER } from "./limits.js";
 import { insidePackage, panelTitle } from "./manifest.js";
 import { acceptUpgrade } from "./ws.js";
 import { LOCALE, call, errorText, isPlainObject, normalizeScope, toJson, utf8Bytes, viewStats, withTimeout } from "./util.js";
 
 export const STREAM_PATH = "/dsh-go/v1/stream";
 const BASE = "/dsh-go/v1/";
-const SURFACE_KEYS = { "composer.actions": "composer.actions", "message.actions": "message.actions", "composer.strip": "composer.strip", panel: "panels" };
-const CONTEXT_FOR = { "composer.actions": ["draft", "clipboard"], "message.actions": ["message"] };
+const SURFACE_KEYS = { "composer.actions": "composer.actions", "message.actions": "message.actions", "composer.strip": "composer.strip", panel: "panels", "composer.tools": "composer.tools", "session.actions": "session.actions" };
+const CONTEXT_FOR = { "composer.actions": ["draft", "clipboard"], "composer.tools": ["draft", "clipboard"], "message.actions": ["message"] };
 const IMAGE_TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" };
 const SUB_ID = /^.{1,32}$/su;
 
@@ -53,6 +53,7 @@ function parseCaps(sp) {
   const surfaces = list("surfaces");
   const components = list("components");
   const features = featuresOf(list("features"));
+  const placements = surfaces.filter((s) => NEGOTIATED_PLACEMENTS.includes(s));
   return {
     versions,
     app,
@@ -60,7 +61,7 @@ function parseCaps(sp) {
     surfaces,
     components,
     features,
-    key: JSON.stringify([versions, app, locale.toLowerCase(), ...(features.length ? [features] : [])]),
+    key: JSON.stringify([versions, app, locale.toLowerCase(), ...(features.length ? [features] : []), ...(placements.length ? [placements] : [])]),
     forPlugin: () => ({ protocol: PROTOCOL, app, locale, surfaces: [...surfaces], components: [...components], ...(features.length ? { features: [...features] } : {}) }),
   };
 }
@@ -285,7 +286,7 @@ export function createNativeRoutes(core) {
     if (body.userGesture !== undefined && typeof body.userGesture !== "boolean") fail(400, "bad-request", "userGesture must be a boolean");
 
     const rec = pluginOrFail(body.pkg);
-    const item = rec.parsed.items[surfaceKey].find((x) => x.id === body.id);
+    const item = rec.parsed.items[surfaceKey]?.find((x) => x.id === body.id);
     if (item === undefined) fail(404, "not-found", `${body.pkg} declares no ${body.surface} ${body.id}`);
     const capabilityConn = connById.get(body.stream);
     if (!(item.requires ?? []).every(x => capabilityConn?.features?.includes(x))) fail(409, "unsupported", "action requires negotiated capabilities");
@@ -590,8 +591,10 @@ export function createNativeRoutes(core) {
     if (state === "degraded") return end("degraded");
     if (state !== "ok") return end("not-native");
     const declared = rec.parsed.ids.get(msg.id);
-    if (declared !== "panels" && declared !== "composer.strip") return end("not-found");
-    const feed = core.feed(msg.pkg, msg.id, declared === "panels" ? "panel" : "strip", scope, conn.locale);
+    if (declared !== "panels" && declared !== "composer.strip" && declared !== "turn.note") return end("not-found");
+    // A turn's note belongs to a conversation.
+    if (declared === "turn.note" && scope.scope.sessionId === undefined) return end("not-found");
+    const feed = core.feed(msg.pkg, msg.id, declared === "panels" ? "panel" : declared === "turn.note" ? "note" : "strip", scope, conn.locale);
     if (feed === undefined) return end("limit");
     const sub = {
       id: msg.sub,
