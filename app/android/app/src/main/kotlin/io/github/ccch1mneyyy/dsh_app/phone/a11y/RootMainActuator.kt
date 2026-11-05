@@ -20,7 +20,10 @@ fun interface RootMainInput {
     fun send(request: Request): Boolean
 }
 
-internal class RootMainActuator(private val input: RootMainInput?) {
+internal class RootMainActuator(
+    private val input: RootMainInput?,
+    private val guard: ((durationMs: Long, body: () -> Boolean) -> Boolean)? = null,
+) {
     sealed interface Result {
         data object Unavailable : Result
         data class Rejected(val reason: String) : Result
@@ -31,7 +34,9 @@ internal class RootMainActuator(private val input: RootMainInput?) {
         if (input == null) return Result.Unavailable
         if (Thread.currentThread().isInterrupted) return Result.Rejected("已停止，没有发送 Root 输入。")
         val accepted = try {
-            input.send(RootMainInput.Request(displayId = 0, x = x, y = y, long = long))
+            guard?.invoke(if (long) 950L else 200L) {
+                input.send(RootMainInput.Request(displayId = 0, x = x, y = y, long = long))
+            } ?: input.send(RootMainInput.Request(displayId = 0, x = x, y = y, long = long))
         } catch (_: Exception) {
             false
         }
@@ -53,7 +58,9 @@ internal class RootMainActuator(private val input: RootMainInput?) {
         if (input == null) return Result.Unavailable
         if (Thread.currentThread().isInterrupted) return Result.Rejected("已停止，没有发送 Root 输入。")
         val accepted = try {
-            input.send(RootMainInput.Request(displayId = 0, sx = sx, sy = sy, ex = ex, ey = ey))
+            guard?.invoke(500L) {
+                input.send(RootMainInput.Request(displayId = 0, sx = sx, sy = sy, ex = ex, ey = ey))
+            } ?: input.send(RootMainInput.Request(displayId = 0, sx = sx, sy = sy, ex = ex, ey = ey))
         } catch (_: Exception) {
             false
         }

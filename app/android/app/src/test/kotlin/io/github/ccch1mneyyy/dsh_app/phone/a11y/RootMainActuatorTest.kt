@@ -74,4 +74,60 @@ class RootMainActuatorTest {
         assertEquals(null, request.y)
         assertFalse(request.long)
     }
+
+    @Test fun guardedTapSendsOnceThroughTheGuard() {
+        val input = Recording(accepted = true)
+        var guardCalls = 0
+        val result = RootMainActuator(input) { _, body -> guardCalls++; body() }.tapXY(5, 6, long = false)
+
+        assertEquals(RootMainActuator.Result.Accepted, result)
+        assertEquals(1, input.calls)
+        assertEquals(1, guardCalls)
+    }
+
+    @Test fun guardedSwipeSendsOnceThroughTheGuard() {
+        val input = Recording(accepted = true)
+        var guardCalls = 0
+        val result = RootMainActuator(input) { _, body -> guardCalls++; body() }.swipe(1, 2, 3, 4)
+
+        assertEquals(RootMainActuator.Result.Accepted, result)
+        assertEquals(1, input.calls)
+        assertEquals(1, guardCalls)
+    }
+
+    @Test fun guardFalseIsRejectedWithoutResend() {
+        val input = Recording(accepted = true)
+        var guardCalls = 0
+        val result = RootMainActuator(input) { _, _ -> guardCalls++; false }.tapXY(1, 2, long = false)
+
+        assertTrue(result is RootMainActuator.Result.Rejected)
+        assertEquals(1, guardCalls)
+        assertEquals(0, input.calls)
+    }
+
+    @Test fun guardThrowIsRejectedWithoutResend() {
+        val input = Recording(accepted = true)
+        val result = RootMainActuator(input) { _, _ -> throw IllegalStateException("guard") }.swipe(1, 2, 3, 4)
+
+        assertTrue(result is RootMainActuator.Result.Rejected)
+        assertEquals(0, input.calls)
+    }
+
+    @Test fun nullInputIsUnavailableBeforeTheGuardRuns() {
+        var guardCalls = 0
+        val result = RootMainActuator(null) { _, _ -> guardCalls++; true }.tapXY(1, 2, long = false)
+
+        assertEquals(RootMainActuator.Result.Unavailable, result)
+        assertEquals(0, guardCalls)
+    }
+
+    @Test fun keyDoesNotEnterTheTouchGuard() {
+        val input = Recording(accepted = true)
+        var guardCalls = 0
+        val result = RootMainActuator(input) { _, _ -> guardCalls++; true }.key(PhoneAction.GlobalKey.HOME)
+
+        assertEquals(RootMainActuator.Result.Accepted, result)
+        assertEquals(0, guardCalls)
+        assertEquals(1, input.calls)
+    }
 }

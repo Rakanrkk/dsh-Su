@@ -48,7 +48,12 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
     private val lifted: PhoneUnlocks get() = PhoneRegistry.unlocks()
     private val clock get() = service.clock
     private val actuator = Actuator(service, overlay)
-    private val rootInput get() = RootMainActuator(PhoneRegistry.rootMainInput)
+    private fun rootGesture(action: (RootMainActuator) -> RootMainActuator.Result): RootMainActuator.Result? {
+        val input = PhoneRegistry.rootMainInput ?: return null
+        return action(RootMainActuator(input) { durationMs, body ->
+            actuator.withInjectionGuard(durationMs) { body() }
+        })
+    }
     private val shooter = ScreenShooter(service, overlay)
     private val power = service.getSystemService(PowerManager::class.java)
     private val keyguard = service.getSystemService(KeyguardManager::class.java)
@@ -426,7 +431,7 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
                 val screen = cap.screen
                 val before = clock.count
                 val plan = Actuator.scrollPlan(Box(screen.left, screen.top + screen.height / 5, screen.right, screen.bottom - screen.height / 6), screen, a.direction)
-                val rootResult = plan?.let { rootInput.swipe(it.sx, it.sy, it.ex, it.ey) }
+                val rootResult = plan?.let { plan -> rootGesture { it.swipe(plan.sx, plan.sy, plan.ex, plan.ey) } }
                 if (rootResult is RootMainActuator.Result.Rejected) {
                     return ActionResult(false, rootResult.reason, observeQuiet())
                 }
@@ -447,7 +452,7 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
             if ((r.el.packageName == ownPackage || r.snap.ownApp) && !lifted.ownApp) return ActionResult(false, "这是 DSH 自己的界面，不操作。")
             val before = clock.count
             val plan = Actuator.scrollPlan(r.el.bounds, r.cap.screen, a.direction)
-            val rootResult = plan?.let { rootInput.swipe(it.sx, it.sy, it.ex, it.ey) }
+            val rootResult = plan?.let { plan -> rootGesture { it.swipe(plan.sx, plan.sy, plan.ex, plan.ey) } }
             if (rootResult is RootMainActuator.Result.Rejected) {
                 return ActionResult(false, rootResult.reason, observeQuiet())
             }
@@ -463,7 +468,7 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
 
     private fun key(a: PhoneAction.Key, gen: Long): ActionResult {
         val before = clock.count
-        when (val rootResult = rootInput.key(a.key)) {
+        when (val rootResult = RootMainActuator(PhoneRegistry.rootMainInput).key(a.key)) {
             is RootMainActuator.Result.Rejected -> return ActionResult(false, rootResult.reason)
             RootMainActuator.Result.Accepted -> Unit
             RootMainActuator.Result.Unavailable -> if (!actuator.global(a.key)) {
@@ -510,10 +515,10 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
             if (!observation(cap).reusableCoordinates(snap.observation)) return ActionResult(false, "无法确认当前界面仍与截图一致，没有点击。请重新看屏幕。", toSnapshot(publish(cap, false)))
         } finally { cap.recycle() }
         val before = clock.count
-        when (val rootResult = rootInput.tapXY(point.first, point.second, long = false)) {
+        when (val rootResult = rootGesture { it.tapXY(point.first, point.second, long = false) }) {
             is RootMainActuator.Result.Rejected -> return ActionResult(false, rootResult.reason, observeQuiet())
             RootMainActuator.Result.Accepted -> Unit
-            RootMainActuator.Result.Unavailable -> if (!actuator.tap(point.first, point.second, long = false)) {
+            null, RootMainActuator.Result.Unavailable -> if (!actuator.tap(point.first, point.second, long = false)) {
                 // l10n:keep agent screen result
                 return ActionResult(false, "系统没有接受这次点击。", observeQuiet())
             }

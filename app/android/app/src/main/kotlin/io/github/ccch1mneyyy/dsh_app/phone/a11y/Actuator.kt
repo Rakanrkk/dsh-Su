@@ -89,18 +89,29 @@ internal class Actuator(private val service: AccessibilityService, private val o
      * time it is in flight.
      */
     fun gesture(description: GestureDescription, durationMs: Long): Boolean {
-        overlay.setPassThrough(true)
-        try {
-            InjectGuard.mark(durationMs)
+        return withInjectionGuard(durationMs) {
             val latch = CountDownLatch(1)
             var completed = false
             val sent = service.dispatchGesture(description, object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) { completed = true; latch.countDown() }
                 override fun onCancelled(gestureDescription: GestureDescription?) { latch.countDown() }
             }, gestureHandler)
-            if (!sent) return false
+            if (!sent) return@withInjectionGuard false
             latch.await(durationMs + 2_000, TimeUnit.MILLISECONDS)
-            return completed
+            completed
+        }
+    }
+
+    /**
+     * Runs [body] while the overlay is untouchable and [InjectGuard] covers the injected
+     * input; finally restores both. Root-synthesized touches share this with a11y gestures
+     * so they cannot be caught by the app's own overlay.
+     */
+    fun <T> withInjectionGuard(durationMs: Long, body: () -> T): T {
+        overlay.setPassThrough(true)
+        return try {
+            InjectGuard.mark(durationMs)
+            body()
         } finally {
             InjectGuard.mark(0)
             overlay.setPassThrough(false)
