@@ -48,7 +48,7 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
     private val lifted: PhoneUnlocks get() = PhoneRegistry.unlocks()
     private val clock get() = service.clock
     private val actuator = Actuator(service, overlay)
-    private val rootInput = RootMainActuator { request -> PhoneRegistry.rootMainInput?.send(request) ?: false }
+    private val rootInput get() = RootMainActuator(PhoneRegistry.rootMainInput)
     private val shooter = ScreenShooter(service, overlay)
     private val power = service.getSystemService(PowerManager::class.java)
     private val keyguard = service.getSystemService(KeyguardManager::class.java)
