@@ -65,9 +65,10 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
 
     internal constructor(
         testContext: Context,
-        private val testReplyDispatcher: ((() -> Unit) -> Unit)?,
+        testReplyDispatcher: ((() -> Unit) -> Unit)?,
     ) : this() {
         context = testContext
+        if (testReplyDispatcher != null) reply = testReplyDispatcher
     }
 
     private lateinit var methods: MethodChannel
@@ -80,10 +81,6 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private val rootAccess by lazy { RootFiles(context) }
     private val rootRuntime = BuildConfig.ROOT_RUNTIME
     private var reply: (() -> Unit) -> Unit = { action -> main.post(action) }
-
-    init {
-        if (testReplyDispatcher != null) reply = testReplyDispatcher
-    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
