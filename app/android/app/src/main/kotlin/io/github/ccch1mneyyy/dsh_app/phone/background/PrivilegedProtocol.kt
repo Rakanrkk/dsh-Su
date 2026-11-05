@@ -41,6 +41,10 @@ object Proto {
     const val MAIN_ACTION = "mainAction"
     const val X = "x"
     const val Y = "y"
+    const val SX = "sx"
+    const val SY = "sy"
+    const val EX = "ex"
+    const val EY = "ey"
     const val KEY = "key"
 
     // ops

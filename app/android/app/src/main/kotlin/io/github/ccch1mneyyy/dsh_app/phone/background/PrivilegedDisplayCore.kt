@@ -317,6 +317,15 @@ class PrivilegedDisplayCore(private val context: Context) {
                 injectKey(KeyEvent(SystemClock.uptimeMillis(), now, KeyEvent.ACTION_UP, code, 0),
                     displayId = Display.DEFAULT_DISPLAY)
             }
+            "swipe" -> {
+                val sx = request.getInt(Proto.SX, Int.MIN_VALUE)
+                val sy = request.getInt(Proto.SY, Int.MIN_VALUE)
+                val ex = request.getInt(Proto.EX, Int.MIN_VALUE)
+                val ey = request.getInt(Proto.EY, Int.MIN_VALUE)
+                if (sx < 0 || sy < 0 || ex < 0 || ey < 0)
+                    throw Fault("invalidArguments")
+                injectSwipe(sx, sy, ex, ey, 400, displayId = Display.DEFAULT_DISPLAY)
+            }
             else -> throw Fault("invalidArguments")
         }
         response.putInt(Proto.DISPLAY_ID, Display.DEFAULT_DISPLAY)
@@ -737,17 +746,22 @@ class PrivilegedDisplayCore(private val context: Context) {
         sendMotion(MotionEvent.ACTION_UP, x, y, down)
     }
 
-    private fun injectSwipe(sx: Int, sy: Int, ex: Int, ey: Int, duration: Int) {
+    private fun injectSwipe(sx: Int, sy: Int, ex: Int, ey: Int, duration: Int, displayId: Int? = null) {
         val down = SystemClock.uptimeMillis()
-        sendMotion(MotionEvent.ACTION_DOWN, sx, sy, down)
-        val steps = (duration / 16).coerceAtLeast(1)
-        for (step in 1..steps) {
-            sleepChecked((duration / steps).toLong())
-            val f = step.toFloat() / steps
-            val mx = (sx + (ex - sx) * f).toInt(); val my = (sy + (ey - sy) * f).toInt()
-            if (step < steps) sendMotion(MotionEvent.ACTION_MOVE, mx, my, down)
+        try {
+            sendMotion(MotionEvent.ACTION_DOWN, sx, sy, down, displayId = displayId)
+            val steps = (duration / 16).coerceAtLeast(1)
+            for (step in 1..steps) {
+                sleepChecked((duration / steps).toLong())
+                val f = step.toFloat() / steps
+                val mx = (sx + (ex - sx) * f).toInt(); val my = (sy + (ey - sy) * f).toInt()
+                if (step < steps) sendMotion(MotionEvent.ACTION_MOVE, mx, my, down, displayId = displayId)
+            }
+            sendMotion(MotionEvent.ACTION_UP, ex, ey, down, displayId = displayId)
+        } catch (e: Throwable) {
+            runCatching { sendMotion(MotionEvent.ACTION_CANCEL, ex, ey, down, displayId = displayId) }
+            throw e
         }
-        sendMotion(MotionEvent.ACTION_UP, ex, ey, down)
     }
 
     private fun sendMotion(

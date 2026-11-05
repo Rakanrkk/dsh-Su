@@ -425,10 +425,17 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
                 if (!observation(cap).reusableCoordinates(snap.observation)) return ActionResult(false, "无法确认当前界面仍与上一屏一致，没有滚动。请先看新屏幕。", toSnapshot(publish(cap, false)))
                 val screen = cap.screen
                 val before = clock.count
-                val out = actuator.scroll(null, 0, a.direction == PhoneAction.Direction.LEFT || a.direction == PhoneAction.Direction.RIGHT,
-                    Box(screen.left, screen.top + screen.height / 5, screen.right, screen.bottom - screen.height / 6), screen, a.direction)
-                // l10n:keep agent screen result
-                if (!out.accepted) return ActionResult(false, "没能滚动。", observeQuiet())
+                val plan = Actuator.scrollPlan(Box(screen.left, screen.top + screen.height / 5, screen.right, screen.bottom - screen.height / 6), screen, a.direction)
+                val rootResult = plan?.let { rootInput.swipe(it.sx, it.sy, it.ex, it.ey) }
+                if (rootResult is RootMainActuator.Result.Rejected) {
+                    return ActionResult(false, rootResult.reason, observeQuiet())
+                }
+                if (rootResult != RootMainActuator.Result.Accepted) {
+                    val out = actuator.scroll(null, 0, a.direction == PhoneAction.Direction.LEFT || a.direction == PhoneAction.Direction.RIGHT,
+                        Box(screen.left, screen.top + screen.height / 5, screen.right, screen.bottom - screen.height / 6), screen, a.direction)
+                    // l10n:keep agent screen result
+                    if (!out.accepted) return ActionResult(false, "没能滚动。", observeQuiet())
+                }
                 // l10n:keep agent screen result
                 return after(before, snap, gen, "已提交${dirWord}滑动屏幕。", scrolled = true)
             } finally { cap.recycle() }
@@ -439,9 +446,16 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
             // l10n:keep agent screen result
             if ((r.el.packageName == ownPackage || r.snap.ownApp) && !lifted.ownApp) return ActionResult(false, "这是 DSH 自己的界面，不操作。")
             val before = clock.count
-            val out = actuator.scroll(r.node, r.el.scroll, r.el.horizontal, r.el.bounds, r.cap.screen, a.direction)
-            // l10n:keep agent screen result
-            if (!out.accepted) return ActionResult(false, "系统没有接受${dirWord}滚动，无法确认是否到底。", observeQuiet())
+            val plan = Actuator.scrollPlan(r.el.bounds, r.cap.screen, a.direction)
+            val rootResult = plan?.let { rootInput.swipe(it.sx, it.sy, it.ex, it.ey) }
+            if (rootResult is RootMainActuator.Result.Rejected) {
+                return ActionResult(false, rootResult.reason, observeQuiet())
+            }
+            if (rootResult != RootMainActuator.Result.Accepted) {
+                val out = actuator.scroll(r.node, r.el.scroll, r.el.horizontal, r.el.bounds, r.cap.screen, a.direction)
+                // l10n:keep agent screen result
+                if (!out.accepted) return ActionResult(false, "系统没有接受${dirWord}滚动，无法确认是否到底。", observeQuiet())
+            }
             // l10n:keep agent screen result
             return after(before, r.snap, gen, "已提交${dirWord}滚动${if (r.el.kind == ElementKind.LIST) "列表 [${r.el.id}]" else ""}。", scrolled = true)
         } finally { r.cap.recycle() }

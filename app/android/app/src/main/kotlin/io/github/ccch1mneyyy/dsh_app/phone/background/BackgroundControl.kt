@@ -766,11 +766,8 @@ class BackgroundControl private constructor(context: Context) {
      * a screen. Android 14+ is the same trusted-injection baseline as the virtual display.
      */
     fun mainInput(action: PhoneAction): ActionResult {
-        if (!androidOk()) return ActionResult(false, "当前 Android 版本不支持 Root 直接注入主屏；动作没有执行。")
         val command = mainInputCommand(action)
             ?: return ActionResult(false, "主屏操作目标必须是 s 开头的屏幕；不支持这个动作或目标。")
-        val ch = root.connect()?.takeIf { it.alive() }
-            ?: return ActionResult(false, "Root 输入通道不可用；主屏动作没有执行，请重新读取屏幕后交给用户。")
         val request = Bundle().apply { putString(Proto.OP, Proto.OP_MAIN_INPUT) }
         when (command) {
             is MainInputCommand.TapXY -> {
@@ -783,6 +780,26 @@ class BackgroundControl private constructor(context: Context) {
                 request.putString(Proto.KEY, command.key)
             }
         }
+        return executeMainInput(request)
+    }
+
+    /** Root-actuated MAIN swipe with already-resolved coordinates from the Driver. */
+    fun sendMainSwipe(sx: Int, sy: Int, ex: Int, ey: Int): ActionResult {
+        val request = Bundle().apply {
+            putString(Proto.OP, Proto.OP_MAIN_INPUT)
+            putString(Proto.MAIN_ACTION, "swipe")
+            putInt(Proto.SX, sx)
+            putInt(Proto.SY, sy)
+            putInt(Proto.EX, ex)
+            putInt(Proto.EY, ey)
+        }
+        return executeMainInput(request)
+    }
+
+    private fun executeMainInput(request: Bundle): ActionResult {
+        if (!androidOk()) return ActionResult(false, "当前 Android 版本不支持 Root 直接注入主屏；动作没有执行。")
+        val ch = root.connect()?.takeIf { it.alive() }
+            ?: return ActionResult(false, "Root 输入通道不可用；主屏动作没有执行，请重新读取屏幕后交给用户。")
         val response = runCatching { ch.execute(request) }.getOrNull()
             ?: return ActionResult(false, "Root 输入通道没有响应；主屏动作没有执行，请重新读取屏幕。")
         val ok = response.getBoolean(Proto.OK)

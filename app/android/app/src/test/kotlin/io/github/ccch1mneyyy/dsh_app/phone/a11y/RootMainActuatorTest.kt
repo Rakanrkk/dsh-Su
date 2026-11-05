@@ -40,6 +40,21 @@ class RootMainActuatorTest {
         assertEquals(RootMainInput.Request(displayId = 0, key = PhoneAction.GlobalKey.BACK), input.request)
     }
 
+    @Test fun swipeAlwaysTargetsDisplayZero() {
+        val input = Recording(accepted = true)
+        val result = RootMainActuator(input).swipe(10, 20, 30, 40)
+
+        assertEquals(RootMainActuator.Result.Accepted, result)
+        assertEquals(1, input.calls)
+        assertEquals(RootMainInput.Request(displayId = 0, sx = 10, sy = 20, ex = 30, ey = 40), input.request)
+    }
+
+    @Test fun swipeFailureIsRejectedWithoutSilentSuccess() {
+        val result = RootMainActuator(Recording(accepted = false)).swipe(1, 2, 3, 4)
+        assertTrue(result is RootMainActuator.Result.Rejected)
+        assertEquals("Root 系统没有接受这次滚动。", (result as RootMainActuator.Result.Rejected).reason)
+    }
+
     @Test fun failedInputIsRejectedWithoutSilentSuccess() {
         val result = RootMainActuator(Recording(accepted = false)).tapXY(1, 2, long = false)
         assertTrue(result is RootMainActuator.Result.Rejected)

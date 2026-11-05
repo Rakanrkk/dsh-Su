@@ -8,6 +8,10 @@ fun interface RootMainInput {
         val displayId: Int,
         val x: Int? = null,
         val y: Int? = null,
+        val sx: Int? = null,
+        val sy: Int? = null,
+        val ex: Int? = null,
+        val ey: Int? = null,
         val long: Boolean = false,
         val key: PhoneAction.GlobalKey? = null,
     )
@@ -43,5 +47,16 @@ internal class RootMainActuator(private val input: RootMainInput?) {
             false
         }
         return if (accepted) Result.Accepted else Result.Rejected("Root 系统没有执行这个按键。")
+    }
+
+    fun swipe(sx: Int, sy: Int, ex: Int, ey: Int): Result {
+        if (input == null) return Result.Unavailable
+        if (Thread.currentThread().isInterrupted) return Result.Rejected("已停止，没有发送 Root 输入。")
+        val accepted = try {
+            input.send(RootMainInput.Request(displayId = 0, sx = sx, sy = sy, ex = ex, ey = ey))
+        } catch (_: Exception) {
+            false
+        }
+        return if (accepted) Result.Accepted else Result.Rejected("Root 系统没有接受这次滚动。")
     }
 }

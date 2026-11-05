@@ -156,6 +156,8 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
                 when {
                     request.x != null && request.y != null ->
                         background.mainInput(PhoneAction.TapXY("s0", request.x!!, request.y!!)).ok
+                    request.sx != null && request.sy != null && request.ex != null && request.ey != null ->
+                        background.sendMainSwipe(request.sx!!, request.sy!!, request.ex!!, request.ey!!).ok
                     request.key != null ->
                         background.mainInput(PhoneAction.Key("s0", request.key!!)).ok
                     else -> false

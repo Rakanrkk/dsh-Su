@@ -82,6 +82,7 @@ internal class Actuator(private val service: AccessibilityService, private val o
         return gesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, durationMs)).build(), durationMs)
     }
 
+
     /**
      * Dispatches and waits for the gesture. The overlay is made untouchable first so the
      * stroke reaches the app underneath, never the overlay; InjectGuard covers the
@@ -131,21 +132,30 @@ internal class Actuator(private val service: AccessibilityService, private val o
             val action = scrollAction(scrollBits, horizontal, direction)
             if (action != null && node.performAction(action)) return Outcome(true, Via.NODE)
         }
-        // Keep clear of the status bar and the gesture-navigation strip at the bottom.
-        val area = bounds.intersect(Box(screen.left, screen.top + screen.height / 20, screen.right, screen.bottom - screen.height * 6 / 100))
-        if (area.isEmpty || area.height < 40 || area.width < 40) return Outcome(false, null)
-        val cx = area.centerX
-        val cy = area.centerY
-        val dy = area.height * 3 / 10
-        val dx = area.width * 3 / 10
-        val ok = when (direction) {
-            // DOWN = show what is below: the finger moves up.
-            PhoneAction.Direction.DOWN -> swipe(cx, cy + dy, cx, cy - dy)
-            PhoneAction.Direction.UP -> swipe(cx, cy - dy, cx, cy + dy)
-            PhoneAction.Direction.RIGHT -> swipe(cx + dx, cy, cx - dx, cy)
-            PhoneAction.Direction.LEFT -> swipe(cx - dx, cy, cx + dx, cy)
-        }
+        val plan = scrollPlan(bounds, screen, direction) ?: return Outcome(false, null)
+        val ok = swipe(plan.sx, plan.sy, plan.ex, plan.ey)
         return Outcome(ok, if (ok) Via.GESTURE else null)
+    }
+
+    companion object {
+        data class SwipePlan(val sx: Int, val sy: Int, val ex: Int, val ey: Int)
+
+        fun scrollPlan(bounds: Box, screen: Box, direction: PhoneAction.Direction): SwipePlan? {
+            // Keep clear of the status bar and the gesture-navigation strip at the bottom.
+            val area = bounds.intersect(Box(screen.left, screen.top + screen.height / 20, screen.right, screen.bottom - screen.height * 6 / 100))
+            if (area.isEmpty || area.height < 40 || area.width < 40) return null
+            val cx = area.centerX
+            val cy = area.centerY
+            val dy = area.height * 3 / 10
+            val dx = area.width * 3 / 10
+            // DOWN = show what is below: the finger moves up.
+            return when (direction) {
+                PhoneAction.Direction.DOWN -> SwipePlan(cx, cy + dy, cx, cy - dy)
+                PhoneAction.Direction.UP -> SwipePlan(cx, cy - dy, cx, cy + dy)
+                PhoneAction.Direction.RIGHT -> SwipePlan(cx + dx, cy, cx - dx, cy)
+                PhoneAction.Direction.LEFT -> SwipePlan(cx - dx, cy, cx + dx, cy)
+            }
+        }
     }
 
     private fun scrollAction(bits: Int, horizontal: Boolean, direction: PhoneAction.Direction): Int? = when (direction) {
