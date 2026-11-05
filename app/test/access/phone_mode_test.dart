@@ -96,7 +96,7 @@ void main() {
       expect(find.text('这些仍由你来操作'), findsOneWidget);
       expect(
         find.text(
-          '系统设置和权限页面、密码和验证码、dsh-Su 自身仍由你来操作；银行、支付类 App 默认不碰，可在设置里调整。\n'
+          '系统设置和权限页面、密码和验证码、DSH SU 自身仍由你来操作；银行、支付类 App 默认不碰，可在设置里调整。\n'
           '如需让 AI 操作系统设置、密码等，可在 设置 › 手机操控 › 解除限制 中开启。',
         ),
         findsOneWidget,

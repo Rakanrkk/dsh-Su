@@ -145,7 +145,7 @@ void main() {
       expect(rig.runtime.calls, ['install']);
     });
 
-    testWidgets('after 外观, what DSH Go should do: step 3 of 4, beside the unpack, kept on a relaunch', (
+    testWidgets('after 外观, what DSH SU should do: step 3 of 4, beside the unpack, kept on a relaunch', (
       tester,
     ) async {
       final rig = await pumpGate(tester);
@@ -154,7 +154,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, '继续'));
       await frames(tester);
       expect(find.byType(AccessStepPage), findsOneWidget);
-      expect(find.text('想让 dsh-Su 帮你做哪些事'), findsOneWidget);
+      expect(find.text('想让 DSH SU 帮你做哪些事'), findsOneWidget);
       expect(find.bySemanticsLabel('第 3 步，共 4 步'), findsOneWidget);
       expect(_capsuleText('运行环境 30%'), findsOneWidget);
       expect(rig.prefs.setupStep, SetupStep.access);

@@ -49,7 +49,7 @@ void main() {
       for (final (unlock, title, hint) in [
         (PhoneUnlock.systemPages, '系统设置', '含权限页、安装器、安全中心、通知栏'),
         (PhoneUnlock.secretFields, '密码和验证码', '填写密码、验证码和支付密码'),
-        (PhoneUnlock.ownApp, 'dsh-Su 自身', '在 dsh-Su 里点按和输入'),
+        (PhoneUnlock.ownApp, 'DSH SU 自身', '在 DSH SU 里点按和输入'),
       ]) {
         expect(find.text(title), findsOneWidget);
         expect(find.text(hint), findsOneWidget);
@@ -76,7 +76,7 @@ void main() {
         '免责声明',
         '开启后，AI 可以在无人确认的情况下执行上述操作。',
         'AI 可能被网页、消息或文件中的内容误导。',
-        '由此造成的账号、资金、数据或设备损失由你自行承担，dsh-Su 及其开发者不承担责任。',
+        '由此造成的账号、资金、数据或设备损失由你自行承担，DSH SU 及其开发者不承担责任。',
         '建议只在需要时临时开启，用完关闭。',
         '不建议在存有支付或银行信息的设备上开启。',
         '我了解风险，开启',
@@ -221,7 +221,7 @@ void main() {
       await tester.pumpAndSettle();
       final yours = find.byKey(const ValueKey('confirm-yours'));
       expect(find.descendant(of: yours, matching: find.text('这些由你来操作')), findsOneWidget);
-      for (final line in ['系统设置和权限页面', '密码和验证码', 'dsh-Su 自身', '应用名单里「不碰」的 App，默认含银行、支付类']) {
+      for (final line in ['系统设置和权限页面', '密码和验证码', 'DSH SU 自身', '应用名单里「不碰」的 App，默认含银行、支付类']) {
         expect(find.descendant(of: yours, matching: find.text(line)), findsOneWidget, reason: line);
       }
       expect(find.descendant(of: yours, matching: find.text('应用名单')), findsOneWidget);

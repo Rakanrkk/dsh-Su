@@ -23,7 +23,7 @@ import 'support.dart';
 const _group = '悬浮条';
 const _opacity = '闲置时不透明度';
 const _auto = '闲置时自动收起';
-const _return = '完成后返回 dsh-Su';
+const _return = '完成后返回 DSH SU';
 
 Finder _row(String title) => find.ancestor(of: find.text(title), matching: find.byType(ListPageRow)).first;
 
@@ -113,7 +113,7 @@ void main() {
       expect(h.native!.overlay['autoCollapse'], isFalse);
     });
 
-    testWidgets('完成后返回 DSH Go: toggled and kept in the app', (tester) async {
+    testWidgets('完成后返回 DSH SU: toggled and kept in the app', (tester) async {
       await pumpPhone(tester, const PhoneControlScreen(), native: FakePhoneNative(status: phoneStatus()));
       await _reveal(tester);
       await tester.tap(find.text(_return));
