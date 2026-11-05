@@ -32,7 +32,7 @@
 | M2 完整手机执行 | 主屏 Root 动作已入包，后台完整任务路径仍在收敛 |
 | M3 自动化工作台 | 任务中断状态开发中，插件化逐步接入 |
 
-`1.1.0+11051253` 已生成正式签名的 arm64-v8a 和 x86_64 包，尚未完成新的设备使用验证；完整 CI 仍有兼容性和基线问题。GitHub 当前公开预发布仍是 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)。[查看本版完成内容与后续计划](docs/dsh-su-roadmap.md)。
+`1.1.0+11051253` 已生成正式签名的 arm64-v8a 和 x86_64 包，尚未完成新的设备使用验证；仍有附件和界面兼容问题需要修复。GitHub 当前公开预发布仍是 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)。[查看本版完成内容与后续计划](docs/dsh-su-roadmap.md)。
 
 ## 关于 dsh-Su（Root 分支说明）
 

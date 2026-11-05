@@ -32,7 +32,7 @@ The [full roadmap and progress table](docs/dsh-su-roadmap.en.md) covers product 
 | M2 Complete phone execution | Main-screen Root actions are in the APK; the complete background task path is still being completed |
 | M3 Automation workspace | Job-interruption state is in development; plugin adoption is incremental |
 
-Release-signed arm64-v8a and x86_64 APKs of `1.1.0+11051253` have been built. New device-use validation is incomplete, and full CI still has compatibility and baseline failures. The current public GitHub prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See build contents and the next steps](docs/dsh-su-roadmap.en.md).
+Release-signed arm64-v8a and x86_64 APKs of `1.1.0+11051253` have been built. New device-use validation is incomplete, and attachment and interface compatibility issues still need fixes. The current public GitHub prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See build contents and the next steps](docs/dsh-su-roadmap.en.md).
 
 ## About dsh-Su (Root Branch)
 
