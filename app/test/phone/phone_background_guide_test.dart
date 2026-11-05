@@ -10,6 +10,8 @@ import '../shell/golden_harness.dart';
 import 'harness.dart';
 import 'support.dart';
 
+const _rootRuntime = bool.fromEnvironment('DSH_ROOT_RUNTIME');
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -31,7 +33,7 @@ void main() {
     expect((await SharedPreferences.getInstance()).getBool(phoneBackgroundGuideSeenKey), isTrue);
   });
 
-  testWidgets('a blocked dedicated confirmation channel is not shown as allowed', (tester) async {
+  testWidgets('a blocked dedicated confirmation channel is not shown as allowed', skip: _rootRuntime, (tester) async {
     final h = await pumpPhone(
       tester,
       const PhoneControlScreen(),
@@ -39,24 +41,24 @@ void main() {
     );
     expect(find.text('无障碍服务'), findsOneWidget);
     expect(find.descendant(of: find.byType(PhoneStepRow), matching: find.byType(DoneMark)), findsNothing);
-    await tester.tap(find.text('授权 Root').first);
+    expect(find.text('请允许手机操控通知的弹出提醒'), findsOneWidget);
+    final row = find.ancestor(of: find.text('通知'), matching: find.byType(PhoneStepRow));
+    expect(find.descendant(of: row, matching: find.byType(DoneMark)), findsNothing);
+    await tester.tap(find.descendant(of: row, matching: find.text('去开启')));
     await tester.pump();
-    expect(find.text('正在自动配置…'), findsNWidgets(2));
+    expect(h.native!.callsOf('openAppDetails'), hasLength(1));
     h.native!.push({...phoneStatus(), 'confirmationNotifications': true});
     await settlePhone(tester);
-    expect(find.text('请允许手机操控通知的弹出提醒'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: row, matching: find.byType(DoneMark)), findsOneWidget);
   });
 
-  testWidgets('root runtime still shows failed phone readbacks as setup steps', (tester) async {
+  testWidgets('root runtime still shows failed phone readbacks as setup steps', skip: !_rootRuntime, (tester) async {
     await pumpPhone(
       tester,
       const PhoneControlScreen(),
       native: FakePhoneNative(
-        status: {
-          ...phoneStatus(enabled: true, a11y: false),
-          'rootRuntime': true,
-          'confirmationNotifications': false,
-        },
+        status: {...phoneStatus(enabled: true, a11y: false), 'rootRuntime': true, 'confirmationNotifications': false},
       ),
     );
     expect(find.text('无障碍服务'), findsOneWidget);

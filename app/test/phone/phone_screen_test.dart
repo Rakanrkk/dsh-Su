@@ -183,12 +183,14 @@ void main() {
 
       // Came back without turning it on.
       await leaveAndResume(tester);
+      await tester.pumpAndSettle();
       expect(find.text('看起来没开成。侧载的 App 要先「允许受限制的设置」'), findsOneWidget);
 
       await tester.tap(inTile('无障碍服务', find.text('去开启')));
       await tester.pump();
       h.native!.status = phoneStatus(a11y: true);
       await leaveAndResume(tester);
+      await tester.pumpAndSettle();
       expect(inTile('无障碍服务', find.byType(DoneMark)), findsOneWidget);
       expect(find.text('无障碍开关点不动？'), findsNothing);
       expect(find.text('可以操作手机'), findsOneWidget);

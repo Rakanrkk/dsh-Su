@@ -38,6 +38,8 @@ import 'phone_widgets.dart';
 import 'restricted_settings_guide.dart';
 import 'screen_text_sheet.dart';
 
+const _rootRuntimeBuild = bool.fromEnvironment('DSH_ROOT_RUNTIME');
+
 extension PhoneConfirmModeText on PhoneConfirmMode {
   String get label => switch (this) {
     PhoneConfirmMode.ask => appL10n.phoneConfirmAsk,
@@ -77,11 +79,12 @@ class PhoneControlScreen extends ConsumerStatefulWidget {
 class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
   late final AppLifecycleListener _lifecycle;
 
+  bool _awaitingA11y = false;
   String? _rootAccessError;
   bool _rootAccessBusy = false;
 
   /// Came back from there still off: point at the restricted-settings guide.
-  final bool _a11yAttemptFailed = false;
+  bool _a11yAttemptFailed = false;
   bool _testing = false;
   bool _backgroundGuideShown = false;
 
@@ -105,7 +108,14 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
 
   Future<void> _onResume() async {
     await _phone.refreshStatus();
-    if (mounted) setState(() {});
+    if (mounted && _awaitingA11y) {
+      final on = ref.read(phoneProvider).status.a11y.enabled;
+      setState(() {
+        _awaitingA11y = false;
+        _a11yAttemptFailed = !on;
+      });
+    }
+    if (mounted && _rootRuntimeBuild) setState(() {});
   }
 
   void _toast(String text) {
@@ -246,6 +256,15 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
       }
     } finally {
       if (mounted) setState(() => _rootAccessBusy = false);
+    }
+  }
+
+  Future<void> _openA11y() async {
+    setState(() => _awaitingA11y = true);
+    final ok = await _phone.openAccessibilitySettings();
+    if (!ok && mounted) {
+      setState(() => _awaitingA11y = false);
+      _toast(context.l10n.phoneOpenAccessibilityFailed);
     }
   }
 
@@ -396,8 +415,8 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
   List<Widget> _setup(PhoneStatus status) {
     final a11y = status.a11y;
     final confirmationReady = status.notifications && status.confirmationNotifications != false;
-    final showA11yStep = !a11y.ok;
-    final showNotificationsStep = !confirmationReady;
+    final showA11yStep = !_rootRuntimeBuild || !a11y.ok;
+    final showNotificationsStep = !_rootRuntimeBuild || !confirmationReady;
     final showRestricted =
         showA11yStep && !a11y.enabled && (status.device.mayNeedRestrictedSettings || _a11yAttemptFailed);
     return [
@@ -417,12 +436,16 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
               trailing: a11y.ok
                   ? const DoneMark()
                   : FixButton(
-                      label: _rootAccessBusy
-                      ? context.l10n.accessRootConfiguring
-                      : _rootAccessError == null
-                      ? context.l10n.accessRootAuthorize
-                      : context.l10n.commonRetry,
-                      onPressed: _ensureRootAccess,
+                      label: _rootRuntimeBuild
+                          ? (_rootAccessBusy
+                                ? context.l10n.accessRootConfiguring
+                                : _rootAccessError == null
+                                ? context.l10n.accessRootAuthorize
+                                : context.l10n.commonRetry)
+                          : a11y.enabled
+                          ? context.l10n.phoneControlGoSettings
+                          : context.l10n.phoneControlGoEnable,
+                      onPressed: _rootRuntimeBuild ? _ensureRootAccess : _openA11y,
                     ),
             ),
           if (showRestricted)
@@ -449,12 +472,14 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
               trailing: confirmationReady
                   ? DoneMark(label: context.l10n.phoneControlAllowed)
                   : FixButton(
-                      label: _rootAccessBusy
-                      ? context.l10n.accessRootConfiguring
-                      : _rootAccessError == null
-                      ? context.l10n.accessRootAuthorize
-                      : context.l10n.commonRetry,
-                      onPressed: _ensureRootAccess,
+                      label: _rootRuntimeBuild
+                          ? (_rootAccessBusy
+                                ? context.l10n.accessRootConfiguring
+                                : _rootAccessError == null
+                                ? context.l10n.accessRootAuthorize
+                                : context.l10n.commonRetry)
+                          : context.l10n.phoneControlGoEnable,
+                      onPressed: _rootRuntimeBuild ? _ensureRootAccess : _openAppDetails,
                     ),
             ),
           if (_rootAccessError != null)
