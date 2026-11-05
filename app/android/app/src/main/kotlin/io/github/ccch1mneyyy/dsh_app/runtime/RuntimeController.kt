@@ -376,7 +376,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         rootStartupGate.prepare(ticket,
             execute = { action -> Thread({ action() }, "dsh-root-startup").start() },
             deliver = { action -> main.post { action() } },
-            preparation = { current -> PhoneControl.get(app).background.prepareRootForStartup(current) != null },
+            preparation = { current ->
+                runCatching { PhoneControl.get(app).background.prepareRootAccessForStartup(current) }
+                    .getOrNull()
+                    ?.configured == true
+            },
             ready = ready,
         )
     }
