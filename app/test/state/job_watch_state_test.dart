@@ -190,10 +190,15 @@ void main() {
     await client.mux.ready();
     final events = <List<JobInfo>>[];
     final target = Completer<List<JobInfo>>();
+    final secondData = Completer<List<JobInfo>>();
     final sub = container.listen(jobsProvider('s1'), (_, state) {
       if (state.value case final list?) {
         events.add(list);
-        if (!target.isCompleted) target.complete(list);
+        if (!target.isCompleted) {
+          target.complete(list);
+        } else if (!secondData.isCompleted) {
+          secondData.complete(list);
+        }
       }
     });
     addTearDown(sub.close);
@@ -208,15 +213,13 @@ void main() {
     expect(carrier.contributionRequestsStarted, 1);
 
     carrier.releaseContribution(0, 'host-1');
-    final stored = await Future<void>(() {}).then(
-      (_) async => jsonDecode(
-        (await SharedPreferences.getInstance()).getString(JobObservationStore.keyFor(HostRef.ssh('remote'), 's1'))!,
-      ),
+    final reconciled = await secondData.future.timeout(const Duration(seconds: 1));
+    expect(reconciled.where((job) => job.id == 'j1' && job.status == 'running'), isNotEmpty);
+    final stored = jsonDecode(
+      (await SharedPreferences.getInstance()).getString(JobObservationStore.keyFor(HostRef.ssh('remote'), 's1'))!,
     );
     expect(stored['hostInstanceId'], 'host-1');
     expect(stored['jobs'].keys, ['j1']);
-    expect(events, hasLength(2));
-    expect(events.last.where((job) => job.id == 'j1' && job.status == 'running'), isNotEmpty);
   });
 
   test('save after current scope expires is skipped', () async {
@@ -237,5 +240,86 @@ void main() {
     current = true;
     await store.save(observations);
     expect(jsonDecode((await SharedPreferences.getInstance()).getString(key)!), isNotNull);
+  });
+
+  test('a late old-generation HTTP identity does not override the next generation result', () async {
+    final carrier = FakePluginCarrier(gateContributions: true);
+    final client = DshClient.withCarrier(carrier, muxOptions: const MuxOptions(retryCaps: [Duration(milliseconds: 1)]));
+    addTearDown(client.close);
+    final container = providerContainer(client);
+    addTearDown(container.dispose);
+    await client.mux.ready();
+    final nextData = Completer<List<JobInfo>>();
+    final sub = container.listen(jobsProvider('s1'), (_, state) {
+      if (state.value case final list? when list.any((job) => job.id == 'j2')) {
+        if (!nextData.isCompleted) nextData.complete(list);
+      }
+    });
+    addTearDown(sub.close);
+    await carrier.link!.jobOpened;
+    final oldLink = carrier.link!;
+    oldLink.pushJob('s1', [job('j1')]);
+    expect(carrier.contributionRequestsStarted, 1);
+
+    final oldGeneration = client.mux.generation;
+    final newGenerationFuture = client.mux.generations.firstWhere((g) => !identical(g, oldGeneration));
+    await oldLink.close(4000, 'lost');
+    final newGeneration = await newGenerationFuture.timeout(const Duration(seconds: 1));
+    expect(newGeneration.number, 2);
+    final newLink = carrier.link!;
+    await newLink.jobOpened;
+    newLink.pushJob('s1', [job('j2')]);
+    expect(carrier.contributionRequestsStarted, 2);
+    carrier.releaseContribution(1, 'host-2');
+    final next = await nextData.future.timeout(const Duration(seconds: 1));
+    expect(next.where((job) => job.id == 'j2' && job.status == 'running'), isNotEmpty);
+    final storedAfterNew = jsonDecode(
+      (await SharedPreferences.getInstance()).getString(JobObservationStore.keyFor(HostRef.ssh('remote'), 's1'))!,
+    );
+    expect(storedAfterNew['hostInstanceId'], 'host-2');
+    expect(storedAfterNew['jobs'].keys, ['j2']);
+
+    carrier.releaseContribution(0, 'host-1');
+    oldLink.pushJob('s1', [job('j1', status: 'running')]);
+    await Future<void>(() {});
+    final storedAfterLate = jsonDecode(
+      (await SharedPreferences.getInstance()).getString(JobObservationStore.keyFor(HostRef.ssh('remote'), 's1'))!,
+    );
+    expect(storedAfterLate['hostInstanceId'], 'host-2');
+    expect(storedAfterLate['jobs'].keys, ['j2']);
+  });
+
+  test('dispose cancels the job stream before late HTTP or frames write again', () async {
+    final carrier = FakePluginCarrier(gateContributions: true);
+    final client = DshClient.withCarrier(carrier, muxOptions: const MuxOptions(retryCaps: [Duration(milliseconds: 1)]));
+    addTearDown(client.close);
+    final container = providerContainer(client);
+    await client.mux.ready();
+    final events = <List<JobInfo>>[];
+    final firstData = Completer<List<JobInfo>>();
+    final sub = container.listen(jobsProvider('s1'), (_, state) {
+      if (state.value case final list?) {
+        events.add(list);
+        if (!firstData.isCompleted) firstData.complete(list);
+      }
+    });
+    addTearDown(sub.close);
+    final link = carrier.link!;
+    await link.jobOpened;
+    link.pushJob('s1', [job('j1')]);
+    final first = await firstData.future.timeout(const Duration(seconds: 1));
+    expect(first.where((job) => job.id == 'j1' && job.status == 'running'), isNotEmpty);
+    expect(carrier.contributionRequestsStarted, 1);
+
+    container.dispose();
+    await link.jobCancelled.timeout(const Duration(seconds: 1));
+    carrier.releaseContribution(0, 'host-1');
+    link.pushJob('s1', [job('j2')]);
+    await Future<void>(() {});
+    expect(events, hasLength(1));
+    expect(
+      (await SharedPreferences.getInstance()).getString(JobObservationStore.keyFor(HostRef.ssh('remote'), 's1')),
+      isNull,
+    );
   });
 }
