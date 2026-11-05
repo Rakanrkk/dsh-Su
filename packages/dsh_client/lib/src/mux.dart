@@ -43,7 +43,7 @@ const String hostEventsEndpoint = r'$events';
 /// One established connection generation (a socket whose `$events` stream
 /// delivered `ready`).
 class MuxGeneration {
-  const MuxGeneration(this.number, this.clientId, this.home);
+  const MuxGeneration(this.number, this.clientId, this.home, {this.hostInstanceId});
 
   /// Increments on every successful (re)connect, starting at 1.
   final int number;
@@ -51,6 +51,10 @@ class MuxGeneration {
   /// Must accompany `$events/result` replies sent during this generation.
   final String clientId;
   final String home;
+
+  /// Stable identity of the Host process when the Host supports it; null on
+  /// older Hosts, so callers must not infer a restart from absence.
+  final String? hostInstanceId;
 }
 
 class MuxOptions {
@@ -340,7 +344,12 @@ class DshMux {
       _attempt = 0;
       _everConnected = true;
       _pendingRequests.clear();
-      final generation = MuxGeneration(++_generationCounter, event.clientId, event.home);
+      final generation = MuxGeneration(
+        ++_generationCounter,
+        event.clientId,
+        event.home,
+        hostInstanceId: event.hostInstanceId,
+      );
       _generation = generation;
       _setState(DshConnectionState.connected);
       for (final waiter in _readyWaiters) {

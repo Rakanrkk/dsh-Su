@@ -1,0 +1,22 @@
+--- a/node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js
+@@ -766,6 +766,7 @@ var TypertGatewayService = class extends Service {
+ 	constructor(ctx, config) {
+ 		super(ctx, "typertGateway");
+ 		const resolved = config;
++		this.hostInstanceId = randomUUID();
+ 		ctx.on("internal/service", () => {
+ 			this.srcClaims = void 0;
+ 		});
+@@ -1016,7 +1017,10 @@ var TypertGatewayService = class extends Service {
+ 			yield {
+ 				...REMOTE_EVENT_STREAM_READY,
+ 				clientId,
+-				host: registration.host
++				host: {
++					...registration.host,
++					hostInstanceId: this.hostInstanceId
++				}
+ 			};
+ 			yield* client.queue.iterate(lifetime);
+ 		} finally {

@@ -621,6 +621,14 @@
           "before": "a26b396baee3c353b5bd55c932e30f2653b083a136e7a8f9f596e9fe4c1222b0"
         }
       }
+    },
+    "zzzzzzzzzz-host-instance-id.diff": {
+      "0.2.1-rc.4": {
+        "node_modules/@deepseek-ai/dsh-api-gateway/lib/index.js": {
+          "after": "0e175560c38539d5484268a4a3a2c41142484bf8d6e0266ae211b05386dbe064",
+          "before": "4fbe460fec585ebc2cf2887261f6c33f024081a539d9fb5d6557a9002324b23f"
+        }
+      }
     }
   },
   "schema": 1
