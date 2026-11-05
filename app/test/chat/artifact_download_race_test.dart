@@ -20,6 +20,25 @@ class _FixedLocalHost extends ActiveHostController {
   HostRef build() => HostRef.local;
 }
 
+class _FixedRemoteHost extends ActiveHostController {
+  @override
+  HostRef build() => const HostRef.ssh('host-a');
+}
+
+class _ThrowingRuntimeBridge extends RuntimeBridge {
+  @override
+  Stream<RuntimeEvent> get events => throw StateError('local runtime must not be watched');
+}
+
+class _StaticRuntime extends LocalRuntimeController {
+  _StaticRuntime(this.status);
+
+  final RuntimeStatus status;
+
+  @override
+  LocalRuntimeState build() => LocalRuntimeState(status: status, loaded: true);
+}
+
 class _RuntimeBridge extends RuntimeBridge {
   _RuntimeBridge(this.runtimeStatus)
     : super(methods: const MethodChannel('unused'), events: const EventChannel('unused'));
@@ -294,6 +313,8 @@ void main() {
         activeHostProvider.overrideWith(_FixedLocalHost.new),
         activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
         runtimeBridgeProvider.overrideWithValue(_RuntimeBridge(status)),
+        if (status.phase != RuntimePhase.notInstalled)
+          localRuntimeProvider.overrideWith(() => _StaticRuntime(status)),
       ],
     );
 
@@ -312,6 +333,41 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(root.read(artifactFilesProvider).rootRuntime, rootBuild);
   });
+
+  test('a remote provider does not depend on local runtime state', () async {
+    final container = ProviderContainer(
+      overrides: [
+        activeHostProvider.overrideWith(_FixedRemoteHost.new),
+        activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
+        runtimeBridgeProvider.overrideWith((ref) => _ThrowingRuntimeBridge()),
+      ],
+    );
+    try {
+      expect(container.read(artifactFilesProvider).isLocal, isFalse);
+      await Future<void>.delayed(Duration.zero);
+      expect(container.read(artifactFilesProvider).isLocal, isFalse);
+    } finally {
+      container.dispose();
+    }
+  });
+
+  if (!bool.fromEnvironment('DSH_ROOT_RUNTIME')) {
+    test('a local provider in a normal build does not watch the runtime', () async {
+      final container = ProviderContainer(
+        overrides: [
+          activeHostProvider.overrideWith(_FixedLocalHost.new),
+          activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null)),
+          runtimeBridgeProvider.overrideWith((ref) => _ThrowingRuntimeBridge()),
+        ],
+      );
+      try {
+        await Future<void>.delayed(Duration.zero);
+        expect(container.read(artifactFilesProvider).isLocal, isTrue);
+      } finally {
+        container.dispose();
+      }
+    });
+  }
 
   test('a disconnected remote host does not resolve through the local channel', () async {
     await rig.installNativeResolver();

@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/l10n.dart';
+import '../runtime/runtime_bridge.dart';
 import '../runtime/runtime_state.dart';
 import 'artifacts.dart';
 import 'connection_state.dart';
@@ -421,12 +422,20 @@ String _fnv(String text) {
 
 final artifactFilesProvider = Provider<ArtifactFiles>((ref) {
   final host = ref.watch(activeHostProvider);
-  final runtimeMode = ref.watch(localRuntimeProvider.select((state) => state.loaded ? state.status.rootRuntime : null));
+  bool? runtimeMode;
+  if (_rootRuntimeBuild && host.isLocal) {
+    final runtime = ref.watch(localRuntimeProvider);
+    // Build mode decides until a real runtime reports its mode; a loaded
+    // "not installed" status is still not a normal-mode report.
+    if (runtime.loaded && runtime.status.phase != RuntimePhase.notInstalled) {
+      runtimeMode = runtime.status.rootRuntime;
+    }
+  }
   return ArtifactFiles(
     connection: ref.watch(activeConnectionProvider).value,
     channel: ref.watch(filesChannelProvider),
     selectedHost: host,
-    rootRuntime: _rootRuntimeBuild && (runtimeMode ?? true),
+    rootRuntime: runtimeMode ?? _rootRuntimeBuild,
   );
 });
 
