@@ -41,7 +41,8 @@ import kotlin.concurrent.thread
  * MethodChannel `dsh/files`.
  *
  * - `resolveGuest {path}` → host path of a local-engine file, or null. A
- *   Root-only file is copied into the app cache first.
+ *   Root build copies a Root-only file into the app cache first; ordinary
+ *   builds keep the original app-uid behavior and permission flow.
  * - `listOutputs {depth}` → `[{path, bytes, modified}]` under `/sdcard/Download/DSH-Go`, then
  *   the old `/sdcard/Download/DSH` (guest paths; Root can list them without
  *   Android shared-storage permission).
@@ -55,8 +56,12 @@ import kotlin.concurrent.thread
  * type), `permission` (storage write refused), `root_unavailable` (no
  * authorized Root shell when the fallback is needed), `failed`.
  */
-class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
+class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
     PluginRegistry.RequestPermissionsResultListener {
+
+    internal constructor(testContext: Context) : this() {
+        context = testContext
+    }
 
     private lateinit var methods: MethodChannel
     private lateinit var context: Context
@@ -66,6 +71,7 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     private val main = Handler(Looper.getMainLooper())
     private val pdfPages = PdfPages()
     private val rootAccess by lazy { RootFiles(context) }
+    private val rootRuntime = BuildConfig.ROOT_RUNTIME
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -99,15 +105,22 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "resolveGuest" -> background(result) {
-                rootAccess.resolve(call.argument<String>("path") ?: "")?.absolutePath
+                val path = call.argument<String>("path") ?: ""
+                if (rootRuntime) rootAccess.resolve(path)?.absolutePath
+                else GuestFiles.resolve(context, path)?.absolutePath
             }
             "listOutputs" -> background(result) { listOutputs(call.argument<Int>("depth") ?: 3) }
-            "open" -> background(result) { open(call); null }
+            "open" -> if (rootRuntime) background(result) { open(call, result); null } else open(call, result)
             "saveToDownloads" -> save(call, result)
-            "pdfInfo" -> background(result) { pdfPages.info(pdfSource(call.argument<String>("path") ?: "").path) }
-            "pdfPage" -> background(result) {
-                pdfPages.render(pdfSource(call.argument<String>("path") ?: "").path, call.argument<Int>("page") ?: 0,
-                    call.argument<Int>("width") ?: 1080)
+            "pdfInfo" -> pdf(result) {
+                val path = call.argument<String>("path") ?: ""
+                if (rootRuntime) info(pdfSource(path).path) else info(path)
+            }
+            "pdfPage" -> pdf(result) {
+                val path = call.argument<String>("path") ?: ""
+                val page = call.argument<Int>("page") ?: 0
+                val width = call.argument<Int>("width") ?: 1080
+                if (rootRuntime) render(pdfSource(path).path, page, width) else render(path, page, width)
             }
             "pdfClose" -> pdf(result) { close() }
             else -> result.notImplemented()
@@ -117,17 +130,26 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     // ---------------------------------------------------------------------------------------------
     // Open
 
-    private fun open(call: MethodCall) {
-        val file = rootAccess.resolve(call.argument<String>("path") ?: "")
-            ?: throw FilesError("missing", "no such readable file")
+    private fun open(call: MethodCall, result: MethodChannel.Result) {
+        val file = if (rootRuntime) {
+            openSource(call)
+        } else {
+            ordinarySource(call) ?: return result.error("missing", "no such file", null)
+        }
         val name = call.argument<String>("name") ?: file.name
         val mime = mimeOf(call.argument<String>("mime"), name)
-        val uri = contentUri(file, name)
+        val uri = try {
+            contentUri(file, name)
+        } catch (e: Exception) {
+            if (rootRuntime) throw FilesError("failed", e.message) else return result.error("failed", e.message, null)
+        }
         val view = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, mime)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         view.clipData = ClipData.newRawUri(name, uri)
-        if (view.resolveActivity(context.packageManager) == null) throw FilesError("no_app", "no app opens $mime")
+        if (view.resolveActivity(context.packageManager) == null) {
+            if (rootRuntime) throw FilesError("no_app", "no app opens $mime") else return result.error("no_app", "no app opens $mime", null)
+        }
         val launch = if (call.argument<Boolean>("chooser") == true) Intent.createChooser(view, null) else view
         val host: Activity? = activity?.activity
         try {
@@ -137,8 +159,11 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                 context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         } catch (e: ActivityNotFoundException) {
-            throw FilesError("no_app", e.message)
+            if (rootRuntime) throw FilesError("no_app", e.message) else return result.error("no_app", e.message, null)
+        } catch (e: Exception) {
+            if (rootRuntime) throw FilesError("failed", e.message) else return result.error("failed", e.message, null)
         }
+        if (!rootRuntime) result.success(null)
     }
 
     /**
@@ -159,13 +184,29 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     // ---------------------------------------------------------------------------------------------
     // Save to Downloads
 
-    private fun save(call: MethodCall, result: MethodChannel.Result) = background(result) {
-        val file = rootAccess.resolve(call.argument<String>("path") ?: "")
-            ?: throw FilesError("missing", "no such readable file")
-        val name = safeName(call.argument<String>("name") ?: file.name)
-        val mime = mimeOf(call.argument<String>("mime"), name)
-        if (canWriteShared()) return@background saveNow(file, name, mime)
-        saveWithRoot(file, name, mime)
+    internal fun save(call: MethodCall, result: MethodChannel.Result) {
+        if (!rootRuntime) {
+            val file = ordinarySource(call) ?: return result.error("missing", "no such file", null)
+            val name = safeName(call.argument<String>("name") ?: file.name)
+            val mime = mimeOf(call.argument<String>("mime"), name)
+            saveOrAsk(file, name, mime, result, asked = false)
+            return
+        }
+        background(result) {
+            val file = openSource(call)
+            val name = safeName(call.argument<String>("name") ?: file.name)
+            val mime = mimeOf(call.argument<String>("mime"), name)
+            if (canWriteShared()) saveNow(file, name, mime) else saveWithRoot(file, name, mime)
+        }
+    }
+
+    private fun openSource(call: MethodCall): File {
+        val path = call.argument<String>("path") ?: ""
+        return rootAccess.resolve(path) ?: throw FilesError("missing", "no such readable file")
+    }
+
+    private fun ordinarySource(call: MethodCall): File? {
+        return File(call.argument<String>("path") ?: "").takeIf { it.isFile }
     }
 
     /**
@@ -173,7 +214,7 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
      * public Downloads directory, so it is asked for first; on 10+ it is asked
      * for only if MediaStore turns this (targetSdk 28) app away. Asked once per save.
      */
-    private fun saveOrAsk(file: File, name: String, mime: String, result: MethodChannel.Result, asked: Boolean) {
+    internal fun saveOrAsk(file: File, name: String, mime: String, result: MethodChannel.Result, asked: Boolean) {
         val retry = { saveOrAsk(file, name, mime, result, asked = true) }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && !canWriteShared()) {
             return if (asked) result.error("permission", "storage permission denied", null) else ask(result, retry)
@@ -289,7 +330,8 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
 
     private fun listOutputs(depth: Int): List<Map<String, Any>> {
         if (PhoneStorage.isGranted(context)) return listOutputsNormally(depth)
-        return rootAccess.listOutputs(depth)
+        if (rootRuntime) return rootAccess.listOutputs(depth)
+        return emptyList()
     }
 
     private fun listOutputsNormally(depth: Int): List<Map<String, Any>> {
