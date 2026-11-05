@@ -336,6 +336,26 @@ class RuntimeResetKeepTest {
         assertEquals("r2", File(base, "rootfs.version").readText())
     }
 
+    @Test fun anUpgradeKilledDuringActivationIsFinishedByTheReinstall() {
+        installed()
+        // Interrupt activation right after the old home moved aside, the old tree retired,
+        // and the fresh tree swapped in; the ready marker is gone.
+        assertTrue(File(base, "rootfs/root").renameTo(File(base, "home.carry")))
+        assertTrue(File(base, "rootfs").renameTo(File(base, "rootfs.old")))
+        write(base, "staging/bin/sh", "staging/etc/os-release")
+        assertTrue(File(base, "staging").renameTo(File(base, "rootfs")))
+        assertTrue(File(base, "rootfs.version").delete())
+
+        install(version = "r2")
+
+        assertEquals("r2", File(base, "rootfs.version").readText())
+        assertEquals("ui.json", text("root/.dsh/dsh-go/ui.json"))
+        assertEquals("notes", text("root/workspace/notes"))
+        assertFalse(File(base, "home.carry").exists())
+        assertFalse(File(base, "rootfs.old").exists())
+        assertFalse(File(base, "staging").exists())
+    }
+
     @Test fun wireNames() {
         assertEquals(setOf(ResetKeep.UI_AND_SKILLS), ResetKeep.fromWire(listOf("uiAndSkills", "bogus")))
         assertEquals(ResetKeep.entries.toSet(), ResetKeep.fromWire(listOf("pluginsAndSettings", "uiAndSkills")))

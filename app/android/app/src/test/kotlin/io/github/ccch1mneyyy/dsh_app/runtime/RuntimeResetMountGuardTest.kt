@@ -182,6 +182,41 @@ class RuntimeResetMountGuardTest {
         }
     }
 
+    @Test fun upgradeReentryAfterActivationInterruptionCarriesPrivateHomeThroughRootFiles() {
+        val base = tempDir("upgrade-reentry-private")
+        try {
+            val old = File(base, "rootfs")
+            val private = File(old, "root/.private").apply { mkdirs() }
+            Files.setPosixFilePermissions(File(old, "root").toPath(), PosixFilePermissions.fromString("rwxr-xr-x"))
+            Files.setPosixFilePermissions(private.toPath(), PosixFilePermissions.fromString("rwx------"))
+            File(private, "item").writeText("private")
+            // Interrupt activation right after the old home moved aside, the old tree retired,
+            // and the fresh tree swapped in; the ready marker is gone.
+            assertTrue(File(old, "root").renameTo(File(base, "home.carry")))
+            assertTrue(old.renameTo(File(base, "rootfs.old")))
+            val staging = File(base, "staging")
+            File(staging, "root").mkdirs()
+            File(staging, "etc/os-release").apply { parentFile!!.mkdirs(); writeText("new") }
+            assertTrue(staging.renameTo(File(base, "rootfs")))
+            // The real reinstall extracts a fresh staging tree before activation resumes.
+            File(base, "staging/root").mkdirs()
+            File(base, "staging/etc/os-release").apply { parentFile!!.mkdirs(); writeText("new") }
+            val files = RecordingFileAccess()
+
+            activateRootfs(base, "r2", sync = {}, mounts = MountGuard(emptyList(), emptyList()), rootRuntime = true, files = files)
+
+            assertEquals("private", File(base, "rootfs/root/.private/item").readText())
+            assertEquals("new", File(base, "rootfs/etc/os-release").readText())
+            assertFalse(File(base, "home.carry").exists())
+            assertFalse(File(base, "rootfs.old").exists())
+            assertFalse(File(base, "staging").exists())
+            assertTrue(files.touched.any { it.endsWith("/rootfs/root") })
+            assertTrue(files.touched.any { it.endsWith("/home.carry") })
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
     @Test fun resetRechecksTheCurrentPathAfterRetiringInsteadOfUsingTheOldSnapshot() {
         val base = tempDir("reset-fresh-mount")
         try {
