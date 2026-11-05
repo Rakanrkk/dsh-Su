@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="#build-from-source">Build from Source</a> · <a href="docs/guide/en/README.md">User Guide</a>
+  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="#build-from-source">Build from Source</a> · <a href="docs/guide/en/README.md">User Guide</a> · <a href="docs/dsh-su-roadmap.en.md">Roadmap &amp; Progress</a>
 </p>
 
 <p align="center">
@@ -21,6 +21,18 @@
   <a href="https://forum.dshtui.com"><img alt="Forum" src="https://img.shields.io/badge/forum-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ group 1132118290" src="https://img.shields.io/badge/QQ%20group-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
 </p>
+
+## Roadmap and progress
+
+The [full roadmap and progress table](docs/dsh-su-roadmap.en.md) covers product milestones, parallel tracks, build contents and remaining problems.
+
+| Milestone | Current progress |
+| --- | --- |
+| M1 Root-native product ready to use | Main implementation is in local build `1.1.0+11051253`; compatibility fixes are in progress |
+| M2 Complete phone execution | Main-screen Root actions are in the APK; the complete background task path is still being completed |
+| M3 Automation workspace | Job-interruption state is in development; plugin adoption is incremental |
+
+Release-signed arm64-v8a and x86_64 APKs of `1.1.0+11051253` have been built. New device-use validation is incomplete, and full CI still has compatibility and baseline failures. The current public GitHub prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See build contents and the next steps](docs/dsh-su-roadmap.en.md).
 
 ## About dsh-Su (Root Branch)
 

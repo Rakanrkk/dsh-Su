@@ -1,5 +1,5 @@
 <p align="center">
-  <b>简体中文</b> · <a href="README.en.md">English</a> · <a href="docs/dsh-su.md">dsh-Su 架构与状态</a> · <a href="#build-from-source">从源码构建</a> · <a href="docs/guide/README.md">使用指南</a>
+  <b>简体中文</b> · <a href="README.en.md">English</a> · <a href="docs/dsh-su.md">dsh-Su 架构与状态</a> · <a href="#build-from-source">从源码构建</a> · <a href="docs/guide/README.md">使用指南</a> · <a href="docs/dsh-su-roadmap.md">开发计划与进度</a>
 </p>
 
 <p align="center">
@@ -21,6 +21,18 @@
   <a href="https://forum.dshtui.com"><img alt="论坛" src="https://img.shields.io/badge/%E8%AE%BA%E5%9D%9B-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ 群 1132118290" src="https://img.shields.io/badge/QQ%20%E7%BE%A4-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
 </p>
+
+## 开发计划与进度
+
+[完整路线图与进度表](docs/dsh-su-roadmap.md)包含产品里程碑、并行分支、版本内容和剩余问题。
+
+| 里程碑 | 当前进度 |
+| --- | --- |
+| M1 开箱即用 Root 产品 | 主要实现进入本地包 `1.1.0+11051253`，兼容修复进行中 |
+| M2 完整手机执行 | 主屏 Root 动作已入包，后台完整任务路径仍在收敛 |
+| M3 自动化工作台 | 任务中断状态开发中，插件化逐步接入 |
+
+`1.1.0+11051253` 已生成正式签名的 arm64-v8a 和 x86_64 包，尚未完成新的设备使用验证；完整 CI 仍有兼容性和基线问题。GitHub 当前公开预发布仍是 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)。[查看本版完成内容与后续计划](docs/dsh-su-roadmap.md)。
 
 ## 关于 dsh-Su（Root 分支说明）
 
