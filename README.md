@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  DeepSeek Harness 的 Android 客户端。手机上直接跑，也能遥控你电脑上的 DSH。
+  DSH SU 是面向已 Root Android 设备的 DeepSeek Harness 客户端：授予 Root 后在手机上直接运行，也能遥控你电脑上的 DSH。
 </p>
 
 <p align="center">
@@ -24,15 +24,13 @@
 
 ## 开发计划与进度
 
-[完整路线图与进度表](docs/dsh-su-roadmap.md)包含产品里程碑、并行路线、版本内容和后续目标。
+当前优先交付可实际使用的 Root AI 工作台：`1.2.0-dev.1` ARM64 包已生成、核心使用验证进行中，尚未公开发布；当前公开预发布仍是 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)。首发范围与里程碑目标见[完整路线图](docs/dsh-su-roadmap.md)。
 
-| 里程碑 | 当前进度 |
+| 里程碑 | 目标 |
 | --- | --- |
-| M1 开箱即用 Root 产品 | 核心功能与兼容修复已进入 `1.1.0+11051721` 候选包 |
-| M2 完整手机执行 | 主屏 Root 操作和后台按需提示已入候选包，完整后台任务路径继续完善 |
-| M3 自动化工作台 | 任务中断观察与首个内置工具环境诊断插件已入候选包 |
-
-`1.1.0+11051721` 已提供 ARM64 和 x64 候选安装包，尚未装机验证、未上传 GitHub Releases。当前公开预发布仍是 [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9)。[查看本版功能与后续计划](docs/dsh-su-roadmap.md)。
+| M1 可用核心产品 | `1.2.0-dev.1` 公开开发试用 → `1.2.0-rc.N` 收敛反馈 → 正式发布 `1.2.0` |
+| M2 完整手机执行 | 目标 `1.3.0`：系统直接操作、主屏可靠动作、后台不打扰执行，用户可随时接手 |
+| M3 自动化工作台 | 目标 `1.4.0`：调度与长任务的状态、结果、取消；复用插件扩展工具、技能和工作流 |
 
 ## 关于 dsh-Su（Root 分支说明）
 
@@ -88,7 +86,7 @@ flowchart LR
 
 <h3 align="center">本机运行，也能遥控电脑</h3>
 
-<p align="center">内置 Linux 环境，免 Root、免 Termux。电脑上的 DSH，也能一键切过去接着用。</p>
+<p align="center">授予 Root 后无需另装 Termux，App 自动准备运行环境。电脑上的 DSH，也能一键切过去接着用。</p>
 
 <p align="center">
   <picture>
@@ -194,7 +192,7 @@ flowchart LR
 
 DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的第三方项目。运行在手机上的是 DSH 引擎；模型请求仍由你配置的模型提供方处理。
 
-- **本机运行**：在 App 内安装 Ubuntu、Node.js 与 DSH 运行环境，无需 Root 或另装 Termux。
+- **本机运行**：授予 Root 后，App 自动安装 Ubuntu、Node.js 与 DSH 运行环境，无需另装 Termux。
 - **远程连接**：通过 SSH 或 [DSHarness Remote](https://github.com/liguobao/ds-harness-remote) 使用电脑、服务器上的 DSH。
 - **聊天与工具**：切换模型，发送图片、使用语音输入，处理工具审批和提问；支持聊天界面与网页模式。
 - **插件界面**：使用适配 DSH Go 的原生工具卡、表单和面板；仓库提供 SDK、教程和示例。
