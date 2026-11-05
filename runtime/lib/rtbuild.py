@@ -7,6 +7,7 @@ inputs it reads; downloaded archives are treated as data.
 """
 import argparse
 import gzip
+import glob
 import hashlib
 import io
 import json
@@ -23,11 +24,12 @@ import tarfile
 EM_NAMES = {3: "i386", 40: "arm", 62: "x86-64", 183: "aarch64"}
 NPMMIRROR = "https://registry.npmmirror.com/"
 NPMJS = "https://registry.npmjs.org/"
-# `dsh web` overlay (passed with --patch by the launch command): plugin-install registries and
-# the dsh-go-bridge plugin row.
+# `dsh web` overlay (passed with --patch by the launch command): plugin-install registries,
+# the dsh-go-bridge plugin row and the Root-only dsh-su plugin row.
 DSH_WEB_PATCH = "/etc/dsh-app/dsh-web.patch.yml"
 # Where runtime/bridge/dsh-go-bridge lands in the rootfs (loaded by absolute path from the overlay).
 DSH_GO_BRIDGE = "/opt/dsh-go/dsh-go-bridge"
+DSH_SU_PLUGIN = "/opt/dsh-go/dsh-su-tools"
 # runtime/boot/boot-cache.mjs: path cache for `dsh web` while it boots, preloaded by the dsh shim.
 BOOT_CACHE = "/opt/dsh-go/boot-cache.mjs"
 BOOT_CACHE_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "boot", "boot-cache.mjs")
@@ -691,6 +693,108 @@ def direct_native_inventory(entries):
     return {"schema": 1, "files": files}
 
 
+def bundled_plugins(source_root):
+    """Read manifest, declared entry and version for a copied plugin source tree."""
+    with open(os.path.join(source_root, "package.json"), "rb") as source:
+        manifest = json.load(source)
+    name = manifest.get("name")
+    version = manifest.get("version")
+    if not isinstance(name, str) or not name:
+        raise ValueError("bundled plugin package.json has no package name")
+    if not isinstance(version, str) or not version:
+        raise ValueError("bundled plugin package.json has no version")
+    entry = (manifest.get("exports") or {}).get(".") or manifest.get("main")
+    if not isinstance(entry, str) or not entry:
+        raise ValueError("bundled plugin package.json has no entry")
+    return name, version, entry
+
+
+def plugin_peer_links(source_root):
+    """Return the host-provided peer packages a bundled plugin imports by bare specifier."""
+    with open(os.path.join(source_root, "package.json"), "rb") as source:
+        manifest = json.load(source)
+    peers = manifest.get("peerDependencies")
+    if not isinstance(peers, dict):
+        return ()
+    return tuple(sorted(peers))
+
+
+def plugin_rows(destinations):
+    """Return the `id`/`name` overlay rows for copied plugins, sorted by id."""
+    rows = []
+    for directory, source_root in destinations:
+        name, _, entry = bundled_plugins(source_root)
+        rows.append((name, os.path.normpath(os.path.join(directory, entry)).replace(os.sep, "/")))
+    return tuple(sorted(rows))
+
+
+def production_files(source_root):
+    """Return the regular files declared for assembly, without tests or package output."""
+    with open(os.path.join(source_root, "package.json"), "rb") as source:
+        manifest = json.load(source)
+    _, _, entry = bundled_plugins(source_root)
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        raise ValueError("bundled plugin package.json has no production files list")
+
+    normalized = set()
+    for pattern in files:
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError("bundled plugin files contains an invalid pattern")
+        source = pattern.lstrip("./")
+        candidates = sorted(glob.glob(os.path.join(source_root, source), recursive=True))
+        if not candidates:
+            continue
+        for path in candidates:
+            if os.path.isfile(path):
+                normalized.add(os.path.relpath(path, source_root).replace(os.sep, "/"))
+            elif os.path.isdir(path):
+                for dirpath, _, filenames in os.walk(path):
+                    for filename in filenames:
+                        relative = os.path.relpath(os.path.join(dirpath, filename), source_root)
+                        normalized.add(relative.replace(os.sep, "/"))
+
+    entry_relative = entry.lstrip("./")
+    entry_candidates = glob.glob(os.path.join(source_root, entry_relative), recursive=True)
+    if not any(os.path.isfile(path) for path in entry_candidates):
+        raise ValueError("bundled plugin entry is not a production file: " + entry)
+    normalized.add(entry_relative)
+    for export in (manifest.get("exports") or {}).values():
+        if isinstance(export, str) and export != entry:
+            export_relative = export.lstrip("./")
+            export_candidates = glob.glob(os.path.join(source_root, export_relative), recursive=True)
+            if not any(os.path.isfile(path) for path in export_candidates):
+                raise ValueError("bundled plugin export is not a production file: " + export)
+            normalized.add(export_relative)
+    return tuple(sorted(normalized))
+
+
+def cmd_plugin_input(args):
+    for relative in production_files(args.source):
+        digest = hashlib.sha256(open(os.path.join(args.source, relative), "rb").read()).hexdigest()
+        print("%s  %s" % (digest, relative))
+
+
+def cmd_plugin_report(args):
+    _, version, _ = bundled_plugins(args.source)
+    paths = production_files(args.source)
+    peers = plugin_peer_links(args.source)
+    json.dump({"version": version, "files": list(paths), "peerLinks": list(peers)},
+              sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+def add_plugin_files(entries, source_root, dest_root):
+    """Copy exactly the production files and host-provided peer links into the rootfs."""
+    for relative in production_files(source_root):
+        path = os.path.join(source_root, relative)
+        mode = 0o755 if os.access(path, os.X_OK) else 0o644
+        entries[posixpath.join(dest_root, relative)] = Entry("file", mode, path=path, origin="plugin")
+    for peer in plugin_peer_links(source_root):
+        entries[posixpath.join(dest_root, "node_modules", peer)] = Entry(
+            "symlink", 0o777, link="/opt/dsh/node_modules/" + peer, origin="plugin")
+
+
 def norm_member(name):
     name = name.lstrip("/")
     while name.startswith("./"):
@@ -806,7 +910,8 @@ def install_ca_bundle(entries, report):
                                 "bundleBytes": len(bundle)}
 
 
-def overlay_entries(runtime_info, with_python=False, with_pnpm=False, with_bridge=False):
+def overlay_entries(runtime_info, with_python=False, with_pnpm=False, with_bridge=False,
+                    with_plugins=()):
     """Files dsh-app adds to the rootfs. Kept here so the recipe lives in one place."""
     E = {}
 
@@ -899,6 +1004,10 @@ def overlay_entries(runtime_info, with_python=False, with_pnpm=False, with_bridg
                       "- insert:\n"
                       "    - id: dsh-go-bridge\n"
                       "      name: %s/lib/index.js\n" % DSH_GO_BRIDGE)
+        if with_plugins:
+            patch += "#\n# Bundled plugins, loaded by path.\n"
+            for plugin_id, source in with_plugins:
+                patch += "- insert:\n    - id: %s\n      name: %s\n" % (plugin_id, source)
         f(DSH_WEB_PATCH.lstrip("/"), patch)
     d("root/.dsh", 0o700)
     d("root/.l2s", 0o700)          # PROOT_L2S_DIR: hard-link backing files (kept with /root on upgrade)
@@ -1139,11 +1248,19 @@ def cmd_assemble(args):
                  "pnpm", pnpm_drop_reason)
     if args.bridge:
         add_tree(args.bridge, DSH_GO_BRIDGE.lstrip("/"), "bridge", lambda rel, abi, prune: None)
+    if args.plugin:
+        add_plugin_files(entries, args.plugin, DSH_SU_PLUGIN.lstrip("/"))
 
     # 4. dsh-app overlay (wins over everything above)
     runtime_info = json.loads(args.runtime_info)
+    plugin_destinations = []
+    if args.bridge:
+        plugin_destinations.append((DSH_GO_BRIDGE, args.bridge))
+    if args.plugin:
+        plugin_destinations.append((DSH_SU_PLUGIN, args.plugin))
     for p, e in overlay_entries(runtime_info, with_python=bool(args.python), with_pnpm=bool(args.pnpm_prefix),
-                                with_bridge=bool(args.bridge)).items():
+                                with_bridge=bool(args.bridge),
+                                with_plugins=plugin_rows(plugin_destinations)).items():
         entries[p] = e
 
     # 5. ELF audit + arch/libc pruning; Termux-style fixes for node-pty helpers
@@ -1292,7 +1409,8 @@ def cmd_assemble(args):
         "uncompressedBytes": file_bytes,
         "counts": counts,
         "origins": {o: sum(1 for e in entries.values() if e.origin == o)
-                    for o in ("ubuntu", "deb", "python", "node", "dsh", "pnpm", "bridge", "overlay", "implicit")},
+                    for o in ("ubuntu", "deb", "python", "node", "dsh", "pnpm", "bridge", "plugin",
+                              "overlay", "implicit")},
     })
     report["droppedBytes"] = sum(report["dropped"].values())
     with open(args.report, "w") as f:
@@ -1421,6 +1539,7 @@ def cmd_manifest(args):
         "prootVersion": v["prootVersion"],
         "dshPatches": v.get("dshPatches", []),
         "dshGoBridge": {"version": v["dshGoBridge"], "path": DSH_GO_BRIDGE} if v.get("dshGoBridge") else None,
+        "dshSuPlugin": v.get("dshSuPlugin"),
         "tallocVersion": v["tallocVersion"],
         "androidShmemVersion": v["androidShmemVersion"],
         "npmRegistry": "https://registry.npmmirror.com",
@@ -1512,7 +1631,16 @@ def main():
     p.add_argument("--deb", action="append", help="extra .deb to unpack and register (no maintainer scripts)")
     p.add_argument("--python", help="python-build-standalone install_only tarball -> /opt/python")
     p.add_argument("--bridge", help="dsh-go-bridge package dir -> " + DSH_GO_BRIDGE + " (+ overlay row)")
+    p.add_argument("--plugin", help="dsh-su plugin package dir -> " + DSH_SU_PLUGIN + " (+ overlay row)")
     p.set_defaults(fn=cmd_assemble)
+
+    p = sub.add_parser("plugin-input")
+    p.add_argument("source", help="bundled plugin package dir")
+    p.set_defaults(fn=cmd_plugin_input)
+
+    p = sub.add_parser("plugin-report")
+    p.add_argument("source", help="bundled plugin package dir")
+    p.set_defaults(fn=cmd_plugin_report)
 
     p = sub.add_parser("manifest")
     p.add_argument("--abi", required=True)
