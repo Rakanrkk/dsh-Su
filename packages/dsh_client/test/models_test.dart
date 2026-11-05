@@ -177,20 +177,6 @@ void main() {
       expect(HostEvent.fromFrame({'type': 'cancel', 'eventId': 'e1'}), isA<HostRequestCancelledEvent>());
     });
 
-    test('ready hostInstanceId is optional', () {
-      final legacy = HostEvent.fromFrame({
-        'type': 'ready',
-        'clientId': 'client-legacy',
-        'host': {'home': '/home/legacy'},
-      }) as HostReadyEvent;
-      expect(legacy.hostInstanceId, isNull);
-      final current = HostEvent.fromFrame({
-        'type': 'ready',
-        'clientId': 'client-current',
-        'host': {'home': '/home/current', 'hostInstanceId': 'host-1'},
-      }) as HostReadyEvent;
-      expect(current.hostInstanceId, 'host-1');
-    });
   });
 
   test('tolerant parsing of unknown and malformed follow frames', () {
@@ -276,6 +262,11 @@ void main() {
       expect(unavailable.code, 'session/model-unavailable');
       expect(unavailable.isGatewayError, isFalse);
     });
+  });
+
+  test('contributions hostInstanceId is optional', () {
+    expect(DshGoContributions.fromJson({'v': 1, 'plugins': []})!.hostInstanceId, isNull);
+    expect(DshGoContributions.fromJson({'v': 1, 'hostInstanceId': 'host-1', 'plugins': []})!.hostInstanceId, 'host-1');
   });
 
   test('DshLaunchUrl parses the dsh web line', () {

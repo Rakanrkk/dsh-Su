@@ -58,8 +58,7 @@ final jobsProvider = StreamProvider.autoDispose.family<List<JobInfo>, String>((r
   var disposed = false;
   MuxGeneration? processingGeneration;
   ref.onDispose(() => disposed = true);
-  bool isCurrent() =>
-      !disposed && (processingGeneration == null || identical(mux.generation, processingGeneration));
+  bool isCurrent() => !disposed && (processingGeneration == null || identical(mux.generation, processingGeneration));
   final controller = JobWatchController(
     JobObservationStore(JobObservationStore.keyFor(host, sessionId), isCurrent: isCurrent),
     isCurrent: isCurrent,
@@ -68,58 +67,83 @@ final jobsProvider = StreamProvider.autoDispose.family<List<JobInfo>, String>((r
   var generation = mux.generation;
   var current = generation != null;
   return Stream.multi((output) {
-    var active = true;
-    late StreamSubscription<MuxGeneration> generations;
-    StreamSubscription<(MuxGeneration, List<JobInfo>)>? jobs;
-    Future<void> watch(MuxGeneration next) async {
-      generation = next;
-      await ready;
-      if (!active || !identical(generation, next)) return;
-      await jobs?.cancel();
-      if (!active || !identical(generation, next)) return;
-      final nextGeneration = next;
-      jobs = client
-          .watchJobs(sessionId)
-          .handleError((Object error, StackTrace stackTrace) {
-            if (error is DshCarrierLostException || error is DshClosedException) return;
-            Error.throwWithStackTrace(error, stackTrace);
-          })
-          .where((_) => active && identical(generation, nextGeneration))
-          .map((jobs) => (nextGeneration, jobs))
-          .listen(output.add, onError: output.addError, onDone: () {});
-    }
+        var active = true;
+        late StreamSubscription<MuxGeneration> generations;
+        StreamSubscription<(MuxGeneration, String?, List<JobInfo>)>? jobs;
+        Future<void> watch(MuxGeneration next) async {
+          generation = next;
+          await ready;
+          if (!active || !identical(generation, next)) return;
+          await jobs?.cancel();
+          if (!active || !identical(generation, next)) return;
+          final nextGeneration = next;
+          // Host identity comes from one fresh contributions read per generation:
+          // no If-None-Match and no nativeRawContributionsProvider cache. Jobs are
+          // shown while it resolves; errors, missing fields and old generations
+          // stay unknown rather than treating jobs as from a restart.
+          final identity = client
+              .readDshGoContributions(caps: const DshGoCaps())
+              .then<String?>((raw) => raw?.hostInstanceId, onError: (Object _) => null);
+          String? currentInstance;
+          List<JobInfo>? latestJobs;
+          jobs = client
+              .watchJobs(sessionId)
+              .handleError((Object error, StackTrace stackTrace) {
+                if (error is DshCarrierLostException || error is DshClosedException) return;
+                Error.throwWithStackTrace(error, stackTrace);
+              })
+              .where((_) => active && identical(generation, nextGeneration))
+              .map((jobList) {
+                latestJobs = jobList;
+                return (nextGeneration, currentInstance, jobList);
+              })
+              .listen(output.add, onError: output.addError, onDone: () {});
+          unawaited(
+            identity.then((instance) {
+              if (!active || !identical(generation, nextGeneration)) return;
+              currentInstance = instance;
+              final jobs = latestJobs;
+              if (jobs == null) return;
+              output.add((nextGeneration, instance, jobs));
+            }),
+          );
+        }
 
-    generations = mux.generations.listen(watch, onError: output.addError, onDone: () {
-      active = false;
-      output.close();
-    });
-    if (current && generation != null) unawaited(watch(generation!));
-    output.onCancel = () async {
-      disposed = true;
-      active = false;
-      await generations.cancel();
-      await jobs?.cancel();
-    };
-  })
-      .cast<(MuxGeneration, List<JobInfo>)>()
+        generations = mux.generations.listen(
+          watch,
+          onError: output.addError,
+          onDone: () {
+            active = false;
+            output.close();
+          },
+        );
+        if (current && generation != null) unawaited(watch(generation!));
+        output.onCancel = () async {
+          disposed = true;
+          active = false;
+          await generations.cancel();
+          await jobs?.cancel();
+        };
+      })
+      .cast<(MuxGeneration, String?, List<JobInfo>)>()
       .asyncMap((record) async {
         processingGeneration = record.$1;
         if (!isCurrent() || !identical(mux.generation, record.$1)) return null;
-        final jobs = await controller.reconcile(record.$1, record.$2);
+        final jobs = await controller.reconcile(record.$2, record.$3);
         return isCurrent() && identical(mux.generation, record.$1) ? jobs : null;
       })
       .where((jobs) => jobs != null)
       .cast<List<JobInfo>>()
       .map((jobs) {
-    final sorted = [...jobs]
-      ..sort((a, b) {
-        if (a.live != b.live) return a.live ? -1 : 1;
-        final at = a.startedAt ?? DateTime(0);
-        final bt = b.startedAt ?? DateTime(0);
-        return bt.compareTo(at);
+        final sorted = [...jobs]
+          ..sort((a, b) {
+            if (a.live != b.live) return a.live ? -1 : 1;
+            final at = a.startedAt ?? DateTime(0);
+            final bt = b.startedAt ?? DateTime(0);
+            return bt.compareTo(at);
+          });
+        return sorted;
       });
-    return sorted;
-  });
 });
 
 // ── 技能 ──────────────────────────────────────────────────────────────────────

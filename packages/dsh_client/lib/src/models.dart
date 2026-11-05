@@ -1920,7 +1920,6 @@ sealed class HostEvent extends DshEvent {
         return HostReadyEvent(
           asString(frame['clientId']) ?? '',
           asString(asMap(frame['host'])?['home']) ?? '',
-          hostInstanceId: asString(asMap(frame['host'])?['hostInstanceId']),
         );
       case 'emit':
         return _emit(asString(frame['event']) ?? '', asListOrEmpty(frame['args']));
@@ -1967,17 +1966,13 @@ sealed class HostEvent extends DshEvent {
 
 /// Opening item of each `$events` generation.
 final class HostReadyEvent extends HostEvent {
-  const HostReadyEvent(this.clientId, this.home, {this.hostInstanceId});
+  const HostReadyEvent(this.clientId, this.home);
 
   /// Binds `$events/result` replies to this generation.
   final String clientId;
 
   /// Host account home, only for abbreviating displayed paths.
   final String home;
-
-  /// Stable identity of the Host process when the Host supports it; null on
-  /// older Hosts, so callers must not infer a restart from absence.
-  final String? hostInstanceId;
 }
 
 /// Emitted (possibly twice) when a session is created or adopted.

@@ -218,11 +218,10 @@ class JobWatchController {
   }
 
   Future<List<JobInfo>> reconcile(
-    MuxGeneration? generation,
+    String? instance,
     List<JobInfo> jobs, {
     DateTime Function() now = DateTime.now,
   }) async {
-    final instance = generation?.hostInstanceId;
     if (isCurrent?.call() == false) return [];
     if (instance == null) {
       return [...jobs, ..._interrupted.values.map((job) => job.toJobInfo())];

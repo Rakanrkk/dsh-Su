@@ -458,6 +458,7 @@ class DshGoContributions {
   const DshGoContributions({
     this.v = dshGoProtocol,
     this.bridge,
+    this.hostInstanceId,
     this.rev,
     this.bootRev,
     this.limits = const {},
@@ -471,6 +472,7 @@ class DshGoContributions {
     return DshGoContributions(
       v: asInt(map['v']) ?? dshGoProtocol,
       bridge: asString(map['bridge']),
+      hostInstanceId: asString(map['hostInstanceId']),
       rev: asString(map['rev']),
       bootRev: asString(map['bootRev']),
       limits: asMapOrEmpty(map['limits']),
@@ -482,6 +484,9 @@ class DshGoContributions {
 
   /// The bridge's version.
   final String? bridge;
+
+  /// Stable identity of the Host process; null on Hosts that don't report it.
+  final String? hostInstanceId;
 
   /// Content hash: the `ETag`. Unchanged for the same answer.
   final String? rev;

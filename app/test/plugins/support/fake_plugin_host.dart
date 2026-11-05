@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
@@ -13,12 +14,21 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 /// `PluginsApi` is an extension on [DshClient], so fakes sit one level down:
 /// a [DshCarrier] answering `pluginManager/*` from [handlers] and a mux link
 /// that can push `$events` items.
-class FakePluginCarrier extends DshCarrier {
-  FakePluginCarrier({this.allowInstall = true, this.hostInstanceId});
+class FakePluginCarrier extends DshHttpCarrier {
+  FakePluginCarrier({
+    this.allowInstall = true,
+    this.hostInstanceId,
+    this.contributions,
+    this.gateContributions = false,
+  }) : super(_FakePluginConnection(contributions, gateContributions));
 
   /// False imitates the relay allow-list (no install/remove/inspect).
   final bool allowInstall;
   final String? hostInstanceId;
+  final Map<String, Object?>? contributions;
+  /// Pending contributions GET requests released via [releaseContribution]
+  /// (default: answer immediately).
+  final bool gateContributions;
 
   final List<(String endpoint, Map<String, Object?> args)> calls = [];
   final Map<String, FutureOr<Object?> Function(Map<String, Object?> args)> handlers = {};
@@ -75,6 +85,56 @@ class FakePluginCarrier extends DshCarrier {
     'event': event,
     'args': [payload],
   });
+
+  /// Pushes one whole `job/list` set (start the mux first).
+  void pushJob(String sessionId, List<JobInfo> jobs) {
+    link!.pushJob(sessionId, jobs);
+  }
+
+  int get contributionRequestsStarted => (connection as _FakePluginConnection).requestsStarted;
+
+  /// Completes the pending contributions GET at [index].
+  void releaseContribution(int index, String? hostInstanceId) {
+    (connection as _FakePluginConnection).release(index, hostInstanceId);
+  }
+}
+
+class _FakePluginConnection extends DshConnection {
+  _FakePluginConnection(this.contributions, this.gateContributions) : super(Uri.parse('http://127.0.0.1:1'));
+
+  final Map<String, Object?>? contributions;
+  final bool gateContributions;
+  int requestsStarted = 0;
+  final List<Completer<DshHttpResponse>> _pending = [];
+
+  @override
+  Future<DshHttpResponse> get(
+    String path, {
+    Map<String, String>? query,
+    Map<String, String>? headers,
+    Duration? timeout,
+  }) async {
+    if (path != '/dsh-go/v1/contributions' || (contributions == null && !gateContributions)) {
+      return DshHttpResponse(404, '', Uint8List(0));
+    }
+    if (gateContributions) {
+      requestsStarted++;
+      final pending = Completer<DshHttpResponse>();
+      _pending.add(pending);
+      return pending.future;
+    }
+    return DshHttpResponse(200, 'application/json', Uint8List.fromList(utf8.encode(jsonEncode(contributions))));
+  }
+
+  void release(int index, String? hostInstanceId) {
+    final body = {'v': 1, 'hostInstanceId': ?hostInstanceId, 'plugins': const []};
+    _pending.removeAt(index).complete(
+      DshHttpResponse(200, 'application/json', Uint8List.fromList(utf8.encode(jsonEncode(body)))),
+    );
+  }
+
+  @override
+  Future<void> close({bool force = false}) async {}
 }
 
 class FakeMuxLink implements DshMuxLink {
@@ -84,6 +144,9 @@ class FakeMuxLink implements DshMuxLink {
   DshMuxFrameHandler? _onFrame;
   DshMuxLossHandler? _onLost;
   String? _eventsId;
+  final Map<String, String> _jobStreams = {};
+  final Completer<void> _jobOpened = Completer<void>();
+  final Completer<void> _jobCancelled = Completer<void>();
   bool started = false;
 
   @override
@@ -95,6 +158,11 @@ class FakeMuxLink implements DshMuxLink {
 
   @override
   void open(String streamId, String endpoint, Map<String, Object?> payload) {
+    if (endpoint == r'job/list') {
+      _jobStreams[sessionIdOf(payload)] = streamId;
+      if (!_jobOpened.isCompleted) _jobOpened.complete();
+      return;
+    }
     if (endpoint != r'$events') return;
     _eventsId = streamId;
     scheduleMicrotask(
@@ -106,7 +174,37 @@ class FakeMuxLink implements DshMuxLink {
     );
   }
 
+  static String sessionIdOf(Map<String, Object?> payload) {
+    final args = payload['args'];
+    if (args is! Map) return '';
+    final request = args['request'];
+    if (request is! Map) return '';
+    return request['sessionId'] is String ? request['sessionId'] as String : '';
+  }
+
   void push(Map<String, Object?> value) => _onFrame?.call({'type': 'item', 'streamId': _eventsId, 'value': value});
+
+  void pushJob(String sessionId, List<JobInfo> jobs) {
+    final streamId = _jobStreams[sessionId];
+    if (streamId == null) throw StateError('job/list for $sessionId is not open');
+    _onFrame?.call({
+      'type': 'item',
+      'streamId': streamId,
+      'value': {
+        'jobs': [
+          for (final job in jobs)
+            {
+              'id': job.id,
+              'kind': job.kind,
+              'label': job.label,
+              'status': job.status,
+              'progress': ?job.progress,
+              'startedAt': ?job.startedAt?.millisecondsSinceEpoch,
+            },
+        ],
+      },
+    });
+  }
 
   @override
   void sendItem(String streamId, Object? value) {}
@@ -115,12 +213,20 @@ class FakeMuxLink implements DshMuxLink {
   void endUplink(String streamId) {}
 
   @override
-  void cancel(String streamId) {}
+  void cancel(String streamId) {
+    if (_jobStreams.containsValue(streamId) && !_jobCancelled.isCompleted) _jobCancelled.complete();
+  }
 
   @override
   Future<void> close(int code, String reason) async {
     _onLost?.call(DshCarrierLostException(reason), null);
   }
+
+  /// Resolves when the app opens `job/list` in the current generation.
+  Future<void> get jobOpened => _jobOpened.future;
+
+  /// Resolves when the app cancels its `job/list` stream.
+  Future<void> get jobCancelled => _jobCancelled.future;
 }
 
 HostConnection fakeHost(DshClient client, {HostKind kind = HostKind.local, String label = '本机'}) => HostConnection(
