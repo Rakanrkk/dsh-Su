@@ -47,7 +47,7 @@ UBUNTU_VERSION="${UBUNTU_VERSION:-24.04.5}"
 PROOT_VERSION="5.1.107.102"
 TALLOC_VERSION="2.5.0"
 SHMEM_VERSION="0.7"
-UBUNTU_EXTRA="${UBUNTU_EXTRA:-tzdata ca-certificates git}"   # extra noble debs (+ dependency closure)
+UBUNTU_EXTRA="${UBUNTU_EXTRA:-tzdata ca-certificates git curl wget file binutils jq ripgrep tree}"   # extra noble debs (+ dependency closure)
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.15}"
 PBS_RELEASE="${PBS_RELEASE:-20261021}"    # astral-sh/python-build-standalone release tag
 COMPRESS="${COMPRESS:-xz}"          # xz | gz
@@ -180,10 +180,12 @@ PYEOF
       fetch "$mirror/dists/$suite/InRelease" "$dir/$suite.InRelease"
       gpgv --keyring "$dir/archive-keyring.gpg" "$dir/$suite.InRelease" 2>/dev/null \
         || die "InRelease signature check failed for $suite"
-      want="$(awk -v f="main/binary-$arch/Packages.xz" '/^SHA256:/{s=1;next} /^[A-Za-z]/{s=0} s && $3==f {print $1}' "$dir/$suite.InRelease")"
-      [[ -n "$want" ]] || die "no Packages.xz hash for $suite/$arch"
-      fetch "$mirror/dists/$suite/main/binary-$arch/Packages.xz" "$dir/$suite.Packages.xz" "$want"
-      idx+=(--packages "$dir/$suite.Packages.xz")
+      for component in main universe; do
+        want="$(awk -v f="$component/binary-$arch/Packages.xz" '/^SHA256:/{s=1;next} /^[A-Za-z]/{s=0} s && $3==f {print $1}' "$dir/$suite.InRelease")"
+        [[ -n "$want" ]] || die "no Packages.xz hash for $suite/$component/$arch"
+        fetch "$mirror/dists/$suite/$component/binary-$arch/Packages.xz" "$dir/$suite-$component.Packages.xz" "$want"
+        idx+=(--packages "$dir/$suite-$component.Packages.xz")
+      done
     done
     mkdir -p "$LOCKS"
     # shellcheck disable=SC2086

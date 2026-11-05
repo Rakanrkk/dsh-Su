@@ -3,9 +3,49 @@
   "want": [
     "tzdata",
     "ca-certificates",
-    "git"
+    "git",
+    "curl",
+    "wget",
+    "file",
+    "binutils",
+    "jq",
+    "ripgrep",
+    "tree"
   ],
   "packages": [
+    {
+      "package": "binutils",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/binutils_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "f3333e2ef1b857f35905194f42e9541ff6a42bef8fbba6d8bb56abff460d4fa2",
+      "size": 18116,
+      "installedSize": 162,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "binutils-aarch64-linux-gnu",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/binutils-aarch64-linux-gnu_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "b5311d11d56f2daa82e952612b9578ef675af67714edb9aef7e3dc6cf2531575",
+      "size": 3304470,
+      "installedSize": 16652,
+      "upgradesBase": null,
+      "neededBy": "binutils"
+    },
+    {
+      "package": "binutils-common",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/binutils-common_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "e2930005b9e4d599cfa8ebddd1d888cbcef7ebec38c8c7dfbc4babbdeaa52c3b",
+      "size": 240286,
+      "installedSize": 564,
+      "upgradesBase": null,
+      "neededBy": "binutils"
+    },
     {
       "package": "ca-certificates",
       "version": "20260816ubuntu0.24.04.1",
@@ -14,6 +54,28 @@
       "sha256": "8a0a754aaafed72cc8efb8c1731808133284a84fbfc76a4fcc73fce9e01b4187",
       "size": 138884,
       "installedSize": 330,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "curl",
+      "version": "8.5.0-2ubuntu10.16",
+      "architecture": "arm64",
+      "filename": "pool/main/c/curl/curl_8.5.0-2ubuntu10.16_arm64.deb",
+      "sha256": "b3f66040e895d5a2bb9eb3fca5d98766997348080e445c209a29b1819a9a7d60",
+      "size": 221812,
+      "installedSize": 556,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "file",
+      "version": "1:5.45-3build1",
+      "architecture": "arm64",
+      "filename": "pool/main/f/file/file_5.45-3build1_arm64.deb",
+      "sha256": "aaced56de3dfca0c9a9b6bd4b80b45dcc8d712d02e213ae1fce5f0c8cfdffb28",
+      "size": 21976,
+      "installedSize": 99,
       "upgradesBase": null,
       "neededBy": "requested"
     },
@@ -40,15 +102,59 @@
       "neededBy": "git"
     },
     {
-      "package": "libbrotli1",
-      "version": "1.1.0-2build2",
+      "package": "jq",
+      "version": "1.7.1-3ubuntu0.24.04.2",
       "architecture": "arm64",
-      "filename": "pool/main/b/brotli/libbrotli1_1.1.0-2build2_arm64.deb",
-      "sha256": "cabf3462d908e72f2e594f19ae87c581c4614f099947e38fbd865bf8eae27014",
-      "size": 339424,
+      "filename": "pool/main/j/jq/jq_1.7.1-3ubuntu0.24.04.2_arm64.deb",
+      "sha256": "d26709d728bf14016eac6ec5e56f88027b1751dffe1471e8cda3f6f8a0c8c1dc",
+      "size": 64640,
+      "installedSize": 148,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "libbinutils",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/libbinutils_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "c86634a7471aa27439b9bef7bd91ca8136f01f938c93bf6abe16a8fca758e849",
+      "size": 766448,
+      "installedSize": 2973,
+      "upgradesBase": null,
+      "neededBy": "binutils"
+    },
+    {
+      "package": "libbrotli1",
+      "version": "1.1.0-2ubuntu0.1",
+      "architecture": "arm64",
+      "filename": "pool/main/b/brotli/libbrotli1_1.1.0-2ubuntu0.1_arm64.deb",
+      "sha256": "911411fb6fdfb4ab91dd4242f5a0a5e1f47b38e003a25c8dc7730238cb323e18",
+      "size": 339950,
       "installedSize": 863,
       "upgradesBase": null,
       "neededBy": "libcurl3t64-gnutls"
+    },
+    {
+      "package": "libctf-nobfd0",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/libctf-nobfd0_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "c80063890a430e42181e7ad3f0277bb563abc22d556fd5e65c798c4ee8318684",
+      "size": 100868,
+      "installedSize": 355,
+      "upgradesBase": null,
+      "neededBy": "binutils-aarch64-linux-gnu"
+    },
+    {
+      "package": "libctf0",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/libctf0_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "2516f90d292d01eefe9207a623251550d93665f25d262f206f5c6b803389ed6b",
+      "size": 95744,
+      "installedSize": 276,
+      "upgradesBase": null,
+      "neededBy": "binutils-aarch64-linux-gnu"
     },
     {
       "package": "libcurl3t64-gnutls",
@@ -60,6 +166,17 @@
       "installedSize": 877,
       "upgradesBase": null,
       "neededBy": "git"
+    },
+    {
+      "package": "libcurl4t64",
+      "version": "8.5.0-2ubuntu10.16",
+      "architecture": "arm64",
+      "filename": "pool/main/c/curl/libcurl4t64_8.5.0-2ubuntu10.16_arm64.deb",
+      "sha256": "41fa5964da7f422e0729d2355317254e3ee1a28eda9eba70423ed43f77cc7477",
+      "size": 337276,
+      "installedSize": 940,
+      "upgradesBase": null,
+      "neededBy": "curl"
     },
     {
       "package": "liberror-perl",
@@ -106,6 +223,17 @@
       "neededBy": "libperl5.38t64"
     },
     {
+      "package": "libgprofng0",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/libgprofng0_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "ee37f8539eab25c43bd622589932006c6ba90d44e2b7442325fc237f01a3ab5b",
+      "size": 776452,
+      "installedSize": 2936,
+      "upgradesBase": null,
+      "neededBy": "binutils-aarch64-linux-gnu"
+    },
+    {
       "package": "libgssapi-krb5-2",
       "version": "1.20.1-6ubuntu2.10",
       "architecture": "arm64",
@@ -115,6 +243,28 @@
       "installedSize": 422,
       "upgradesBase": null,
       "neededBy": "libcurl3t64-gnutls"
+    },
+    {
+      "package": "libjansson4",
+      "version": "2.14-2build2",
+      "architecture": "arm64",
+      "filename": "pool/main/j/jansson/libjansson4_2.14-2build2_arm64.deb",
+      "sha256": "a9d513eae76f4efb1c7370413bd21634fcfc0955e103d26af95f298af6c90abd",
+      "size": 34362,
+      "installedSize": 99,
+      "upgradesBase": null,
+      "neededBy": "binutils-aarch64-linux-gnu"
+    },
+    {
+      "package": "libjq1",
+      "version": "1.7.1-3ubuntu0.24.04.2",
+      "architecture": "arm64",
+      "filename": "pool/main/j/jq/libjq1_1.7.1-3ubuntu0.24.04.2_arm64.deb",
+      "sha256": "0dbdaf70784536d6dd15f2521101399e89b3b697926862e171b2beaffc6ac22e",
+      "size": 134982,
+      "installedSize": 362,
+      "upgradesBase": null,
+      "neededBy": "jq"
     },
     {
       "package": "libk5crypto3",
@@ -172,6 +322,28 @@
       "neededBy": "libcurl3t64-gnutls"
     },
     {
+      "package": "libmagic-mgc",
+      "version": "1:5.45-3build1",
+      "architecture": "arm64",
+      "filename": "pool/main/f/file/libmagic-mgc_5.45-3build1_arm64.deb",
+      "sha256": "63fc29c62e07d0880e46f6b9453e39e97fa80d133c0688206e6e00b84726ab94",
+      "size": 307366,
+      "installedSize": 8335,
+      "upgradesBase": null,
+      "neededBy": "libmagic1t64"
+    },
+    {
+      "package": "libmagic1t64",
+      "version": "1:5.45-3build1",
+      "architecture": "arm64",
+      "filename": "pool/main/f/file/libmagic1t64_5.45-3build1_arm64.deb",
+      "sha256": "cf7bba0fb21b38ea2454362d211b83a26da2528e36d90c72390fd5eb43168019",
+      "size": 85706,
+      "installedSize": 239,
+      "upgradesBase": null,
+      "neededBy": "file"
+    },
+    {
       "package": "libnghttp2-14",
       "version": "1.59.0-1ubuntu0.4",
       "architecture": "arm64",
@@ -181,6 +353,17 @@
       "installedSize": 228,
       "upgradesBase": null,
       "neededBy": "libcurl3t64-gnutls"
+    },
+    {
+      "package": "libonig5",
+      "version": "6.9.9-1build1",
+      "architecture": "arm64",
+      "filename": "pool/main/libo/libonig/libonig5_6.9.9-1build1_arm64.deb",
+      "sha256": "12044a8919f3aae339652bfcd8b424245d6606a6124ae3ce08682485c12b124f",
+      "size": 171690,
+      "installedSize": 697,
+      "upgradesBase": null,
+      "neededBy": "libjq1"
     },
     {
       "package": "libperl5.38t64",
@@ -202,7 +385,7 @@
       "size": 57436,
       "installedSize": 155,
       "upgradesBase": null,
-      "neededBy": "libcurl3t64-gnutls"
+      "neededBy": "wget"
     },
     {
       "package": "librtmp1",
@@ -236,6 +419,17 @@
       "installedSize": 106,
       "upgradesBase": null,
       "neededBy": "libsasl2-2"
+    },
+    {
+      "package": "libsframe1",
+      "version": "2.42-4ubuntu2.10",
+      "architecture": "arm64",
+      "filename": "pool/main/b/binutils/libsframe1_2.42-4ubuntu2.10_arm64.deb",
+      "sha256": "4e2ef8c92da324c7f8e8f055c8c698e37c93b886602766e7e72ac178835c9a31",
+      "size": 15428,
+      "installedSize": 160,
+      "upgradesBase": null,
+      "neededBy": "libbinutils"
     },
     {
       "package": "libssh-4",
@@ -293,6 +487,28 @@
       "neededBy": "perl"
     },
     {
+      "package": "ripgrep",
+      "version": "14.1.0-1",
+      "architecture": "arm64",
+      "filename": "pool/universe/r/rust-ripgrep/ripgrep_14.1.0-1_arm64.deb",
+      "sha256": "71fe8a5667bc87d2bca175a3426c6ec518e0679cc821d23ae7056de7096f04de",
+      "size": 1455230,
+      "installedSize": 4878,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "tree",
+      "version": "2.1.1-2ubuntu3.24.04.2",
+      "architecture": "arm64",
+      "filename": "pool/universe/t/tree/tree_2.1.1-2ubuntu3.24.04.2_arm64.deb",
+      "sha256": "db73aefa02220d220343a66005f956cb7beec74d1b3f72bdcbe6e29ee0b90743",
+      "size": 46224,
+      "installedSize": 156,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
       "package": "tzdata",
       "version": "2026e-0ubuntu0.24.04.1",
       "architecture": "all",
@@ -300,6 +516,17 @@
       "sha256": "2f6794a7f31753fc947d9ac02ff03ea46510f34864f9d132a93d7b105e3c4447",
       "size": 282136,
       "installedSize": 1389,
+      "upgradesBase": null,
+      "neededBy": "requested"
+    },
+    {
+      "package": "wget",
+      "version": "1.21.4-1ubuntu4.5",
+      "architecture": "arm64",
+      "filename": "pool/main/w/wget/wget_1.21.4-1ubuntu4.5_arm64.deb",
+      "sha256": "ed71643b8873240cce1ac905b7993f3372436d39410894f413968f43839f84e6",
+      "size": 330776,
+      "installedSize": 924,
       "upgradesBase": null,
       "neededBy": "requested"
     }
