@@ -46,14 +46,14 @@ class AttachButton extends StatelessWidget {
                   HapticFeedback.selectionClick();
                   onPressed!();
                 },
-          radius: 22,
+          radius: 20,
           child: Container(
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(color: scheme.onSurface.withValues(alpha: 0.06), shape: BoxShape.circle),
             child: Icon(
               AppIcons.add,
-              size: 24,
+              size: 22,
               color: enabled ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.38),
             ),
           ),

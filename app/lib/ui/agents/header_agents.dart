@@ -65,9 +65,10 @@ class HeaderTitleText extends ConsumerWidget {
 /// The right side: the agents capsule (when there is one), then [trailing]
 /// (the model chip) except in a subagent conversation.
 class HeaderTrailingSlot extends ConsumerWidget {
-  const HeaderTrailingSlot({super.key, required this.trailing});
+  const HeaderTrailingSlot({super.key, this.trailing});
 
-  final Widget trailing;
+  /// Null on a phone, where the model chip gives its room to the title.
+  final Widget? trailing;
 
   /// Between the header's pieces.
   static const gap = 8.0;
@@ -82,7 +83,7 @@ class HeaderTrailingSlot extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (showsKey) ...[const SizedBox(width: gap), key!],
-        if (!(agents?.isChild ?? false)) ...[const SizedBox(width: gap), trailing],
+        if (trailing case final trailing? when !(agents?.isChild ?? false)) ...[const SizedBox(width: gap), trailing],
       ],
     );
   }

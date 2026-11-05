@@ -15771,6 +15771,24 @@ class L10nEn extends L10n {
   }
 
   @override
+  String get shellPanelOverview => 'Info';
+
+  @override
+  String get shellPanelWorkspace => 'Workspace';
+
+  @override
+  String get shellPanelModel => 'Model';
+
+  @override
+  String get shellPanelHost => 'Host';
+
+  @override
+  String get shellPanelOpenFull => 'Open full page';
+
+  @override
+  String get shellPanelNoPlugins => 'No plugin panels for this chat yet';
+
+  @override
   String get shellQuickPanel => 'Shortcuts';
 
   @override

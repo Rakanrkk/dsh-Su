@@ -200,7 +200,7 @@ class _CommandTile extends StatelessWidget {
               ),
               constraints: const BoxConstraints(minHeight: 52),
               // 6 + 6 + half of 32 = 28: the icon's centre over the ＋ key's.
-              padding: const EdgeInsets.fromLTRB(6, 8, 12, 8),
+              padding: const EdgeInsets.fromLTRB(2, 8, 12, 8),
               child: Row(
                 children: [
                   SizedBox(width: 32, child: Icon(slashIcon(command), size: 20, color: colors.onSurfaceVariant)),
