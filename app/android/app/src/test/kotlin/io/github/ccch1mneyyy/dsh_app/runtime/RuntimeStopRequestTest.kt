@@ -43,4 +43,28 @@ class RuntimeStopRequestTest {
         assertFalse(acceptsRunReady(true, RuntimeController.Phase.STOPPING, 12, 11, false))
         assertFalse(acceptsRunReady(false, RuntimeController.Phase.STARTING, 12, 11, false))
     }
+
+    @Test fun installCannotDispatchWhileLifecycleIsLiveOrCleanupUnconfirmed() {
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.RUNNING, resetting = false, processActive = true),
+        )
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.STARTING, resetting = false, processActive = false),
+        )
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.STOPPING, resetting = false, processActive = false),
+        )
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.INSTALLING, resetting = false, processActive = false),
+        )
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.INSTALLED, resetting = true, processActive = false),
+        )
+        assertFalse(
+            RuntimeController.installAllowed(RuntimeController.Phase.ERROR, resetting = false, processActive = true),
+        )
+        assertTrue(
+            RuntimeController.installAllowed(RuntimeController.Phase.ERROR, resetting = false, processActive = false),
+        )
+    }
 }

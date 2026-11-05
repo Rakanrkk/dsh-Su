@@ -220,9 +220,19 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         return if (active) runSafe else safeState == SafeState.ON
     }
 
+    internal fun installAllowed(
+        phase: Phase,
+        resetting: Boolean,
+        processActive: Boolean,
+    ): Boolean =
+        phase != Phase.INSTALLING &&
+            phase !in setOf(Phase.RUNNING, Phase.STARTING, Phase.STOPPING) &&
+            !resetting &&
+            !(phase == Phase.ERROR && processActive)
+
     /** [dropKept]: give up what a reset kept but cannot be put back (see [KeepFailed]). */
     @Synchronized fun install(dropKept: Boolean = false, onDone: (Throwable?) -> Unit) {
-        if (phase == Phase.INSTALLING || resetting) {
+        if (!installAllowed(phase, resetting, process != null)) {
             onDone(IllegalStateException("install busy"))
             return
         }
