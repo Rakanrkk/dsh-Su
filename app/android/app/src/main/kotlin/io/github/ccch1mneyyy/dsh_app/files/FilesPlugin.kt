@@ -63,6 +63,13 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
         context = testContext
     }
 
+    internal constructor(
+        testContext: Context,
+        private val testReplyDispatcher: ((() -> Unit) -> Unit)?,
+    ) : this() {
+        context = testContext
+    }
+
     private lateinit var methods: MethodChannel
     private lateinit var context: Context
     private var activity: ActivityPluginBinding? = null
@@ -72,6 +79,11 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
     private val pdfPages = PdfPages()
     private val rootAccess by lazy { RootFiles(context) }
     private val rootRuntime = BuildConfig.ROOT_RUNTIME
+    private var reply: (() -> Unit) -> Unit = { action -> main.post(action) }
+
+    init {
+        if (testReplyDispatcher != null) reply = testReplyDispatcher
+    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
@@ -370,13 +382,13 @@ class FilesPlugin() : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHand
             } catch (e: Throwable) {
                 Result.failure(e)
             }
-            main.post { outcome.fold(onSuccess = { result.success(it) }, onFailure = { fail(result, it) }) }
+            reply { outcome.fold(onSuccess = { result.success(it) }, onFailure = { fail(result, it) }) }
         }
     }
 
     private fun <T> pdf(result: MethodChannel.Result, work: PdfPages.() -> T) {
         pdfPages.run(work) { outcome ->
-            main.post {
+            reply {
                 outcome.fold(
                     onSuccess = { result.success(if (it is Unit) null else it) },
                     onFailure = { e -> if (e is java.io.FileNotFoundException) result.error("missing", e.message, null) else fail(result, e) },

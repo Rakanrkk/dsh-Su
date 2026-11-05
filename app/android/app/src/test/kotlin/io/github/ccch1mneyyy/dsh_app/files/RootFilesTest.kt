@@ -9,11 +9,14 @@ import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.runtime.RootShellSelection
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -33,6 +36,7 @@ private class TestContext(
 private class RecordingResult : MethodChannel.Result {
     var code: String? = null
     var callerThread: Thread? = null
+    var completionCount = 0
     val completed = CountDownLatch(1)
 
     override fun success(value: Any?) { record(null) }
@@ -42,24 +46,25 @@ private class RecordingResult : MethodChannel.Result {
     private fun record(newCode: String?) {
         code = newCode
         callerThread = Thread.currentThread()
+        completionCount += 1
         completed.countDown()
     }
 }
 
-private class TestRootFiles(
-    context: TestContext,
-) : FilesPlugin.RootFiles(
-    context,
-    rootRuntime = false,
-    selector = context.onSelector,
-)
+private fun testRootFiles(context: TestContext): FilesPlugin.RootFiles {
+    return FilesPlugin.RootFiles(
+        context,
+        rootRuntime = false,
+        selector = context.onSelector,
+    )
+}
 
 class RootFilesTest {
     @get:Rule val temp = TemporaryFolder()
 
     @Test fun normalBuildDoesNotSelectRootForAnOrdinaryNonGuestPath() {
         val selected = AtomicBoolean()
-        val access = TestRootFiles(TestContext(temp.root) {
+        val access = testRootFiles(TestContext(temp.root) {
             selected.set(true)
             null
         })
@@ -118,15 +123,27 @@ class RootFilesTest {
     @Test fun rootSaveMissingCompletesInBackgroundWithStableError() {
         if (!BuildConfig.ROOT_RUNTIME) return
         val result = RecordingResult()
+        val replies = LinkedBlockingQueue<() -> Unit>()
+        val workerThread = AtomicReference<Thread?>()
+        val plugin = FilesPlugin(TestContext(temp.root)) { action ->
+            workerThread.set(Thread.currentThread())
+            replies.put(action)
+        }
 
-        FilesPlugin(TestContext(temp.root)).onMethodCall(
+        plugin.onMethodCall(
             MethodCall("saveToDownloads", mapOf("path" to "missing.txt")),
             result,
         )
 
-        assertTrue(result.completed.await(2, TimeUnit.SECONDS))
+        assertNull(result.callerThread)
+        val reply = replies.poll(2, TimeUnit.SECONDS)
+        assertNotNull(reply)
+        reply!!()
+        assertNull(replies.poll())
+        assertEquals(1, result.completionCount)
         assertEquals("missing", result.code)
-        assertTrue(result.callerThread !== Thread.currentThread())
+        assertEquals(Thread.currentThread(), result.callerThread)
+        assertTrue(workerThread.get() !== Thread.currentThread())
     }
 
     @Test fun ordinaryNonGuestPathsNeverRequestRoot() {
