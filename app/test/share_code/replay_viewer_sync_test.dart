@@ -38,7 +38,7 @@ void main() {
   test('a filled page keeps its data inside the data block', () {
     const file = '{"dshgo":2,"kind":"conversation","name":"</script><script>alert(1)</script>","code":"x.y"}';
     final html = conversationHtml(file, title: '<b>标题</b>');
-    expect(html, contains('<title>&lt;b&gt;标题&lt;/b&gt; · dsh-Su</title>'));
+    expect(html, contains('<title>&lt;b&gt;标题&lt;/b&gt; · DSH SU</title>'));
     final block = RegExp(
       r'<script type="application/json" id="dshgo-data">(.*?)</script>',
       dotAll: true,
