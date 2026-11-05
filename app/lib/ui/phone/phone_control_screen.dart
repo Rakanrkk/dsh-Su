@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -76,11 +77,11 @@ class PhoneControlScreen extends ConsumerStatefulWidget {
 class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
   late final AppLifecycleListener _lifecycle;
 
-  /// Sent to the accessibility settings and not back with it on yet.
-  bool _awaitingA11y = false;
+  String? _rootAccessError;
+  bool _rootAccessBusy = false;
 
   /// Came back from there still off: point at the restricted-settings guide.
-  bool _a11yAttemptFailed = false;
+  final bool _a11yAttemptFailed = false;
   bool _testing = false;
   bool _backgroundGuideShown = false;
 
@@ -104,12 +105,7 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
 
   Future<void> _onResume() async {
     await _phone.refreshStatus();
-    if (!mounted || !_awaitingA11y) return;
-    final on = ref.read(phoneProvider).status.a11y.enabled;
-    setState(() {
-      _awaitingA11y = false;
-      _a11yAttemptFailed = !on;
-    });
+    if (mounted) setState(() {});
   }
 
   void _toast(String text) {
@@ -231,12 +227,25 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
     }
   }
 
-  Future<void> _openA11y() async {
-    setState(() => _awaitingA11y = true);
-    final ok = await _phone.openAccessibilitySettings();
-    if (!ok && mounted) {
-      setState(() => _awaitingA11y = false);
-      _toast(context.l10n.phoneOpenAccessibilityFailed);
+  /// Root is the only setup action for failed app-owned permissions: it runs
+  /// the fixed self grants, then refreshes Android's actual state.
+  Future<void> _ensureRootAccess() async {
+    if (_rootAccessBusy) return;
+    setState(() {
+      _rootAccessBusy = true;
+      _rootAccessError = null;
+    });
+    try {
+      await ref.read(runtimeBridgeProvider).ensureRootAccess();
+      if (mounted) await _phone.refresh();
+    } on PlatformException catch (error) {
+      if (mounted) {
+        setState(() {
+          _rootAccessError = [error.code, ?error.message].join(': ');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _rootAccessBusy = false);
     }
   }
 
@@ -387,8 +396,8 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
   List<Widget> _setup(PhoneStatus status) {
     final a11y = status.a11y;
     final confirmationReady = status.notifications && status.confirmationNotifications != false;
-    final showA11yStep = !status.rootRuntime || !a11y.ok;
-    final showNotificationsStep = !status.rootRuntime || !confirmationReady;
+    final showA11yStep = !a11y.ok;
+    final showNotificationsStep = !confirmationReady;
     final showRestricted =
         showA11yStep && !a11y.enabled && (status.device.mayNeedRestrictedSettings || _a11yAttemptFailed);
     return [
@@ -408,8 +417,12 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
               trailing: a11y.ok
                   ? const DoneMark()
                   : FixButton(
-                      label: a11y.enabled ? context.l10n.phoneControlGoSettings : context.l10n.phoneControlGoEnable,
-                      onPressed: _openA11y,
+                      label: _rootAccessBusy
+                      ? context.l10n.accessRootConfiguring
+                      : _rootAccessError == null
+                      ? context.l10n.accessRootAuthorize
+                      : context.l10n.commonRetry,
+                      onPressed: _ensureRootAccess,
                     ),
             ),
           if (showRestricted)
@@ -435,7 +448,22 @@ class _PhoneControlScreenState extends ConsumerState<PhoneControlScreen> {
                   : context.l10n.phoneControlNotificationsHint,
               trailing: confirmationReady
                   ? DoneMark(label: context.l10n.phoneControlAllowed)
-                  : FixButton(label: context.l10n.phoneControlGoEnable, onPressed: _openAppDetails),
+                  : FixButton(
+                      label: _rootAccessBusy
+                      ? context.l10n.accessRootConfiguring
+                      : _rootAccessError == null
+                      ? context.l10n.accessRootAuthorize
+                      : context.l10n.commonRetry,
+                      onPressed: _ensureRootAccess,
+                    ),
+            ),
+          if (_rootAccessError != null)
+            ListPageRow(
+              icon: AppIcons.warning,
+              iconColor: DshColors.of(context).warning,
+              title: context.l10n.accessRootFailed,
+              subtitle: _rootAccessError,
+              subtitleMaxLines: 2,
             ),
           ListPageRow(
             key: const Key('phone-a11y-restore'),

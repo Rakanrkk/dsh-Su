@@ -37,15 +37,32 @@ void main() {
       const PhoneControlScreen(),
       native: FakePhoneNative(status: {...phoneStatus(), 'confirmationNotifications': false}),
     );
-    expect(find.text('请允许手机操控通知的弹出提醒'), findsOneWidget);
-    final row = find.ancestor(of: find.text('通知'), matching: find.byType(PhoneStepRow));
-    expect(find.descendant(of: row, matching: find.byType(DoneMark)), findsNothing);
-    await tester.tap(find.descendant(of: row, matching: find.text('去开启')));
+    expect(find.text('无障碍服务'), findsOneWidget);
+    expect(find.descendant(of: find.byType(PhoneStepRow), matching: find.byType(DoneMark)), findsNothing);
+    await tester.tap(find.text('授权 Root').first);
     await tester.pump();
-    expect(h.native!.callsOf('openAppDetails'), hasLength(1));
+    expect(find.text('正在自动配置…'), findsNWidgets(2));
     h.native!.push({...phoneStatus(), 'confirmationNotifications': true});
     await settlePhone(tester);
-    expect(find.descendant(of: row, matching: find.byType(DoneMark)), findsOneWidget);
+    expect(find.text('请允许手机操控通知的弹出提醒'), findsNothing);
+  });
+
+  testWidgets('root runtime still shows failed phone readbacks as setup steps', (tester) async {
+    await pumpPhone(
+      tester,
+      const PhoneControlScreen(),
+      native: FakePhoneNative(
+        status: {
+          ...phoneStatus(enabled: true, a11y: false),
+          'rootRuntime': true,
+          'confirmationNotifications': false,
+        },
+      ),
+    );
+    expect(find.text('无障碍服务'), findsOneWidget);
+    expect(find.widgetWithText(PhoneStepRow, '请允许手机操控通知的弹出提醒'), findsOneWidget);
+    expect(find.descendant(of: find.byType(PhoneStepRow), matching: find.byType(DoneMark)), findsNothing);
+    expect(find.textContaining('允许手机操控通知'), findsOneWidget);
   });
 
   testWidgets('the help remains scrollable on a narrow screen with large text', (tester) async {
