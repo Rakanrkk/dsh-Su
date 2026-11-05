@@ -989,6 +989,8 @@ export interface ContributionsResponse {
   v: 1
   /** dsh-go-bridge version */
   bridge: string
+  /** Stable identity of the bridge's Host process; changes on process restart */
+  hostInstanceId?: string
   /** Content hash; also the ETag */
   rev: string
   bootRev?: string | null
