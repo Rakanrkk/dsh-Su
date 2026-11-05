@@ -73,14 +73,14 @@ export function apply(ctx, options = {}) {
   ctx.inject(['dshGo'], (host) => {
     host.dshGo.panel('tools', {
       view: toolsView,
-      data: (_scope, emit) => {
+      data: (_scope, emit, caps) => {
         const controller = new AbortController()
-        emit(toolsData({ result: empty(), locale: undefined }))
+        emit(toolsData({ result: empty(), locale: caps?.locale }))
         refresh(controller.signal).then(
           (next) => {
-            emit(toolsData({ result: next, locale: undefined }))
+            emit(toolsData({ result: next, locale: caps?.locale }))
           },
-          () => emit(toolsData({ result: empty(), locale: undefined })),
+          () => emit(toolsData({ result: empty(), locale: caps?.locale })),
         )
         return () => controller.abort()
       },

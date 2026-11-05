@@ -52,6 +52,30 @@ test('createTestHost loads the panel and refreshes real probes', async () => {
   host.dispose()
 })
 
+test('panel data uses feed locale for the first and refreshed values', async () => {
+  const english = createTestHost({ dir: fileURLToPath(new URL('..', import.meta.url)), caps: { locale: 'en-US' } })
+  apply(english.ctx, { tools: ['dsh-su-missing-tool'] })
+  const enFeed = english.subscribe('tools')
+  for (let elapsed = 0; enFeed.data?.items?.length !== 1 && elapsed < 5000; elapsed += 50) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(enFeed.data.caption, '0 / 1')
+  assert.equal(enFeed.data.items[0].trailing, 'Missing')
+  const invocation = await english.invoke('tools', { action: 'refresh', locale: 'en-US' })
+  assert.deepEqual(invocation.effects.map((effect) => effect.type), ['patch', 'toast'])
+  assert.equal(invocation.effects[0].data.items[0].trailing, 'Missing')
+  const chinese = createTestHost({ dir: fileURLToPath(new URL('..', import.meta.url)) })
+  apply(chinese.ctx, { tools: ['dsh-su-missing-tool'] })
+  const zhFeed = chinese.subscribe('tools')
+  for (let elapsed = 0; zhFeed.data?.items?.length !== 1 && elapsed < 5000; elapsed += 50) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  assert.equal(zhFeed.data.caption, '0 / 1')
+  assert.equal(zhFeed.data.items[0].trailing, '缺失')
+  english.dispose()
+  chinese.dispose()
+})
+
 test('subscriptions stay independent and manual refresh does not cancel scopes', async () => {
   const host = createTestHost({ dir: fileURLToPath(new URL('..', import.meta.url)) })
   apply(host.ctx, { tools: ['curl'] })
