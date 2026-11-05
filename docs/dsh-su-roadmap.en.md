@@ -10,27 +10,28 @@ DSH SU aims to make chat, terminals, files, plugins and phone control ready to u
 
 | Version | Status |
 | --- | --- |
-| **1.1.0+11051253** | ARM64 and x64 APKs delivered locally; not yet uploaded to GitHub Releases |
+| **1.1.0+11051721** | Latest ARM64 and x64 candidate APKs; not yet tested on a device or uploaded to GitHub Releases |
+| 1.1.0+11051253 | Previous candidate APKs |
 | [v1.0.9-internal.9](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9) | Current public GitHub prerelease |
 
-New device-use validation is incomplete for 11051253. Attachment and interface compatibility issues are being repaired. Job-interruption handling and full plugin adoption are not included in this APK.
+11051721 includes job-interruption observation, on-demand Root background guidance and the first bundled tool-environment diagnostic plugin. These features are in the candidate APKs; device use remains unverified and M1–M3 are not complete as a whole.
 
-## What 1.1.0+11051253 delivers
+## New features and fixes in 1.1.0+11051721
 
-- **Branding and explanations:** main user-facing labels and Root environment descriptions use DSH SU in Chinese and English.
-- **Automatic Root setup:** required access is prepared centrally, onboarding reads actual permission state, and accessibility recovery is connected.
-- **Main-screen actions:** coordinate taps and some system keys use Root execution; page reading retains existing capabilities.
-- **Files:** improved Root file reading, preview and export, with fixes to completion and error feedback.
-- **Runtime:** fewer conflicts between installation, execution, stopping and cleanup, plus additional base tools.
-- **Upstream updates:** new interface and behavior fixes while retaining chat, plugins, terminals and remote connections.
+This build retains the previous candidate's branding, automatic Root setup, main-screen actions and file capabilities, and adds:
+
+- **Job-interruption observation:** after the engine restarts, previously observed jobs show an interrupted state rather than continuing to appear live. Old tasks are not automatically repeated.
+- **On-demand background guidance:** explains when background tasks prepare Root and shows the current notification state.
+- **Tool-environment diagnostics:** a bundled plugin offers a read-only tool and panel to inspect the availability and versions of common command-line tools.
+- **Compatibility fixes:** repairs ordinary and remote attachment behavior and matches permission entry points to the runtime mode.
 
 ## Product milestones
 
 | Milestone | User outcome | Current progress |
 | --- | --- | --- |
-| **M1: Root product ready to use** | Grant Root and use core features without configuring each system permission manually; install, use, stop and restart work together | Main implementation is in 11051253; compatibility fixes are in progress |
-| **M2: Complete phone execution** | Perform suitable system operations directly, control the main or background screen, receive clear results and take over when needed | Main-screen Root actions are in the APK; complete background task flows are being improved |
-| **M3: Automation workspace for continued use** | Schedules, phone control and Linux tools work together; upgrades retain data and upstream updates remain available | Task-state handling and plugin adoption are progressing incrementally |
+| **M1: Root product ready to use** | Grant Root and use core features without configuring each system permission manually; install, use, stop and restart work together | Core features and compatibility fixes are in candidate 11051721; device-use validation is incomplete |
+| **M2: Complete phone execution** | Perform suitable system operations directly, control the main or background screen, receive clear results and take over when needed | Main-screen Root actions and on-demand background guidance are in the candidate; complete background task flows are being improved |
+| **M3: Automation workspace for continued use** | Schedules, phone control and Linux tools work together; upgrades retain data and upstream updates remain available | Job-interruption observation and the first diagnostic plugin are in the candidate; ongoing tasks and upgrades are being improved |
 
 ## Parallel roadmap
 
@@ -64,14 +65,14 @@ flowchart TB
 | Branding and help | Main text is in the new APK | Keep explanations aligned with behavior |
 | Root runtime | Existing runtime foundation; installation-conflict fixes are in the APK | Resolve actual start, stop and recovery failures |
 | Automatic access and setup | Main implementation is in the APK | Improve denied access, revocation and retries |
-| Files and terminals | Improved Root file access and additional base tools | Repair ordinary and remote attachment compatibility |
+| Files and terminals | Root file access, base tools and ordinary/remote attachment fixes are in the candidate | Continue improvements from actual use |
 | Direct Android operations | Some capabilities are available | Add suitable operations through direct execution |
 | Main-screen control | Some actions now use Root | Improve feedback and user handoff |
-| Background control | Existing background-screen capability | Improve automatic preparation, availability checks and complete task flows |
-| Schedules and background jobs | Existing features retained; interruption state in development | Report interrupted tasks accurately and avoid duplicate execution |
+| Background control | On-demand preparation guidance is in the candidate, retaining existing background-screen capabilities | Improve complete background task flows |
+| Schedules and background jobs | Job-interruption observation is in the candidate | Improve ongoing tasks and avoid duplicate execution |
 | Data and upgrades | Existing update and data-preservation capabilities | Improve in-place upgrades and recovery from failures |
-| Plugins | Implementation direction defined | Gradually move suitable tools, skills and panels into plugins |
-| Upstream and releases | Ongoing | Resolve current compatibility issues and update the public release |
+| Plugins | The first bundled tool-environment diagnostic plugin is in the candidate | Add tools, skills and panels for actual needs |
+| Upstream and releases | Candidate 11051721 has been built | Complete necessary validation before updating the public release |
 
 ## Long-term direction
 

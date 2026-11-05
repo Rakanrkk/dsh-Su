@@ -24,15 +24,15 @@
 
 ## Roadmap and progress
 
-The [full roadmap and progress table](docs/dsh-su-roadmap.en.md) covers product milestones, parallel tracks, build contents and remaining problems.
+The [full roadmap and progress table](docs/dsh-su-roadmap.en.md) covers product milestones, parallel tracks, build contents and next goals.
 
 | Milestone | Current progress |
 | --- | --- |
-| M1 Root-native product ready to use | Main implementation is in local build `1.1.0+11051253`; compatibility fixes are in progress |
-| M2 Complete phone execution | Main-screen Root actions are in the APK; the complete background task path is still being completed |
-| M3 Automation workspace | Job-interruption state is in development; plugin adoption is incremental |
+| M1 Root product ready to use | Core features and compatibility fixes are in candidate `1.1.0+11051721` |
+| M2 Complete phone execution | Main-screen Root actions and on-demand background guidance are in the candidate; complete background task flows are being improved |
+| M3 Automation workspace | Job-interruption observation and the first bundled tool-environment diagnostic plugin are in the candidate |
 
-Release-signed arm64-v8a and x86_64 APKs of `1.1.0+11051253` have been built. New device-use validation is incomplete, and attachment and interface compatibility issues still need fixes. The current public GitHub prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See build contents and the next steps](docs/dsh-su-roadmap.en.md).
+ARM64 and x64 candidate APKs of `1.1.0+11051721` are available locally. They have not been tested on a device or uploaded to GitHub Releases. The current public prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See this build's features and next steps](docs/dsh-su-roadmap.en.md).
 
 ## About dsh-Su (Root Branch)
 
