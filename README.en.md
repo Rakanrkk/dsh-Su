@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="#build-from-source">Build from Source</a> · <a href="docs/guide/en/README.md">User Guide</a> · <a href="docs/dsh-su-roadmap.en.md">Roadmap &amp; Progress</a>
+  <a href="README.md">简体中文</a> · <b>English</b> · <a href="docs/dsh-su.md">dsh-Su Architecture & Status (ZH)</a> · <a href="#build-from-source">Build from Source</a> · <a href="docs/guide/README.md#english">User Guide</a> · <a href="docs/dsh-su-roadmap.en.md">Roadmap &amp; Progress</a>
 </p>
 
 <p align="center">
@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  An Android client for DeepSeek Harness. Run DSH right on your phone, or drive the one on your computer.
+  DSH SU is a DeepSeek Harness client for rooted Android devices: grant Root and run DSH right on your phone, or drive the one on your computer.
 </p>
 
 <p align="center">
@@ -24,15 +24,13 @@
 
 ## Roadmap and progress
 
-The [full roadmap and progress table](docs/dsh-su-roadmap.en.md) covers product milestones, parallel tracks, build contents and next goals.
+The current priority is a usable Root AI workbench: the `1.2.0-dev.1` ARM64 APK is built, core-use validation is in progress, and it is not yet published. The current public prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). See the [full roadmap](docs/dsh-su-roadmap.en.md) for the launch scope and milestone goals.
 
-| Milestone | Current progress |
+| Milestone | Goal |
 | --- | --- |
-| M1 Root product ready to use | Core features and compatibility fixes are in candidate `1.1.0+11051721` |
-| M2 Complete phone execution | Main-screen Root actions and on-demand background guidance are in the candidate; complete background task flows are being improved |
-| M3 Automation workspace | Job-interruption observation and the first bundled tool-environment diagnostic plugin are in the candidate |
-
-ARM64 and x64 candidate APKs of `1.1.0+11051721` are available locally. They have not been tested on a device or uploaded to GitHub Releases. The current public prerelease remains [`v1.0.9-internal.9`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9). [See this build's features and next steps](docs/dsh-su-roadmap.en.md).
+| M1 Usable core product | `1.2.0-dev.1` public development trial → `1.2.0-rc.N` feedback convergence → `1.2.0` release |
+| M2 Complete phone execution | Target `1.3.0`: direct system operations, reliable main-screen actions, non-intrusive background execution, user handoff |
+| M3 Automation workspace | Target `1.4.0`: status, results and cancellation for scheduled and long jobs; plugin-based tools, skills and workflows |
 
 ## About dsh-Su (Root Branch)
 
@@ -88,7 +86,7 @@ flowchart LR
 
 <h3 align="center">Runs on your phone. Drives your computer.</h3>
 
-<p align="center">A Linux environment built in, no root and no Termux. Switch to the DSH on your computer in one tap.</p>
+<p align="center">Grant Root and no separate Termux install is needed; the app prepares the runtime itself. Switch to the DSH on your computer in one tap.</p>
 
 <p align="center">
   <picture>
@@ -194,7 +192,7 @@ flowchart LR
 
 DSH Go combines a chat interface, an on-device runtime and remote connections. It is a third-party project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The DSH engine runs on your phone; model requests are still handled by the model provider you configure.
 
-- **On-device runtime:** install Ubuntu, Node.js and DSH from the app without Root or a separate Termux installation.
+- **On-device runtime:** with Root granted, the app installs Ubuntu, Node.js and DSH itself, with no separate Termux installation.
 - **Remote connections:** use DSH on a computer or server through SSH or [DSHarness Remote](https://github.com/liguobao/ds-harness-remote).
 - **Chat and tools:** switch models, send images, use voice input, and respond to tool approvals and questions. Chat and web interfaces are available.
 - **Plugin interfaces:** use native tool cards, forms and panels from plugins adapted for DSH Go. This repository includes an SDK, guides and examples.

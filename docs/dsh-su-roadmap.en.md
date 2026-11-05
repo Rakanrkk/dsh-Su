@@ -2,82 +2,87 @@
 
 [简体中文](dsh-su-roadmap.md) · [Repository home](../README.en.md) · [Public releases](https://github.com/Rakanrkk/dsh-Su/releases)
 
-Updated: 2026-11-05.
+Updated: 2026-11-06.
 
-DSH SU aims to make chat, terminals, files, plugins and phone control ready to use after granting Root, while continuing to receive upstream features and fixes.
+dsh-Su targets Root Android users: deliver a usable Root AI workbench first, then expand from real-world feedback. After granting Root, the app prepares the required system permissions and runtime automatically; model access uses the provider you choose, with sign-in or credentials.
 
 ## Version status
 
 | Version | Status |
 | --- | --- |
-| **1.1.0+11051721** | Latest ARM64 and x64 candidate APKs; not yet tested on a device or uploaded to GitHub Releases |
-| 1.1.0+11051253 | Previous candidate APKs |
+| 1.2.0-dev.1 | Target for this public development trial: ARM64 APK built, core-use validation in progress, not yet published |
 | [v1.0.9-internal.9](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9) | Current public GitHub prerelease |
 
-11051721 includes job-interruption observation, on-demand Root background guidance and the first bundled tool-environment diagnostic plugin. These features are in the candidate APKs; device use remains unverified and M1–M3 are not complete as a whole.
+Actual download scope and known issues ship with each Release.
 
-## New features and fixes in 1.1.0+11051721
+## 1.2.0-dev.1 launch scope
 
-This build retains the previous candidate's branding, automatic Root setup, main-screen actions and file capabilities, and adds:
+| Item | Description |
+| --- | --- |
+| Launch scope | Root startup with automatic runtime preparation; model configuration, real chat and model-invoked tools; basic terminal and file use; main-screen reading, basic actions and necessary system operations; chat history survives stop and restart, and in-place upgrades keep data |
+| Delivery condition | One ordinary ARM64 build completes the full path: install or upgrade in place → grant Root → configure a model → chat plus real tool and file use → necessary phone actions → stop, reopen and read the history back |
 
-- **Job-interruption observation:** after the engine restarts, previously observed jobs show an interrupted state rather than continuing to appear live. Old tasks are not automatically repeated.
-- **On-demand background guidance:** explains when background tasks prepare Root and shows the current notification state.
-- **Tool-environment diagnostics:** a bundled plugin offers a read-only tool and panel to inspect the availability and versions of common command-line tools.
-- **Compatibility fixes:** repairs ordinary and remote attachment behavior and matches permission entry points to the runtime mode.
+Ship on these core paths alone; complex background execution, schedule reliability, more plugins and more ROM adaptation belong to later releases.
 
-## Product milestones
+## Milestones
 
-| Milestone | User outcome | Current progress |
+| Milestone | Goal | Status |
 | --- | --- | --- |
-| **M1: Root product ready to use** | Grant Root and use core features without configuring each system permission manually; install, use, stop and restart work together | Core features and compatibility fixes are in candidate 11051721; device-use validation is incomplete |
-| **M2: Complete phone execution** | Perform suitable system operations directly, control the main or background screen, receive clear results and take over when needed | Main-screen Root actions and on-demand background guidance are in the candidate; complete background task flows are being improved |
-| **M3: Automation workspace for continued use** | Schedules, phone control and Linux tools work together; upgrades retain data and upstream updates remain available | Job-interruption observation and the first diagnostic plugin are in the candidate; ongoing tasks and upgrades are being improved |
+| M1 Usable core product | Publish 1.2.0-dev.1 as a public development trial, converge feedback through 1.2.0-rc.N, release 1.2.0 | Top priority; dev.1 APK built, core-use validation in progress |
+| 1.2.x maintenance | Fix real feedback, startup and upgrade issues, and compatibility; no new release-gating scope | Starts with public feedback |
+| M2 Complete phone execution | Target 1.3.0: direct system operations, reliable main-screen actions, non-intrusive background execution with clear status, errors, abort and user handoff | Advanced in parallel on feature branches |
+| M3 Automation workspace | Target 1.4.0: status, results, cancellation and controlled failure handling for existing schedules and long jobs; reuse plugins for tools, skills and workflows; never auto-repeat interrupted tasks | Independent parts start early without blocking M1 |
+
+The app, engine and plugins are numbered independently.
 
 ## Parallel roadmap
 
-Features can be developed in parallel and combined for milestone deliveries. Independent work for later milestones can start early.
+Features develop in parallel and converge per milestone; independent M2 and M3 work can start early, with upstream syncing and compatibility across branches.
 
 ```mermaid
 flowchart TB
-  S["Existing features"]
-  S --> A["Runtime stability"]
-  S --> B["Branding and automatic setup"]
-  S --> C["Files and tools"]
-  A --> M1["M1 Ready to use"]
-  B --> M1
-  C --> M1
-  S -.parallel.-> D["Direct system actions"]
-  S -.parallel.-> E["Main and background screens"]
-  M1 --> M2["M2 Complete phone execution"]
-  D --> M2
-  E --> M2
-  S -.parallel.-> F["Schedules and plugins"]
-  S -.ongoing.-> G["Data, upgrades and upstream"]
-  M2 --> M3["M3 Continued use"]
-  F --> M3
-  G --> M3
+  S["Existing capabilities"]
+  S --> A["Root startup and automatic runtime prep"]
+  S --> B["Chat · tools · terminal · files"]
+  S --> C["Basic phone actions · install and upgrade"]
+  A --> D1["1.2.0-dev.1 public dev trial"]
+  B --> D1
+  C --> D1
+  D1 --> RC["1.2.0-rc.N feedback fixes"]
+  RC --> M1["1.2.0 release · M1"]
+  M1 -.maintenance.-> MX["1.2.x"]
+  M1 --> M2["1.3.0 · M2 complete phone execution"]
+  M1 --> M3["1.4.0 · M3 automation workspace"]
+  S -.parallel early.-> D["Direct system operations"]
+  S -.parallel early.-> E["Reliable main-screen actions · non-intrusive background"]
+  D -.converge.-> M2
+  E -.converge.-> M2
+  S -.parallel early.-> T["Job scheduling and status"]
+  S -.parallel early.-> P["Plugins · skills · workflows"]
+  T -.converge.-> M3
+  P -.converge.-> M3
+  MX -.upstream sync and compatibility.-> M2
+  MX -.upstream sync and compatibility.-> M3
 ```
 
-## Feature progress
+## Technical route
 
-| Feature | Current state | Next |
-| --- | --- | --- |
-| Branding and help | Main text is in the new APK | Keep explanations aligned with behavior |
-| Root runtime | Existing runtime foundation; installation-conflict fixes are in the APK | Resolve actual start, stop and recovery failures |
-| Automatic access and setup | Main implementation is in the APK | Improve denied access, revocation and retries |
-| Files and terminals | Root file access, base tools and ordinary/remote attachment fixes are in the candidate | Continue improvements from actual use |
-| Direct Android operations | Some capabilities are available | Add suitable operations through direct execution |
-| Main-screen control | Some actions now use Root | Improve feedback and user handoff |
-| Background control | On-demand preparation guidance is in the candidate, retaining existing background-screen capabilities | Improve complete background task flows |
-| Schedules and background jobs | Job-interruption observation is in the candidate | Improve ongoing tasks and avoid duplicate execution |
-| Data and upgrades | Existing update and data-preservation capabilities | Improve in-place upgrades and recovery from failures |
-| Plugins | The first bundled tool-environment diagnostic plugin is in the candidate | Add tools, skills and panels for actual needs |
-| Upstream and releases | Candidate 11051721 has been built | Complete necessary validation before updating the public release |
+| Area | Route |
+| --- | --- |
+| App, UI, chat and clients | Reuse Flutter and upstream DSH |
+| Root lifecycle | Reuse the existing libsu + runc native layer |
+| System, main-screen and background execution | Reuse existing Root/native phone channels and extend the established execution paths |
+| Tools, skills and panels | Prefer the existing DSH plugin system; Android permissions and privileged interfaces stay in the native layer |
+| Jobs and status | Reuse existing scheduling, events, storage and plugin capability; thin extensions only for proven gaps |
+| Compatibility and upstream syncing | Sync upstream through the existing Git flow, keep Root customization in a few modules, and reuse the plugin compatibility mechanism |
 
-## Long-term direction
+## Progress
 
-- Retain upstream features and keep Root changes small and concentrated.
-- Prefer the existing plugin system for new tools, skills, task composition and panels.
-- Use the current screen by default and the background screen when explicitly selected; explain unavailable background capabilities.
-- Develop independent features in parallel and prioritize problems that affect actual use.
-- Update this page's progress, build contents and known issues with each feature delivery or release.
+| Item | Status |
+| --- | --- |
+| 1.2.0-dev.1 ARM64 ordinary APK | Built |
+| Same-build model chat, tools, phone actions, stop and reopen acceptance | In progress |
+| Public release preparation | In progress |
+| 1.2.x feedback fixes | Starts with public feedback |
+| 1.3.0 phone-execution expansion | Planned target, some groundwork exists |
+| 1.4.0 jobs and plugins | Planned target, some groundwork exists |
