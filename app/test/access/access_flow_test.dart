@@ -46,8 +46,7 @@ Future<ProviderContainer> _pump(
   return ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
 }
 
-String _primaryLabel(WidgetTester tester) =>
-    (tester.widget<FilledButton>(find.byKey(_primary)).child! as Text).data!;
+String _primaryLabel(WidgetTester tester) => (tester.widget<FilledButton>(find.byKey(_primary)).child! as Text).data!;
 
 Future<void> _tapPrimary(WidgetTester tester) async {
   await tester.ensureVisible(find.byKey(_primary));
@@ -68,7 +67,7 @@ void main() {
     testWidgets('nothing picked to begin with; 跳过 goes on and writes nothing', (tester) async {
       var done = 0;
       await _pump(tester, AccessStepPage(onDone: () => done++), FakeAccessDriver(offPhone));
-      expect(find.text('想让 dsh-Su 帮你做哪些事'), findsOneWidget);
+      expect(find.text('想让 DSH SU 帮你做哪些事'), findsOneWidget);
       for (final name in ['读写手机里的文件', '桌宠与悬浮窗', '手机操控', '后台持续运行', '语音输入']) {
         expect(find.text(name), findsOneWidget);
         expect(tester.getSemantics(find.text(name)), isSemantics(isChecked: false, hasCheckedState: true));
@@ -202,7 +201,10 @@ void main() {
         ('允许自启动', '去设置'),
       ]) {
         expect(
-          find.descendant(of: find.ancestor(of: find.text(title), matching: find.byType(InkWell)), matching: find.text(state)),
+          find.descendant(
+            of: find.ancestor(of: find.text(title), matching: find.byType(InkWell)),
+            matching: find.text(state),
+          ),
           findsOneWidget,
           reason: title,
         );

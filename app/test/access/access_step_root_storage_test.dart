@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:dsh_app/runtime/runtime_bridge.dart';
+import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/access_state.dart';
 import 'package:dsh_app/state/phone_state.dart';
 import 'package:dsh_app/state/settings_state.dart';
 import 'package:dsh_app/ui/onboarding/access_step.dart';
 import 'package:dsh_app/ui/settings/system_access_page.dart';
+import 'package:dsh_app/ui/access/access_pick_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +20,10 @@ import 'support.dart';
 
 const _rootRuntime = bool.fromEnvironment('DSH_ROOT_RUNTIME');
 const _primary = ValueKey('access-primary');
+const _rootStatus = LocalRuntimeState(
+  loaded: true,
+  status: RuntimeStatus(phase: RuntimePhase.notInstalled, rootRuntime: true),
+);
 
 Future<void> _frames(WidgetTester tester, [int n = 8]) async {
   for (var i = 0; i < n; i++) {
@@ -36,6 +44,23 @@ Future<ProviderContainer> _pump(
   await _frames(tester);
   return ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
 }
+
+Future<ProviderContainer> _pumpWithSettings(
+  WidgetTester tester,
+  Widget home,
+  FakeAccessDriver driver, {
+  List<Override> overrides = const [],
+}) => _pump(
+  tester,
+  home,
+  driver,
+  overrides: [
+    settingsProvider.overrideWith(_WritableSettings.new),
+    localRuntimeProvider.overrideWith(() => FakeRuntime(_rootStatus)),
+    phoneChannelProvider.overrideWithValue(_RootPhoneChannel()),
+    ...overrides,
+  ],
+);
 
 Future<void> _tapText(WidgetTester tester, String text) async {
   await tester.ensureVisible(find.text(text).last);
@@ -59,6 +84,73 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('root runtime', () {
+    testWidgets('root-only page calls ensureRootAccess and finishes from real state', skip: !_rootRuntime, (
+      tester,
+    ) async {
+      final driver = FakeAccessDriver(
+        readingsWith(offPhone, rootRuntime: true, clearVendor: true),
+        answer: (item, r) =>
+            readingsWith(r, mic: true, storage: true, notifications: true, accessibility: true, overlay: true),
+      );
+      var ensured = 0;
+      var done = 0;
+      final container = await _pumpWithSettings(
+        tester,
+        AccessStepPage(onDone: () => done++),
+        driver,
+        overrides: [runtimeBridgeProvider.overrideWithValue(_RootAccessBridge(() async => ensured++))],
+      );
+
+      expect(ensured, 1);
+      expect(done, 1);
+      expect(container.read(settingsProvider).phoneStorage, isFalse);
+      expect(container.read(accessSetupProvider).features, isNull);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey(onboardingWantsVoiceKey), isFalse);
+      expect(prefs.containsKey(AccessSetupController.prefsKey), isFalse);
+      expect(find.byKey(const ValueKey('root-access-done')), findsOneWidget);
+      expect(find.byKey(const ValueKey('root-access-header')), findsNothing);
+      expect(find.byType(AccessPickPage), findsNothing);
+    });
+
+    testWidgets('root-only failure shows the native error and retries', skip: !_rootRuntime, (tester) async {
+      final driver = FakeAccessDriver(
+        readingsWith(offPhone, rootRuntime: true, clearVendor: true),
+        answer: (item, r) => readingsWith(r, mic: true, storage: true, notifications: true, accessibility: true),
+      );
+      var failures = 1;
+      var ensured = 0;
+      var done = 0;
+      await _pumpWithSettings(
+        tester,
+        AccessStepPage(onDone: () => done++),
+        driver,
+        overrides: [
+          runtimeBridgeProvider.overrideWithValue(
+            _RootAccessBridge(() async {
+              ensured++;
+              if (failures > 0) {
+                failures--;
+                throw PlatformException(code: 'root_unavailable', message: 'manager denied');
+              }
+            }),
+          ),
+        ],
+      );
+
+      await _frames(tester);
+      expect(ensured, 1);
+      expect(find.byKey(const ValueKey('root-access-error')), findsOneWidget);
+      expect(find.textContaining('manager denied'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('root-access-primary')));
+      await _frames(tester, 24);
+      expect(ensured, 2);
+      expect(done, 1);
+      expect(find.byKey(const ValueKey('root-access-error')), findsNothing);
+    });
+
     testWidgets('root skips prompts but summary reflects actual misses', skip: !_rootRuntime, (tester) async {
       final driver = FakeAccessDriver(readingsWith(offPhone, rootRuntime: true, clearVendor: true));
       final channel = _RootPhoneChannel();
@@ -285,6 +377,22 @@ class _RootPhoneChannel extends PhoneChannel {
     _holdStatus = allowStatus != null;
     return true;
   }
+}
+
+class _RootAccessBridge extends RuntimeBridge {
+  _RootAccessBridge(this.onEnsure);
+
+  final Future<void> Function() onEnsure;
+
+  @override
+  Future<void> ensureRootAccess() => onEnsure();
+}
+
+class _WritableSettings extends FakeSettings {
+  _WritableSettings() : super(const AppSettings(loaded: true));
+
+  @override
+  Future<void> setPhoneStorage(bool value) async => state = state.copyWith(phoneStorage: value);
 }
 
 class _DelayedAccessSetup extends AccessSetupController {

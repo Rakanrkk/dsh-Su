@@ -5,14 +5,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../runtime/runtime_state.dart';
 import '../../state/access_state.dart';
 import '../../state/phone_state.dart';
 import '../access/access_pick_page.dart';
 import '../access/access_summary_page.dart';
 import '../access/access_walk.dart';
+import '../theme/app_icons.dart';
+import '../theme/theme.dart';
 import 'onboarding_scaffold.dart';
 
 /// 想让 DSH Go 帮你做哪些事 → 逐项开启 → 汇总. 跳过 on the first page goes on
@@ -32,6 +36,85 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
   bool _walkedOnce = false;
   bool _finishing = false;
   bool _choosing = false;
+  bool _rootLoading = false;
+  Object? _rootError;
+  Future<void>? _pendingRoot;
+  bool _rootCompleted = false;
+
+  Future<void> _ensureRootAccess() async {
+    final run = _pendingRoot;
+    if (run != null) return run;
+    final pending = _runRootAccess();
+    _pendingRoot = pending;
+    return pending.whenComplete(() {
+      if (identical(_pendingRoot, pending)) _pendingRoot = null;
+    });
+  }
+
+  Future<void> _runRootAccess() async {
+    setState(() {
+      _rootLoading = true;
+      _rootError = null;
+    });
+    try {
+      await ref.read(runtimeBridgeProvider).ensureRootAccess();
+      await ref.read(accessReadingsProvider.notifier).refresh();
+      if (mounted) {
+        setState(() => _rootCompleted = true);
+        widget.onDone();
+      }
+    } catch (error) {
+      if (mounted) {
+        final detail = switch (error) {
+          PlatformException(:final message, :final details) => [
+            ?message,
+            if (details case final String detail when detail.isNotEmpty) detail,
+          ].join(' · '),
+          _ => error.toString(),
+        };
+        setState(() => _rootError = detail.isEmpty ? error.toString() : detail);
+      }
+    } finally {
+      if (mounted) setState(() => _rootLoading = false);
+    }
+  }
+
+  Widget _rootPage(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    return OnboardingScaffold(
+      children: [
+        const Spacer(),
+        OnboardingHeader(
+          key: const ValueKey('root-access-header'),
+          icon: AppIcons.systemAccess,
+          title: l10n.accessRootTitle,
+          message: l10n.accessRootMessage,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _rootLoading ? l10n.accessRootConfiguring : l10n.accessRootManagerNote,
+          key: ValueKey(_rootLoading ? 'root-access-configuring' : 'root-access-manager-note'),
+          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        if (_rootError != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            '${l10n.accessRootFailed}: $_rootError',
+            key: const ValueKey('root-access-error'),
+            style: theme.textTheme.bodySmall?.copyWith(color: DshColors.of(context).warning),
+          ),
+        ],
+        const Spacer(flex: 2),
+        const SizedBox(height: 24),
+        FilledButton(
+          key: const ValueKey('root-access-primary'),
+          onPressed: _rootLoading ? null : () => unawaited(_ensureRootAccess()),
+          child: Text(_rootError == null ? l10n.accessRootAuthorize : l10n.commonRetry),
+        ),
+      ],
+    );
+  }
 
   Future<void> _walked() async {
     if (_walkedOnce) return;
@@ -100,8 +183,23 @@ class _AccessStepPageState extends ConsumerState<AccessStepPage> {
     final setup = ref.watch(accessSetupProvider);
     final readings = ref.watch(accessReadingsProvider).value;
     final features = setup.features;
+    final rootOnly = ref.watch(localRuntimeProvider.select((s) => s.status.rootRuntime));
+    final rootDone = rootOnly && _rootCompleted && features == null;
+    if (rootOnly &&
+        setup.loaded &&
+        features == null &&
+        !_rootLoading &&
+        _rootError == null &&
+        _pendingRoot == null &&
+        !_rootCompleted) {
+      unawaited(_ensureRootAccess());
+    }
     final Widget page;
-    if (_choosing) {
+    if (rootDone) {
+      page = const OnboardingScaffold(key: ValueKey('root-access-done'), children: [SizedBox.shrink()]);
+    } else if (rootOnly) {
+      page = _rootPage(context);
+    } else if (_choosing) {
       page = const OnboardingScaffold(key: ValueKey('choosing'), children: [SizedBox.shrink()]);
     } else if (setup.loaded && features == null) {
       // The pick needs nothing from the phone (mobile data, if known, shows when read).
