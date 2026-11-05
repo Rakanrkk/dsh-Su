@@ -1,5 +1,7 @@
 package io.github.ccch1mneyyy.dsh_app.phone
 
+import io.github.ccch1mneyyy.dsh_app.phone.a11y.RootMainInput
+
 // The contract between the phone-control modules.
 // Each module owns its side:
 //
@@ -251,6 +253,9 @@ object PhoneRegistry {
 
     /** Set by the core; see [ControlListener]. */
     @Volatile var controlListener: ControlListener? = null
+
+    /** Explicit main-screen Root input, when a Root backend is configured; null keeps a11y-only behavior. */
+    @Volatile var rootMainInput: RootMainInput? = null
 
     /**
      * The hard rules the person lifted (解除限制), for the drivers' own second line of refusals and

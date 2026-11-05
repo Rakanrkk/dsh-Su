@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.Settings
@@ -30,6 +31,21 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+
+/** Fixed Root system-operation seam; the app supplies the connected privileged channel. */
+fun interface RootSystemActions {
+    sealed class Request {
+        data class MainLaunch(val packageName: String) : Request()
+    }
+
+    sealed class Result {
+        data class Ok(val value: String? = null) : Result()
+        data class Failed(val reason: String) : Result()
+        data object Unavailable : Result()
+    }
+
+    fun execute(request: Request): Result
+}
 
 /** Whether one of this app's activities is resumed (the clipboard and background-start rules care). */
 object AppVisibility : Application.ActivityLifecycleCallbacks {
@@ -62,7 +78,11 @@ object AppVisibility : Application.ActivityLifecycleCallbacks {
 }
 
 /** System tools on Android: no permission beyond what the app already has, plus SET_ALARM (normal). */
-class SystemActions(private val app: Context) : SystemApi {
+class SystemActions(
+    private val app: Context,
+    private val rootRuntime: Boolean = BuildConfig.ROOT_RUNTIME,
+    private val rootSystem: RootSystemActions? = null,
+) : SystemApi {
     private val pm: PackageManager = app.packageManager
     private val main = Handler(Looper.getMainLooper())
     private val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -287,6 +307,15 @@ class SystemActions(private val app: Context) : SystemApi {
      * person can tap (a notification tap always may start it).
      */
     private fun start(intent: Intent, what: String, done: String, pkg: String?, label: String?, noticeWhat: String = what): SysResult {
+        if (rootRuntime && !AppVisibility.visible && PhoneRegistry.mainDriver == null) {
+            val root = rootSystem
+            val target = pkg
+            if (root != null && target != null && root.execute(RootSystemActions.Request.MainLaunch(target)) == RootSystemActions.Result.Ok())
+                return SysResult(true, "$done（已由 Root 直接启动显式主屏目标。）", pkg, label)
+            return SysResult(
+                false, "Root 主屏启动失败；「$what」没有执行，未改用后台屏。", pkg, label,
+            )
+        }
         try {
             app.startActivity(intent)
         } catch (_: ActivityNotFoundException) {

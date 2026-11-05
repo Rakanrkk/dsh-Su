@@ -48,6 +48,7 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
     private val lifted: PhoneUnlocks get() = PhoneRegistry.unlocks()
     private val clock get() = service.clock
     private val actuator = Actuator(service, overlay)
+    private val rootInput = RootMainActuator { request -> PhoneRegistry.rootMainInput?.send(request) ?: false }
     private val shooter = ScreenShooter(service, overlay)
     private val power = service.getSystemService(PowerManager::class.java)
     private val keyguard = service.getSystemService(KeyguardManager::class.java)
@@ -448,8 +449,14 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
 
     private fun key(a: PhoneAction.Key, gen: Long): ActionResult {
         val before = clock.count
-        // l10n:keep agent screen result
-        if (!actuator.global(a.key)) return ActionResult(false, "系统没有执行这个按键。")
+        when (val rootResult = rootInput.key(a.key)) {
+            is RootMainActuator.Result.Rejected -> return ActionResult(false, rootResult.reason)
+            RootMainActuator.Result.Accepted -> Unit
+            RootMainActuator.Result.Unavailable -> if (!actuator.global(a.key)) {
+                // l10n:keep agent screen result
+                return ActionResult(false, "系统没有执行这个按键。")
+            }
+        }
         val what = when (a.key) {
             // l10n:keep agent screen result
             PhoneAction.GlobalKey.BACK -> "已提交返回键操作。"
@@ -489,8 +496,14 @@ internal class MainScreenDriver(private val service: PhoneA11yService, private v
             if (!observation(cap).reusableCoordinates(snap.observation)) return ActionResult(false, "无法确认当前界面仍与截图一致，没有点击。请重新看屏幕。", toSnapshot(publish(cap, false)))
         } finally { cap.recycle() }
         val before = clock.count
-        // l10n:keep agent screen result
-        if (!actuator.tap(point.first, point.second)) return ActionResult(false, "系统没有接受这次点击。", observeQuiet())
+        when (val rootResult = rootInput.tapXY(point.first, point.second, long = false)) {
+            is RootMainActuator.Result.Rejected -> return ActionResult(false, rootResult.reason, observeQuiet())
+            RootMainActuator.Result.Accepted -> Unit
+            RootMainActuator.Result.Unavailable -> if (!actuator.tap(point.first, point.second, long = false)) {
+                // l10n:keep agent screen result
+                return ActionResult(false, "系统没有接受这次点击。", observeQuiet())
+            }
+        }
         // l10n:keep agent screen result
         return after(before, snap, gen, "已提交点击截图上的 (${a.x}, ${a.y})。")
     }

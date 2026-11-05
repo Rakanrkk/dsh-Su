@@ -109,6 +109,16 @@ class PrivilegedDisplayCore(private val context: Context) {
                 response.putBoolean(Proto.OK, true)
                 return response
             }
+            if (op == Proto.OP_MAIN_INPUT) {
+                synchronized(lock) { mainInput(request, response) }
+                if (!response.containsKey(Proto.ERROR)) response.putBoolean(Proto.OK, true)
+                return response
+            }
+            if (op == Proto.OP_MAIN_LAUNCH) {
+                synchronized(lock) { mainLaunch(request, response) }
+                if (!response.containsKey(Proto.ERROR)) response.putBoolean(Proto.OK, true)
+                return response
+            }
             synchronized(lock) { dispatch(op, request, response) }
             if (!response.containsKey(Proto.ERROR)) response.putBoolean(Proto.OK, true)
         } catch (e: Throwable) {
@@ -284,12 +294,61 @@ class PrivilegedDisplayCore(private val context: Context) {
         return task?.topActivity?.packageName
     }
 
+    /** Explicit display-0 input. It does not create, own, or read a virtual display. */
+    private fun mainInput(request: Bundle, response: Bundle) {
+        if (Build.VERSION.SDK_INT < BackgroundPolicy.MIN_SDK) throw Fault("unsupportedAndroid")
+        if (keyguard?.isKeyguardLocked == true) throw Fault("locked")
+        when (request.getString(Proto.MAIN_ACTION)) {
+            "tapXY" -> {
+                val x = request.getInt(Proto.X, -1)
+                val y = request.getInt(Proto.Y, -1)
+                if (x < 0 || y < 0) throw Fault("invalidArguments")
+                val down = SystemClock.uptimeMillis()
+                sendMotion(MotionEvent.ACTION_DOWN, x, y, down, displayId = Display.DEFAULT_DISPLAY)
+                sleepChecked(60)
+                sendMotion(MotionEvent.ACTION_UP, x, y, down, displayId = Display.DEFAULT_DISPLAY)
+            }
+            "key" -> {
+                val key = request.getString(Proto.KEY).orEmpty()
+                val code = KEYS[key] ?: throw Fault("invalidArguments")
+                val now = SystemClock.uptimeMillis()
+                injectKey(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0), displayId = Display.DEFAULT_DISPLAY)
+                sleepChecked(4)
+                injectKey(KeyEvent(SystemClock.uptimeMillis(), now, KeyEvent.ACTION_UP, code, 0),
+                    displayId = Display.DEFAULT_DISPLAY)
+            }
+            else -> throw Fault("invalidArguments")
+        }
+        response.putInt(Proto.DISPLAY_ID, Display.DEFAULT_DISPLAY)
+    }
+
     private fun releaseAll() = synchronized(lock) {
         owner = null
         var failed = false
         try { display?.release() } catch (_: Throwable) { failed = true } finally { display = null }
         try { reader?.close() } catch (_: Throwable) { failed = true } finally { reader = null }
         if (failed) { /* best effort */ }
+    }
+
+    /** Explicit display-0 launch; it neither checks app foreground/a11y nor creates a virtual display. */
+    private fun mainLaunch(request: Bundle, response: Bundle) {
+        if (Build.VERSION.SDK_INT < BackgroundPolicy.MIN_SDK) throw Fault("unsupportedAndroid")
+        val pkg = request.getString(Proto.PKG).orEmpty()
+        if (!PACKAGE.matches(pkg)) throw Fault("invalidArguments")
+        val intent = privileged.packageManager.getLaunchIntentForPackage(pkg) ?: throw Fault("notLaunchable")
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val options = ActivityOptions.makeBasic().apply { launchDisplayId = Display.DEFAULT_DISPLAY }
+        var pending: PendingIntent? = null
+        try {
+            pending = PendingIntent.getActivity(
+                privileged, Display.DEFAULT_DISPLAY, intent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            pending.send(privileged, 0, null, null, null, null, options.toBundle())
+        } catch (_: SecurityException) { throw Fault("launchDenied") }
+        catch (_: PendingIntent.CanceledException) { throw Fault("launchCancelled") }
+        finally { pending?.let { runCatching { it.cancel() } } }
+        response.putInt(Proto.DISPLAY_ID, Display.DEFAULT_DISPLAY)
     }
 
     // ---- observation (tree + optional screenshot) --------------------------
@@ -691,23 +750,30 @@ class PrivilegedDisplayCore(private val context: Context) {
         sendMotion(MotionEvent.ACTION_UP, ex, ey, down)
     }
 
-    private fun sendMotion(action: Int, x: Int, y: Int, downTime: Long, waitForFinish: Boolean = true) {
+    private fun sendMotion(
+        action: Int,
+        x: Int,
+        y: Int,
+        downTime: Long,
+        waitForFinish: Boolean = true,
+        displayId: Int? = null,
+    ) {
         val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x.toFloat(), y.toFloat(), 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
-        try { inject(event, waitForFinish) } finally { event.recycle() }
+        try { inject(event, waitForFinish, displayId) } finally { event.recycle() }
     }
 
-    private fun injectKey(src: KeyEvent) {
+    private fun injectKey(src: KeyEvent, displayId: Int? = null) {
         val event = KeyEvent(src.downTime, src.eventTime, src.action, src.keyCode, 0, src.metaState,
             KeyCharacterMap.VIRTUAL_KEYBOARD, src.scanCode, src.flags, InputDevice.SOURCE_KEYBOARD)
-        inject(event)
+        inject(event, displayId = displayId)
     }
 
     // Runs in the shell-uid privileged process (Shizuku UserService or app_process),
     // which the app hidden-API policy that lint models doesn't apply to.
     @SuppressLint("BlockedPrivateApi")
-    private fun inject(event: InputEvent, waitForFinish: Boolean = true) {
-        val id = display?.display?.displayId ?: throw Fault("displayMissing")
+    private fun inject(event: InputEvent, waitForFinish: Boolean = true, displayId: Int? = null) {
+        val id = displayId ?: display?.display?.displayId ?: throw Fault("displayMissing")
         // WAIT_FOR_FINISH can time out after the event was delivered. A false result is
         // not proof of rejection: never replay the same event with another mode.
         val accepted = try {
@@ -908,6 +974,7 @@ class PrivilegedDisplayCore(private val context: Context) {
             "TRUSTED", "OWN_FOCUS", "STEAL_TOP_FOCUS_DISABLED")
         private val KEYS = mapOf(
             "back" to KeyEvent.KEYCODE_BACK, "home" to KeyEvent.KEYCODE_HOME,
+            "recents" to KeyEvent.KEYCODE_APP_SWITCH, "notifications" to KeyEvent.KEYCODE_NOTIFICATION,
             "enter" to KeyEvent.KEYCODE_ENTER, "delete" to KeyEvent.KEYCODE_DEL,
             "tab" to KeyEvent.KEYCODE_TAB, "escape" to KeyEvent.KEYCODE_ESCAPE,
             "up" to KeyEvent.KEYCODE_DPAD_UP, "down" to KeyEvent.KEYCODE_DPAD_DOWN,

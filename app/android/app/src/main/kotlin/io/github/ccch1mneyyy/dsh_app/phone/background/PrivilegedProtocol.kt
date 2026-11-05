@@ -38,6 +38,10 @@ object Proto {
     const val DIR = "dir"
     const val WANT_IMAGE = "image"
     const val DETAIL = "detail"
+    const val MAIN_ACTION = "mainAction"
+    const val X = "x"
+    const val Y = "y"
+    const val KEY = "key"
 
     // ops
     const val OP_PROBE = "probe"
@@ -52,6 +56,8 @@ object Proto {
     const val OP_DESTROY = "destroy"
     const val OP_GATE = "gate"
     const val OP_GRANT_SELF = "grantSelf"
+    const val OP_MAIN_INPUT = "mainInput"
+    const val OP_MAIN_LAUNCH = "mainLaunch"
 
     /** 自动恢复无障碍: grants [APP_PACKAGE] WRITE_SECURE_SETTINGS in [USER]; nothing else is grantable. */
     const val OP_GRANT_SECURE_SETTINGS = "grantSecureSettings"
@@ -195,6 +201,8 @@ object Reasons {
         "treeUnavailable" -> "未能读取后台屏控件树，请重新观察"
         // l10n:keep privileged protocol
         "locked" -> "设备已锁定，后台屏操作已停止"
+        // l10n:keep privileged protocol
+        "unsupportedAndroid" -> "当前 Android 版本不支持这个系统输入操作"
         // l10n:keep privileged protocol
         "invalidArguments" -> "后台屏动作参数无效"
         // l10n:keep privileged protocol

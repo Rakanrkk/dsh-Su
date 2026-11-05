@@ -24,6 +24,7 @@ import io.github.ccch1mneyyy.dsh_app.MainActivity
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.notify.LiveActivity
 import io.github.ccch1mneyyy.dsh_app.phone.a11y.A11yKeeper
+import io.github.ccch1mneyyy.dsh_app.phone.a11y.RootMainInput
 import io.github.ccch1mneyyy.dsh_app.phone.a11y.PhoneA11yService
 import io.github.ccch1mneyyy.dsh_app.phone.background.BackgroundControl
 import io.github.ccch1mneyyy.dsh_app.phone.background.SecureSettingsGrant
@@ -50,7 +51,6 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
 
     val tasks = PhoneTasks()
     val log = ActionLog()
-    val system = SystemActions(app)
     private val localizedUi = PhoneUiText { key, args ->
         when (key) {
             "phone_log_clipboard_write" -> return@PhoneUiText AppStrings.plural(app, R.plurals.phone_log_clipboard_write, args[0] as Int, *args.toTypedArray())
@@ -138,11 +138,30 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     private var screenReceiver: BroadcastReceiver? = null
     private val sinks = CopyOnWriteArraySet<(Map<String, Any?>) -> Unit>()
     val background: BackgroundControl = BackgroundControl.get(app)
+    val system: SystemActions
 
     init {
+        system = SystemActions(app, rootSystem = RootSystemActions { request ->
+            when (request) {
+                is RootSystemActions.Request.MainLaunch ->
+                    if (background.mainLaunch(request.packageName)) RootSystemActions.Result.Ok()
+                    else RootSystemActions.Result.Failed("Root 主屏启动失败；没有执行。")
+            }
+        })
         PhoneRegistry.notificationGate = notificationGate
         PhoneRegistry.promptGate = prompts
         PhoneRegistry.controlListener = this
+        PhoneRegistry.rootMainInput = if (BuildConfig.ROOT_RUNTIME) {
+            RootMainInput { request ->
+                when {
+                    request.x != null && request.y != null ->
+                        background.mainInput(PhoneAction.TapXY("s0", request.x!!, request.y!!)).ok
+                    request.key != null ->
+                        background.mainInput(PhoneAction.Key("s0", request.key!!)).ok
+                    else -> false
+                }
+            }
+        } else null
         PhoneRegistry.unlocks = { policies().unlocks }
         background.onStatusChanged = { emitStatus() }
         (app as? Application)?.let { AppVisibility.register(it) }
@@ -613,9 +632,14 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
     }
 
     override fun backgroundUnavailable(): String {
-        val reason = (backgroundStatus()["reason"] as? String)?.let { "（$it）" } ?: ""
-        // l10n:keep agent stop reason
-        return "不打扰模式（后台屏）用不了$reason。只能在主屏操作；要用后台屏请用户到 设置 → 手机操控 → 不打扰模式 开通。"
+        val reason = backgroundStatus()["reason"] as? String
+        return if (reason == null) {
+            // l10n:keep agent stop reason
+            "不打扰模式（后台屏）用不了。已按你的要求停止，不会自动切到主屏。"
+        } else {
+            // l10n:keep agent stop reason
+            "不打扰模式（后台屏）用不了：$reason。已按你的要求停止，不会自动切到主屏。"
+        }
     }
 
     override fun system(): SystemApi = system

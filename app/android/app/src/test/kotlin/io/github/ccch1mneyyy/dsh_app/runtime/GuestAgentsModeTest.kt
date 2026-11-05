@@ -127,4 +127,15 @@ class GuestAgentsModeTest {
             } finally { probe.deleteRecursively() }
         } finally { root.deleteRecursively() }
     }
+
+    @Test fun rootBuildKeepsPhoneActionsOnTheAppBridge() {
+        val root = kotlin.io.path.createTempDirectory("agents-root-commands").toFile()
+        try {
+            GuestSetup.writeAgentsMd(root, phoneStorage = false, rootRuntime = true)
+            val text = File(root, "root/.dsh/AGENTS.md").readText()
+            assertTrue(text.contains("手机操作请用 App 的 `mcp__phone__*` 工具"))
+            assertFalse(text.contains("`cmd`"))
+            assertFalse(text.contains("`/system/bin/...`"))
+        } finally { root.deleteRecursively() }
+    }
 }

@@ -18,6 +18,9 @@ import android.os.Environment
 import android.provider.Settings
 import io.github.ccch1mneyyy.dsh_app.BuildConfig
 import io.github.ccch1mneyyy.dsh_app.runtime.PhoneStorage
+import io.github.ccch1mneyyy.dsh_app.phone.ActionResult
+import io.github.ccch1mneyyy.dsh_app.phone.PhoneAction
+import io.github.ccch1mneyyy.dsh_app.phone.PhoneScreen
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -393,9 +396,18 @@ class BackgroundControl private constructor(context: Context) {
 
     // ---- task lifecycle (called by the bridge/core) ------------------------
 
-    /** Connects, probes the gate, and registers the driver for the running task. */
+    /**
+     * Connects, probes the gate, and registers the driver for the running task. An explicit
+     * BACKGROUND request on a Root build prepares the already-authorized Root backend when
+     * it is not connected; mode selection stays off and a failure stays unavailable.
+     */
     fun beginTask(taskId: Long): Boolean {
-        if (mode == "off" || !androidOk()) return false
+        if (!androidOk()) return false
+        val rootConnected = BuildConfig.ROOT_RUNTIME && root.status().connected
+        val prepareRoot = shouldPrepareRootForBackground(mode, BuildConfig.ROOT_RUNTIME, rootConnected)
+        val mayPrepare = { PhoneControl.switchedOn(app) }
+        val preparedRootChannel = if (prepareRoot) prepareRootForStartup(mayPrepare) else null
+        if (prepareRoot && preparedRootChannel == null) return false
         synchronized(this) {
             if (taskId <= endedTaskId.get() || (driverTaskId ?: Long.MIN_VALUE) > taskId) return false
             if (driverTaskId == taskId && driver != null && PhoneRegistry.backgroundDriver === driver) return true
@@ -407,14 +419,30 @@ class BackgroundControl private constructor(context: Context) {
                 Thread.currentThread().interrupt(); return false
             } catch (_: Exception) { return false }
         }
-        if (Thread.currentThread().isInterrupted || activeChannel() == null) return false
+        val explicitRootPrepared = prepareRoot && preparedRootChannel != null
+        val preparedRoot = BuildConfig.ROOT_RUNTIME && root.connect()?.takeIf { it.alive() } != null
+        val active = if (preparedRoot) root.connect() else activeChannel()
+        if (Thread.currentThread().isInterrupted || active == null) return false
         synchronized(this) {
-            if (mode == "off" || taskId <= endedTaskId.get() || (driverTaskId ?: Long.MIN_VALUE) > taskId) return false
+            val currentRoot = root.connect()?.takeIf { it.alive() }
+            val currentPreparedRoot = BuildConfig.ROOT_RUNTIME && currentRoot != null &&
+                (!explicitRootPrepared || mode == "off" && currentRoot === preparedRootChannel)
+            if ((!currentPreparedRoot && mode == "off") ||
+                taskId <= endedTaskId.get() || (driverTaskId ?: Long.MIN_VALUE) > taskId) return false
             if (driverTaskId == taskId && driver != null && PhoneRegistry.backgroundDriver === driver) return true
             if (driver != null) endTask()
+            val usePreparedRoot = currentPreparedRoot
             val d = BackgroundDisplay(
-                channelProvider = { activeChannel() },
-                releaseChannelProvider = { channel?.takeIf { it.alive() } },
+                channelProvider = if (usePreparedRoot) {
+                    { root.connect() }
+                } else {
+                    { activeChannel() }
+                },
+                releaseChannelProvider = if (usePreparedRoot) {
+                    { root.connect()?.takeIf { it.alive() } }
+                } else {
+                    { channel?.takeIf { it.alive() } }
+                },
             ).also { driver = it }
             // Publish the pending owner before checking cancellation: a stop
             // either records the ended ID first, or sees this owner and releases
@@ -721,6 +749,48 @@ class BackgroundControl private constructor(context: Context) {
         }
     }
 
+    /** Launches an explicit display-0 target through the same connected Root process. */
+    fun mainLaunch(packageName: String): Boolean {
+        val ch = root.connect()?.takeIf { it.alive() } ?: return false
+        val response = runCatching {
+            ch.execute(Bundle().apply {
+                putString(Proto.OP, Proto.OP_MAIN_LAUNCH)
+                putString(Proto.PKG, packageName)
+            })
+        }.getOrNull() ?: return false
+        return response.getBoolean(Proto.OK)
+    }
+
+    /**
+     * Explicit Root actuator for an already-observed MAIN target; it never reads or selects
+     * a screen. Android 14+ is the same trusted-injection baseline as the virtual display.
+     */
+    fun mainInput(action: PhoneAction): ActionResult {
+        if (!androidOk()) return ActionResult(false, "当前 Android 版本不支持 Root 直接注入主屏；动作没有执行。")
+        val command = mainInputCommand(action)
+            ?: return ActionResult(false, "主屏操作目标必须是 s 开头的屏幕；不支持这个动作或目标。")
+        val ch = root.connect()?.takeIf { it.alive() }
+            ?: return ActionResult(false, "Root 输入通道不可用；主屏动作没有执行，请重新读取屏幕后交给用户。")
+        val request = Bundle().apply { putString(Proto.OP, Proto.OP_MAIN_INPUT) }
+        when (command) {
+            is MainInputCommand.TapXY -> {
+                request.putString(Proto.MAIN_ACTION, "tapXY")
+                request.putInt(Proto.X, command.x)
+                request.putInt(Proto.Y, command.y)
+            }
+            is MainInputCommand.Key -> {
+                request.putString(Proto.MAIN_ACTION, "key")
+                request.putString(Proto.KEY, command.key)
+            }
+        }
+        val response = runCatching { ch.execute(request) }.getOrNull()
+            ?: return ActionResult(false, "Root 输入通道没有响应；主屏动作没有执行，请重新读取屏幕。")
+        val ok = response.getBoolean(Proto.OK)
+        val message = if (ok) "已在主屏执行"
+        else Reasons.of(response.getString(Proto.ERROR), response.getString(Proto.ERROR_DETAIL))
+        return ActionResult(ok, message)
+    }
+
     companion object {
         /** UserHandle.PER_USER_RANGE: a uid's user is uid / this. */
         private const val PER_USER_RANGE = 100_000
@@ -730,5 +800,26 @@ class BackgroundControl private constructor(context: Context) {
             instance ?: synchronized(this) {
                 instance ?: BackgroundControl(context).also { instance = it }
             }
+    }
+}
+
+/** Explicit BACKGROUND prepares the Root backend only when it is not currently connected. */
+internal fun shouldPrepareRootForBackground(mode: String, rootRuntime: Boolean, rootConnected: Boolean): Boolean =
+    mode == "off" && rootRuntime && !rootConnected
+
+internal sealed interface MainInputCommand {
+    data class TapXY(val x: Int, val y: Int) : MainInputCommand
+    data class Key(val key: String) : MainInputCommand
+}
+
+/** The target is carried by the existing screen id; a `b*` request never reaches the main display. */
+internal fun mainInputCommand(action: PhoneAction): MainInputCommand? {
+    val mainScreen = PhoneScreen.ofScreenId(action.screenId) == PhoneScreen.MAIN
+    return when (action) {
+        is PhoneAction.TapXY ->
+            if (mainScreen && action.x >= 0 && action.y >= 0) MainInputCommand.TapXY(action.x, action.y) else null
+        is PhoneAction.Key ->
+            if (mainScreen) MainInputCommand.Key(action.key.name.lowercase()) else null
+        else -> null
     }
 }
