@@ -15,7 +15,13 @@ import java.io.OutputStream
 // accepts only this fixed verb set — no shell commands, paths or display ids from callers.
 
 object Proto {
-    const val REVISION = "dsh-vdisplay-1"
+    /**
+     * dsh-vdisplay-2 breaks dsh-vdisplay-1 on purpose: actions now carry [CLIENT_REV] and
+     * [OBS_TICKET], observations carry an [OBS_TICKET] ticket, and [PARTIAL] only ever means
+     * an incomplete collection (display truncation is [TRUNCATED]). Handshake and per-request
+     * checks reject the older revision by string equality.
+     */
+    const val REVISION = "dsh-vdisplay-2"
 
     // request keys
     const val OP = "op"
@@ -29,6 +35,17 @@ object Proto {
     const val EXPECT_ROLE = "expectRole"
     const val EXPECT_LABEL = "expectLabel"
     const val EXPECT_VIEW_ID = "expectViewId"
+    /** tap/type only: the display and the application window the element was read from. */
+    const val EXPECT_DISPLAY = "expectDisplay"
+    const val EXPECT_WINDOW = "expectWindow"
+    /**
+     * A random, single-use observation ticket: minted by the core for each complete
+     * collection, echoed by every action. A mismatched or missing ticket fails before
+     * any injection. Absent from partial reads and secure screens.
+     */
+    const val OBS_TICKET = "obsTicket"
+    /** Every request carries the client's [REVISION]; the core rejects any other value. */
+    const val CLIENT_REV = "clientRev"
     const val TEXT = "text"
     const val SUBMIT = "submit"
 
@@ -90,6 +107,34 @@ object Proto {
     const val ACCEPTED = "accepted"
     const val READBACK = "readback"
     const val COUNT = "n"
+    /** Element count before the 120-line truncation, sent when the list was cut. */
+    const val TOTAL = "total"
+    /** The observed application window's accessibility id, for [EXPECT_WINDOW] round-trips. */
+    const val WINDOW = "window"
+    /**
+     * The observation was incomplete (tree read failed, or the 600-node scan budget or the
+     * 120-line limit cut it). With no elements at all this means "nothing is known": the
+     * receiver must drop its cached numbers instead of treating the screen as empty.
+     */
+    const val PARTIAL = "partial"
+    /**
+     * With [ERROR]: a write action reached the app or the input pipeline before failing, so
+     * its outcome is unknown — the receiver must drop its cached numbers and never replay it.
+     */
+    const val DISPATCHED = "dispatched"
+    /**
+     * With [COUNT]: the complete tree carried more elements than the display cap, so only
+     * the first 120 ids are listed ([TOTAL] holds the real count). Distinct from [PARTIAL]:
+     * the listed numbers are fully operable; the cap is display-only.
+     */
+    const val TRUNCATED = "truncated"
+    /**
+     * Reply to OP_RELEASE: true only when the request's owner matched the live task
+     * owner AND the display resources were released (or there was nothing to release
+     * for a stale caller). False means the release failed — the caller must surface
+     * a pending cleanup instead of assuming the display is gone.
+     */
+    const val RELEASED = "released"
     // parallel element arrays (index i ↔ element id i+1)
     const val A_ROLE = "role"
     const val A_LABEL = "label"
@@ -174,6 +219,8 @@ object Reasons {
         // l10n:keep privileged protocol
         "displayReleaseFailed" -> "未收到后台屏资源释放的完整回执"
         // l10n:keep privileged protocol
+        "releaseIdentityMismatch" -> "释放请求不属于当前任务（可能来自已结束的旧任务），未释放；如屏幕资源未回收请重新连接后重试"
+        // l10n:keep privileged protocol
         "displayMissing" -> "本次任务还没有后台屏，请先启动目标应用"
         // l10n:keep privileged protocol
         "displayTargetChanged" -> "后台屏前台任务不属于目标应用，未继续操作"
@@ -181,6 +228,14 @@ object Reasons {
         "secureWindow" -> "此页面受保护（支付或密码），请交还用户在主屏完成"
         // l10n:keep privileged protocol
         "staleSnapshot" -> "后台屏快照已过期，请重新观察后再操作"
+        // l10n:keep privileged protocol
+        "observationStale" -> "后台屏观测已失效（屏幕已变化或观测不完整），请重新观察后再操作；不要重复未确认的动作"
+        // l10n:keep privileged protocol
+        "incompleteTree" -> "后台屏控件树读取不完整，无法安全核对目标身份；请重新观察，本次未注入任何动作"
+        // l10n:keep privileged protocol
+        "identityInsufficient" -> "该目标缺少可核对的稳定身份（空文本且无 viewId），不能安全写入；请改选有文本或 viewId 的目标"
+        // l10n:keep privileged protocol
+        "revisionMismatch" -> "后台屏协议版本不匹配，请重启不打扰模式后再试"
         // l10n:keep privileged protocol
         "elementMissing" -> "该元素已不在后台屏当前界面上"
         // l10n:keep privileged protocol

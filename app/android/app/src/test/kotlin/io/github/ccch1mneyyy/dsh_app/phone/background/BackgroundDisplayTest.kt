@@ -46,6 +46,7 @@ class BackgroundDisplayTest {
 
     private fun withLastElement(): BackgroundDisplay {
         val display = BackgroundDisplay(
+            owner = "task:test:7",
             channelProvider = { error("response validation must not start a connection") },
             releaseChannelProvider = { error("response validation must not release the display") },
         )
@@ -62,6 +63,7 @@ class BackgroundDisplayTest {
 
     @Test fun onlyBackIsSentToTheBackgroundScreen() {
         val display = BackgroundDisplay(
+            owner = "task:test:7",
             channelProvider = { error("a refused key must not reach the privileged channel") },
             releaseChannelProvider = { error("a refused key must not release the background screen") },
         )

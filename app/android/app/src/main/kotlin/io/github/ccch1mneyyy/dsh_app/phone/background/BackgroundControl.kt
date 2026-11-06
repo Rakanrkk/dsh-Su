@@ -26,6 +26,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
 import io.github.ccch1mneyyy.dsh_app.phone.PhoneRegistry
+import java.util.Collections
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -70,7 +73,25 @@ class BackgroundControl private constructor(context: Context) {
     @Volatile private var channel: PrivilegedChannel? = null
     @Volatile private var driver: BackgroundDisplay? = null
     @Volatile private var driverTaskId: Long? = null
+    /** The captured instance an interrupt teardown is retiring; the beginTask publish
+     *  path refuses it, so a task can never adopt a channel about to be dropped. */
+    @Volatile private var retiring: PrivilegedChannel? = null
     private val endedTaskId = AtomicLong(Long.MIN_VALUE)
+    /** Real cross-privileged owner token prefix: a fresh epoch per App session so a
+     *  previous session's stale release cannot match the live core's owner. */
+    private val epoch: String = UUID.randomUUID().toString()
+    /** Owner tokens whose release the privileged side did not confirm; retried
+     *  idempotently (release-only, never an action replay) and surfaced in [status]. */
+    private val pendingRelease: MutableSet<String> = Collections.newSetFromMap(ConcurrentHashMap())
+
+    private fun ownerToken(taskId: Long): String = "task:$epoch:$taskId"
+
+    /** The interrupt teardown decision for one critical section shared with beginTask's
+     *  owner publish: a published newer owner aborts the teardown entirely; otherwise
+     *  the captured instance is retired (when this teardown disconnects transports) so
+     *  no later publish can adopt it, and the shared field is dropped only while it
+     *  still is the captured instance. Applied under the same monitor. */
+    internal data class InterruptRetire(val proceed: Boolean, val dropShared: Boolean, val markRetiring: Boolean)
 
     private fun notifyChanged() = runCatching { onStatusChanged() }
 
@@ -113,6 +134,7 @@ class BackgroundControl private constructor(context: Context) {
                 ),
                 "rootSelected" to rootSelected,
                 "keep" to keep.map(channel?.alive() == true),
+                "pendingRelease" to pendingRelease.toList(),
             ),
         )
     }
@@ -173,7 +195,7 @@ class BackgroundControl private constructor(context: Context) {
         }
         if (selected != "off" && !androidOk()) return mapOf("ok" to false, "reason" to AppStrings.get(app, R.string.background_requires_android))
         if (selected != mode || selected == "off") {
-            endTask()
+            driverTaskId?.let { endTask(it) }
             // Only the transport being left closes: a paired ADB connection or a root process
             // prepared ahead belongs to the mode being enabled. Off closes everything.
             val leaving = if (mode == "sui") "shizuku" else mode
@@ -410,7 +432,12 @@ class BackgroundControl private constructor(context: Context) {
         if (prepareRoot && preparedRootChannel == null) return false
         synchronized(this) {
             if (taskId <= endedTaskId.get() || (driverTaskId ?: Long.MIN_VALUE) > taskId) return false
-            if (driverTaskId == taskId && driver != null && PhoneRegistry.backgroundDriver === driver) return true
+            if (driverTaskId == taskId && driver != null && PhoneRegistry.backgroundDriver === driver) {
+                // Fast path must still hold a live transport: a dead channel would
+                // register a driver whose every request fails.
+                if (driver!!.availability().ok) return true
+                endTaskLocked(taskId)
+            }
         }
         // Channel setup may block. It must not hold the display ownership lock
         // while an old task is trying to release through an already-live channel.
@@ -424,15 +451,20 @@ class BackgroundControl private constructor(context: Context) {
         val active = if (preparedRoot) root.connect() else activeChannel()
         if (Thread.currentThread().isInterrupted || active == null) return false
         synchronized(this) {
+            // A retiring instance belongs to an in-flight interrupt teardown; adopting
+            // it would publish a new owner over a channel that is about to be dropped.
+            if (publishRefusesRetiring(retiring, active)) return false
             val currentRoot = root.connect()?.takeIf { it.alive() }
             val currentPreparedRoot = BuildConfig.ROOT_RUNTIME && currentRoot != null &&
                 (!explicitRootPrepared || mode == "off" && currentRoot === preparedRootChannel)
             if ((!currentPreparedRoot && mode == "off") ||
                 taskId <= endedTaskId.get() || (driverTaskId ?: Long.MIN_VALUE) > taskId) return false
             if (driverTaskId == taskId && driver != null && PhoneRegistry.backgroundDriver === driver) return true
-            if (driver != null) endTask()
+            if (driver != null) endTaskLocked()
             val usePreparedRoot = currentPreparedRoot
+            val owner = ownerToken(taskId)
             val d = BackgroundDisplay(
+                owner = owner,
                 channelProvider = if (usePreparedRoot) {
                     { root.connect() }
                 } else {
@@ -459,32 +491,98 @@ class BackgroundControl private constructor(context: Context) {
         }
     }
 
-    /** Releases the display without destroying content (handoff) and unregisters the driver. */
-    fun endTask(expectedTaskId: Long? = null) {
-        if (expectedTaskId != null) {
-            endedTaskId.accumulateAndGet(expectedTaskId) { previous, ended -> maxOf(previous, ended) }
-            // In-flight setup has no display to release. Do not make the stop
-            // caller wait for its synchronous IPC; beginTask checks this ID.
-            if (expectedTaskId != driverTaskId) return
-        }
+    /**
+     * Releases the display without destroying content (handoff) and unregisters the
+     * driver. [expectedTaskId] is required: a stop or finish must name the task it is
+     * ending, so a stale message can never release a newer task's display.
+     */
+    fun endTask(expectedTaskId: Long) {
+        if (expectedTaskId <= endedTaskId.get()) return
+        endedTaskId.accumulateAndGet(expectedTaskId) { previous, ended -> maxOf(previous, ended) }
         synchronized(this) {
-            if (expectedTaskId != null && expectedTaskId != driverTaskId) return
-            val ended = driver
-            driver = null
-            driverTaskId = null
-            if (PhoneRegistry.backgroundDriver === ended) PhoneRegistry.backgroundDriver = null
-            ended?.release()
-            notifyChanged()
+            if (expectedTaskId != driverTaskId) return
+            endTaskLocked(expectedTaskId)
+        }
+    }
+
+    /** Must hold [this] monitor. Unregisters and releases the current driver; an
+     *  unconfirmed release lands in [pendingRelease] for idempotent compensation. */
+    private fun endTaskLocked(expectedTaskId: Long? = null) {
+        if (expectedTaskId != null && expectedTaskId != driverTaskId) return
+        val ended = driver
+        driver = null
+        driverTaskId = null
+        if (PhoneRegistry.backgroundDriver === ended) PhoneRegistry.backgroundDriver = null
+        if (ended != null && !ended.release()) {
+            // The privileged side never confirmed the release (transport gone or the
+            // core refused). Record it: a later attempt is cleanup-only and the
+            // status map shows the pending owner until confirmed.
+            pendingRelease.add(ended.ownerId)
+        }
+        notifyChanged()
+    }
+
+    /** Idempotent compensation for unconfirmed releases: release-only, no action replay.
+     *  A previous App-session epoch's entries are terminal: that privileged core process
+     *  is gone (stdin EOF / binder death took its displays with it), so retrying them
+     *  against the live core would never confirm — a bounded, honest end instead of an
+     *  endless retry loop. */
+    fun retryPendingReleases() {
+        if (pendingRelease.isEmpty()) return
+        for (owner in pendingRelease.toList()) {
+            if (!releaseEntryIsCurrentEpoch(owner, epoch)) {
+                pendingRelease.remove(owner)
+                continue
+            }
+            val channel = root.connect()?.takeIf { it.alive() }
+                ?: channel?.takeIf { it.alive() }
+                ?: continue
+            val confirmed = runCatching {
+                channel.execute(Bundle().apply {
+                    putString(Proto.OP, Proto.OP_RELEASE); putString(Proto.OWNER, owner)
+                }).getBoolean(Proto.RELEASED)
+            }.getOrDefault(false)
+            if (confirmed) pendingRelease.remove(owner)
         }
     }
 
     /**
      * Screen off / lock / channel death: stop and release, and drop the channels a later task
      * reopens by itself ([PrivilegedPathPolicy.closesOnInterrupt]; root's would need su again).
+     * [expectedTaskId] is required: the effect was queued for one task, so it must re-check
+     * ownership under the lock before touching anything — a new task that began while the
+     * effect sat in the queue is neither ended nor stripped of its channels.
      */
-    fun interrupt() {
-        endTask()
-        disconnectAll(PrivilegedPathPolicy::closesOnInterrupt)
+    fun interrupt(expectedTaskId: Long) {
+        // Capture this generation's shared channel under the ownership lock: the teardown
+        // only asks the starter that owned it to drop that captured instance, so a newer
+        // task that re-opens the transport after the check keeps its own channel.
+        val captured = synchronized(this) {
+            if (interruptIsStale(driverTaskId, expectedTaskId, endedTaskId.get())) return
+            channel?.let { mode to it }
+        }
+        endTask(expectedTaskId)
+        if (captured == null) return
+        val (capturedMode, oldChannel) = captured
+        val targets = interruptTargets(capturedMode)
+        val disconnects = "shizuku" in targets || "adb" in targets
+        // Atomic retirement: the final ownership check, dropping the shared field and
+        // marking the captured instance as retiring share one critical section with
+        // beginTask's owner publish. A task that re-adopts this same instance (shared
+        // field or starter cache) can neither publish across the teardown nor keep a
+        // channel we are about to drop; a task that already published aborts us first.
+        synchronized(this) {
+            val retire = interruptRetire(driverTaskId, channel, oldChannel, disconnects)
+            if (!retire.proceed) return
+            if (retire.dropShared) channel = null
+            if (retire.markRetiring) retiring = oldChannel
+        }
+        try {
+            if ("shizuku" in targets) (oldChannel as? ShizukuChannel)?.let { shizuku.disconnectIfCurrent(it) }
+            if ("adb" in targets) (oldChannel as? AdbChannel)?.let { adb.disconnectIfCurrent(it) }
+        } finally {
+            synchronized(this) { if (retiring === oldChannel) retiring = null }
+        }
     }
 
     // ---- channel plumbing --------------------------------------------------
@@ -707,6 +805,13 @@ class BackgroundControl private constructor(context: Context) {
     }
 
     private fun transportChanged(source: String) {
+        // A dead transport leaves the live driver pointing at a channel whose every
+        // request now fails; end the task so its display is released and re-registered
+        // on the next request instead of half-operating on a corpse.
+        val dead = synchronized(this) { driver != null && driver?.availability()?.ok != true }
+        if (dead) {
+            driverTaskId?.let { runCatching { endTask(it) } }
+        }
         notifyChanged()
         // These callbacks may run on main; startup/PROBE always run on recovery's single slot.
         if (keep.enabled && (mode == source || source == "sharedApi" && mode in setOf("sui", "shizuku"))) restoreKeptChannel()
@@ -811,6 +916,41 @@ class BackgroundControl private constructor(context: Context) {
     companion object {
         /** UserHandle.PER_USER_RANGE: a uid's user is uid / this. */
         private const val PER_USER_RANGE = 100_000
+
+        /** A queued stop effect (screen off) is stale when the driver has moved to another
+         *  task, the task already ended, or nothing is driving at all: it must neither end
+         *  a newer task nor drop that task's channels. */
+        internal fun interruptIsStale(driverTaskId: Long?, expectedTaskId: Long, endedTaskId: Long): Boolean =
+            driverTaskId != expectedTaskId || expectedTaskId <= endedTaskId
+
+        /** Which starters an interrupted generation asks to drop its captured channel:
+         *  only the transport the generation itself used ([PrivilegedPathPolicy
+         *  .closesOnInterrupt] keeps root alive — re-opening needs su again). */
+        internal fun interruptTargets(mode: String): Set<String> =
+            when (mode) {
+                "shizuku", "sui" -> setOf("shizuku")
+                "adb" -> setOf("adb")
+                else -> emptySet()
+            }
+
+        /** The interrupt teardown decision for one critical section shared with
+         *  beginTask's owner publish: a published newer owner aborts the teardown
+         *  entirely; otherwise the captured instance is retired (when this teardown
+         *  disconnects transports) so no later publish can adopt it, and the shared
+         *  field is dropped only while it still is the captured instance. */
+        internal fun interruptRetire(driverTaskId: Long?, channel: PrivilegedChannel?, captured: PrivilegedChannel, disconnects: Boolean): InterruptRetire =
+            if (driverTaskId != null) InterruptRetire(proceed = false, dropShared = false, markRetiring = false)
+            else InterruptRetire(proceed = true, dropShared = channel === captured, markRetiring = disconnects)
+
+        /** The beginTask publish path must refuse an instance an interrupt teardown is
+         *  retiring: adopting it would hand the new task a channel about to be dropped. */
+        internal fun publishRefusesRetiring(retiring: PrivilegedChannel?, candidate: PrivilegedChannel?): Boolean =
+            candidate != null && candidate === retiring
+
+        /** A pending-release entry belongs to the live core only if it carries this App
+         *  session's epoch; anything else names a dead core whose resources are gone. */
+        internal fun releaseEntryIsCurrentEpoch(owner: String, epoch: String): Boolean =
+            owner.startsWith("task:$epoch:")
 
         @Volatile private var instance: BackgroundControl? = null
         fun get(context: Context): BackgroundControl =

@@ -365,9 +365,10 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
             }
             runCatching { PhoneRegistry.overlayGate?.close { cleanup -> tasks.runIfInactive(s, cleanup) } }
             // One virtual display per task: release it when the task ends.
-            // IPC must stay outside the PhoneTasks lock; the background owner
-            // check and release are serialized with its next registration.
-            runCatching { background.endTask(s.id) }
+            // Release IPC must stay off the listener thread (often main); the task
+            // snapshot's runIfInactive guards make the deferral stale-safe.
+            val taskId = s.id
+            ticker.execute { runCatching { background.endTask(taskId) } }
         }
         DshService.updateNotification(app)
         LiveActivity.refresh(app)
@@ -404,7 +405,14 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
                 if (intent.action != Intent.ACTION_SCREEN_OFF) return
                 // l10n:keep agent stop reason
                 onStopRequested("熄屏")
-                if (PhoneRegistry.backgroundDriver != null) runCatching { background.interrupt() }
+                if (PhoneRegistry.backgroundDriver != null) {
+                    // Capture the stopping task BEFORE queueing: the queued effect
+                    // re-checks ownership under the lock, so a task that begins while
+                    // the effect waits is never interrupted by this stale stop.
+                    val stoppingTask = tasks.snapshot().id
+                    // Release IPC must not block the main thread.
+                    ticker.execute { runCatching { background.interrupt(stoppingTask) } }
+                }
             }
         }
         screenReceiver = r
@@ -577,6 +585,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
         try {
             tasks.expireIdle()
             A11yKeeper.check(app)
+            background.retryPendingReleases()
             pushIfChanged(force = false)
         } catch (_: Exception) {
         }
@@ -622,7 +631,7 @@ class PhoneControl private constructor(private val app: Context) : PhoneEnv, Con
 
     override fun beforeHandoff(screen: PhoneScreen): String? {
         if (screen != PhoneScreen.BACKGROUND || PhoneRegistry.backgroundDriver == null) return null
-        runCatching { background.endTask() }
+        runCatching { background.endTask(tasks.snapshot().id) }
         // l10n:keep agent stop reason
         return "后台屏已释放，App 回到了主屏，用户在主屏上操作。之后请用主屏（s 开头的屏幕号）。"
     }

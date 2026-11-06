@@ -74,8 +74,22 @@ class PrivilegedDisplayCore(private val context: Context) {
     private var width = 0
     private var height = 0
     private val released = AtomicBoolean(false)
+    /**
+     * The one currently-valid observation ticket: a random unguessable string minted per
+     * complete read (never a counter, so a restarted core cannot re-issue a live one).
+     * Rotated by every complete observation, revoked by partial reads, failed reads,
+     * secure screens, releases and dispatched-with-unknown writes. Actions must echo it.
+     */
+    @Volatile private var observationTicket: String? = null
+    /**
+     * Tombstone of the last owner this core fully released. A release whose ack was
+     * lost on a dead transport can be re-confirmed idempotently against this name —
+     * it never re-releases or claims the live owner's resources.
+     */
+    @Volatile private var lastReleasedOwner: String? = null
 
-    private class Fault(val code: String) : Exception()
+    /** [dispatched]: the write reached the app or the input pipeline before failing. */
+    private class Fault(val code: String, val dispatched: Boolean = false) : Exception()
 
     /** The single entry point for both transports. Always returns a response Bundle. */
     fun handle(request: Bundle): Bundle {
@@ -125,6 +139,12 @@ class PrivilegedDisplayCore(private val context: Context) {
             response.putBoolean(Proto.OK, false)
             response.putString(Proto.ERROR, failureCode(e))
             failureDetail(e)?.let { response.putString(Proto.ERROR_DETAIL, it) }
+            if (e is Fault && e.dispatched) {
+                // The write reached the pipeline with unknown outcome: the ticket dies so
+                // the stale observation can never authorize another action.
+                observationTicket = null
+                response.putBoolean(Proto.DISPATCHED, true)
+            }
         }
         return response
     }
@@ -145,17 +165,30 @@ class PrivilegedDisplayCore(private val context: Context) {
         val ownerId = request.getString(Proto.OWNER).orEmpty()
         if (op == null || ownerId.isEmpty()) throw Fault("invalidArguments")
         if (op == Proto.OP_RELEASE) {
-            if (owner == ownerId) releaseAll()
-            response.putBoolean("released", true)
+            // Real receipt: only the live task owner's release releases, and an owner
+            // this core already released keeps confirming true (lost-ack convergence).
+            // Anyone else gets an explicit refusal — never a release or a takeover of
+            // the live owner's resources.
+            val confirmed = releaseConfirmed(owner, lastReleasedOwner, ownerId) { releaseAll() }
+            response.putBoolean(Proto.RELEASED, confirmed)
+            if (!confirmed && owner != null && owner != ownerId) throw Fault("releaseIdentityMismatch")
             return
         }
         if (owner != null && owner != ownerId) throw Fault("identityChanged")
+        // rev-2 强制字段：旧版本客户端在第一次请求即受控失败（release 除外，只释放不注入）。
+        if (!revisionOk(request.getString(Proto.CLIENT_REV))) throw Fault("revisionMismatch")
         if (keyguard?.isKeyguardLocked == true) throw Fault("locked")
         val pkg = request.getString(Proto.PKG).orEmpty()
         if (!PACKAGE.matches(pkg)) throw Fault("invalidArguments")
-
+        // 观测票据先于一切注入：没有当前完整观测的票据 = 旧观测，零注入拒绝。
+        if (op == Proto.OP_TAP || op == Proto.OP_SCROLL || op == Proto.OP_KEY || op == Proto.OP_TEXT) {
+            if (!ticketOk(observationTicket, request.getString(Proto.OBS_TICKET))) throw Fault("observationStale")
+        }
         when (op) {
             Proto.OP_CREATE, Proto.OP_LAUNCH -> {
+                // First live task claims the core; any other owner (stale task or a
+                // previous App session) is refused before touching the display.
+                if (owner != null && owner != ownerId) throw Fault("identityChanged")
                 owner = ownerId
                 if (display == null) createDisplay(request)
                 response.putInt(Proto.DISPLAY_ID, displayId())
@@ -331,12 +364,22 @@ class PrivilegedDisplayCore(private val context: Context) {
         response.putInt(Proto.DISPLAY_ID, Display.DEFAULT_DISPLAY)
     }
 
-    private fun releaseAll() = synchronized(lock) {
+    private fun releaseAll(): Boolean = synchronized(lock) {
+        observationTicket = null
+        // Each reference is cleared only by its own successful close: a failed release
+        // keeps the resource so the same owner's next attempt retries a real cleanup,
+        // instead of "succeeding" against a reference the previous attempt dropped.
+        val displayGone = display?.let { cleanupStep({ it.release() }, { display = null }) } ?: true
+        val readerGone = reader?.let { cleanupStep({ it.close() }, { reader = null }) } ?: true
+        if (!displayGone || !readerGone) {
+            // The release did not complete: keep the surviving resource reference and the
+            // owner binding so the same owner stays authorized to retry, and report
+            // failure instead of faking it. No tombstone on a partial release.
+            return@synchronized false
+        }
+        lastReleasedOwner = owner
         owner = null
-        var failed = false
-        try { display?.release() } catch (_: Throwable) { failed = true } finally { display = null }
-        try { reader?.close() } catch (_: Throwable) { failed = true } finally { reader = null }
-        if (failed) { /* best effort */ }
+        true
     }
 
     /** Explicit display-0 launch; it neither checks app foreground/a11y nor creates a virtual display. */
@@ -362,6 +405,14 @@ class PrivilegedDisplayCore(private val context: Context) {
 
     // ---- observation (tree + optional screenshot) --------------------------
 
+    /** A fresh random ticket for one complete read; not a counter, so a restarted core
+     *  cannot collide with a ticket it handed out in a previous life. */
+    private fun mintTicket(): String {
+        val bytes = ByteArray(16)
+        java.security.SecureRandom().nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
     private fun observe(pkg: String, wantImage: Boolean, response: Bundle, requireTree: Boolean = false) {
         val id = displayId()
         response.putInt(Proto.DISPLAY_ID, id)
@@ -375,10 +426,28 @@ class PrivilegedDisplayCore(private val context: Context) {
         val failure = treeResult.exceptionOrNull()
         if (failure is Fault && failure.code == "secureWindow") secure = true
         response.putBoolean(Proto.SECURE, secure)
-        if (secure) { response.putBoolean(Proto.POOR, false); response.putInt(Proto.COUNT, 0); return }
+        if (secure) {
+            // A secure screen reveals nothing: any prior ticket is dead, none is minted.
+            observationTicket = null
+            response.putBoolean(Proto.POOR, false); response.putInt(Proto.COUNT, 0); return
+        }
         // A read must report its failure; observation after an already-dispatched write
         // must not turn that write into a failed action that a caller might replay.
         val tree = if (requireTree) treeResult.getOrThrow() else treeResult.getOrNull()
+        if (tree == null || !tree.complete) {
+            // A failed or cut read must not masquerade as an empty screen: the receiver
+            // drops its cached numbers instead of acting on stale ones. The previous
+            // ticket is revoked — a partial read never leaves a writable ticket behind.
+            observationTicket = null
+            response.putBoolean(Proto.PARTIAL, true)
+        } else {
+            // A complete read mints a fresh ticket (rotating the old one out) and binds
+            // the window the elements were read from.
+            response.putInt(Proto.WINDOW, tree.windowId)
+            val ticket = mintTicket()
+            observationTicket = ticket
+            response.putString(Proto.OBS_TICKET, ticket)
+        }
         // The screenshot contains the whole viewport, including nodes beyond the 120-line
         // text limit. Never attach it when secrets were found or the scan was incomplete.
         // The typing unlock changes permission to write, never permission to reveal a secret.
@@ -395,6 +464,13 @@ class PrivilegedDisplayCore(private val context: Context) {
 
     private fun emitElements(elements: List<BgNode>, response: Bundle) {
         val capped = elements.take(120)
+        if (elements.size > capped.size) {
+            // Display-only truncation: the listed ids stay fully operable (a fresh ticket
+            // and window binding already went out); [PARTIAL] stays reserved for an
+            // incomplete collection, which the receiver must treat as unactionable.
+            response.putBoolean(Proto.TRUNCATED, true)
+            response.putInt(Proto.TOTAL, elements.size)
+        }
         val n = capped.size
         response.putInt(Proto.COUNT, n)
         response.putBoolean(Proto.POOR, elements.count { it.label.isNotEmpty() } < 5)
@@ -491,6 +567,8 @@ class PrivilegedDisplayCore(private val context: Context) {
         var complete = true
         var hasSecrets = false
         var target: AccessibilityNodeInfo? = null
+        /** Accessibility id of the application window the elements were read from. */
+        var windowId = 0
     }
 
     private fun readTree(displayId: Int, pkg: String): TreeRead {
@@ -517,6 +595,7 @@ class PrivilegedDisplayCore(private val context: Context) {
                 ?: throw Fault(if (roots.firstOrNull() != null) "displayTargetChanged" else "treeUnavailable")
             val tree = TreeRead(targetId)
             tree.complete = selected.complete
+            tree.windowId = windows[selected.index].id
             try {
                 walk(roots[selected.index]!!, tree, 0, 600)
                 assignRegions(tree.elements)
@@ -643,17 +722,53 @@ class PrivilegedDisplayCore(private val context: Context) {
         }
     }
 
+    /** One element's semantic identity: role, label and view id, exactly as observed. */
+    internal data class Identity(val role: String, val label: String, val viewId: String?)
+
     // ---- actions -----------------------------------------------------------
+
+    /** [identityOf] over the wire form: only keys actually present enter the map, so a
+     *  missing field stays missing (a null value travels and is kept, see [identityKeys]). */
+    private fun identityOf(request: Bundle): Identity? {
+        val fields = HashMap<String, String?>()
+        for (key in identityKeys) if (request.containsKey(key)) fields[key] = request.getString(key)
+        return identityOf(fields)
+    }
+
+    /** Marks a failure as dispatched: the write reached the app or the input pipeline, so
+     *  the receiver must drop its cached numbers and never silently replay this action. */
+    private fun dispatched(e: Throwable): Fault = when (e) {
+        is Fault -> if (e.dispatched) e else Fault(e.code, dispatched = true)
+        else -> Fault(failureCode(e), dispatched = true)
+    }
 
     private fun resolveElement(pkg: String, request: Bundle): BgNode {
         val index = request.getInt(Proto.ELEMENT, -1)
         if (index < 1) throw Fault("invalidArguments")
-        val elements = readTree(displayId(), pkg).elements
-        val e = elements.getOrNull(index - 1) ?: throw Fault("elementMissing")
-        val expectRole = request.getString(Proto.EXPECT_ROLE)
-        val expectLabel = request.getString(Proto.EXPECT_LABEL)
-        if (expectRole != null && expectRole != e.role) throw Fault("staleSnapshot")
-        if (expectLabel != null && expectLabel.isNotEmpty() && !e.label.startsWith(expectLabel.take(12))) throw Fault("staleSnapshot")
+        // A tap names its target by the whole observed identity: display, window, and the
+        // element's role/label/view id. A bare index — any field missing, a different
+        // display, a rebuilt window, or an identity that no longer addresses exactly one
+        // live node — is refused, never executed against whatever sits at that number now.
+        if (!request.containsKey(Proto.EXPECT_DISPLAY) ||
+            request.getInt(Proto.EXPECT_DISPLAY) != displayId()
+        ) throw Fault("displayTargetChanged")
+        val expect = identityOf(request) ?: throw Fault("invalidArguments")
+        // A twin beyond the scan budget must not smuggle a node through: when the fresh
+        // tree is incomplete the identity cannot be checked against the whole screen,
+        // so nothing is injected at all.
+        val tree = readTree(displayId(), pkg)
+        if (!tree.complete) throw Fault("incompleteTree")
+        if (tree.windowId != request.getInt(Proto.EXPECT_WINDOW, -1)) throw Fault("staleSnapshot")
+        val e = tree.elements.getOrNull(index - 1) ?: throw Fault("elementMissing")
+        if (!identityMatches(expect, Identity(e.role, e.label, e.viewId))) throw Fault("staleSnapshot")
+        if (identityAmbiguous(expect, tree.elements.map { Identity(it.role, it.label, it.viewId) })) {
+            // The identity is ambiguous on this screen: refusing is the only safe answer.
+            throw Fault("staleSnapshot")
+        }
+        // Same rule as writes: a target with a blank label and no stable view id cannot be
+        // re-identified once the screen changes, so it is never injected either. An empty
+        // input box with a real view id stays tappable.
+        if (!writeIdentitySufficient(expect)) throw Fault("identityInsufficient")
         return e
     }
 
@@ -662,7 +777,13 @@ class PrivilegedDisplayCore(private val context: Context) {
         val cx = (e.bounds.left + e.bounds.right) / 2
         val cy = (e.bounds.top + e.bounds.bottom) / 2
         val long = request.getBoolean(Proto.LONG)
-        injectTap(cx, cy, long)
+        // From here the events enter the input pipeline: any failure leaves the outcome
+        // unknown, so the caller must not replay or trust its previous observation.
+        try {
+            injectTap(cx, cy, long)
+        } catch (e: Throwable) {
+            throw dispatched(e)
+        }
     }
 
     private fun scroll(request: Bundle) {
@@ -676,15 +797,25 @@ class PrivilegedDisplayCore(private val context: Context) {
             "right" -> intArrayOf(cx - span, cy, cx + span, cy)
             else -> throw Fault("invalidArguments")
         }
-        injectSwipe(p[0], p[1], p[2], p[3], 400)
+        // Once the gesture starts, its outcome is unknown on failure (see [tap]).
+        try {
+            injectSwipe(p[0], p[1], p[2], p[3], 400)
+        } catch (e: Throwable) {
+            throw dispatched(e)
+        }
     }
 
     private fun globalKey(key: String?) {
         val code = KEYS[key] ?: throw Fault("invalidArguments")
         val now = SystemClock.uptimeMillis()
         injectKey(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0))
-        sleepChecked(4)
-        injectKey(KeyEvent(SystemClock.uptimeMillis(), now, KeyEvent.ACTION_UP, code, 0))
+        // The DOWN key has been injected: from here the outcome is unknown on failure.
+        try {
+            sleepChecked(4)
+            injectKey(KeyEvent(SystemClock.uptimeMillis(), now, KeyEvent.ACTION_UP, code, 0))
+        } catch (e: Throwable) {
+            throw dispatched(e)
+        }
     }
 
     private fun typeText(pkg: String, request: Bundle, response: Bundle) {
@@ -692,19 +823,30 @@ class PrivilegedDisplayCore(private val context: Context) {
         val index = request.getInt(Proto.ELEMENT, -1)
         if (index < 1 || text.isEmpty() || text.length > 500 || '\u0000' in text) throw Fault("invalidArguments")
         val vd = display ?: throw Fault("displayMissing")
+        // Same identity contract as [resolveElement]: display, window, and an identity
+        // that addresses exactly one live node.
+        if (!request.containsKey(Proto.EXPECT_DISPLAY) ||
+            request.getInt(Proto.EXPECT_DISPLAY) != vd.display.displayId
+        ) throw Fault("displayTargetChanged")
+        val expect = identityOf(request) ?: throw Fault("invalidArguments")
+        // A write demands stronger identity than a tap: a blank label with no view id
+        // cannot be re-verified against a rebuilt screen, so it never receives text.
+        if (!writeIdentitySufficient(expect)) throw Fault("identityInsufficient")
         val conn = TreeConnection(context, pkg)
         try {
             val automation = try { conn.open(vd.display) } catch (_: Throwable) { throw Fault("textConnectionUnavailable") }
-            val node = readTree(automation, vd.display.displayId, pkg, index).target ?: throw Fault("elementMissing")
+            val tree = readTree(automation, vd.display.displayId, pkg, index)
+            // Same completeness gate as [resolveElement]: an unfinished scan cannot
+            // prove the identity unique, so no text is sent at all.
+            if (!tree.complete) throw Fault("incompleteTree")
+            if (tree.windowId != request.getInt(Proto.EXPECT_WINDOW, -1)) throw Fault("staleSnapshot")
+            val treeIdentities = tree.elements.map { Identity(it.role, it.label, it.viewId) }
+            if (identityAmbiguous(expect, treeIdentities)) throw Fault("staleSnapshot")
+            val node = tree.target ?: throw Fault("elementMissing")
             try {
                 if (!node.refresh()) throw Fault("textTargetChanged")
                 val current = toElement(node, bestText(node), Rect(), 0)
-                val expectRole = request.getString(Proto.EXPECT_ROLE)
-                val expectLabel = request.getString(Proto.EXPECT_LABEL)
-                val expectViewId = request.getString(Proto.EXPECT_VIEW_ID)
-                if (expectRole != null && expectRole != current.role ||
-                    expectLabel != null && expectLabel != current.label ||
-                    expectViewId != null && expectViewId != current.viewId) throw Fault("staleSnapshot")
+                if (!identityMatches(expect, Identity(current.role, current.label, current.viewId))) throw Fault("staleSnapshot")
                 if (isSecret(node) && !request.getBoolean(Proto.ALLOW_SECRET, false)) throw Fault("textRequiresManual")
                 if (!node.isEditable || node.actionList.none { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT })
                     throw Fault("textUnsupported")
@@ -717,21 +859,27 @@ class PrivilegedDisplayCore(private val context: Context) {
                 val accepted = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
                     putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
                 })
-                response.putBoolean(Proto.ACCEPTED, accepted)
-                if (!accepted) throw Fault("inputRejected")
-                val deadline = SystemClock.uptimeMillis() + 1500
-                while (true) {
-                    runCatching { invoke(automation, "clearCache") }
-                    if (!node.refresh()) throw Fault("textTargetChanged")
-                    val now = if (node.isShowingHintText) "" else node.text?.toString().orEmpty()
-                    if (now == text) break
-                    if (SystemClock.uptimeMillis() >= deadline) throw Fault("textReadbackMismatch")
-                    sleepChecked(50)
-                }
-                response.putString(Proto.READBACK, BackgroundTree.cap(text))
-                if (submit) {
-                    if (!node.isFocused) throw Fault("textTargetChanged")
-                    globalKey("enter")
+                // The set-text action has been sent to the app: from here the outcome is
+                // unknown on failure, and the old observation must not survive it (see [tap]).
+                try {
+                    response.putBoolean(Proto.ACCEPTED, accepted)
+                    if (!accepted) throw Fault("inputRejected")
+                    val deadline = SystemClock.uptimeMillis() + 1500
+                    while (true) {
+                        runCatching { invoke(automation, "clearCache") }
+                        if (!node.refresh()) throw Fault("textTargetChanged")
+                        val now = if (node.isShowingHintText) "" else node.text?.toString().orEmpty()
+                        if (now == text) break
+                        if (SystemClock.uptimeMillis() >= deadline) throw Fault("textReadbackMismatch")
+                        sleepChecked(50)
+                    }
+                    response.putString(Proto.READBACK, BackgroundTree.cap(text))
+                    if (submit) {
+                        if (!node.isFocused) throw Fault("textTargetChanged")
+                        globalKey("enter")
+                    }
+                } catch (e: Throwable) {
+                    throw dispatched(e)
                 }
             } finally { node.recycle() }
         } finally { conn.close() }
@@ -982,6 +1130,62 @@ class PrivilegedDisplayCore(private val context: Context) {
     }
 
     companion object {
+        /** The request keys the identity check requires — all three, always, null kept. */
+        internal val identityKeys = listOf(Proto.EXPECT_ROLE, Proto.EXPECT_LABEL, Proto.EXPECT_VIEW_ID)
+
+        /** The identity a write carries. Null: a required key is missing — a bare index
+         *  from an older app build, never executed against the live tree. */
+        internal fun identityOf(fields: Map<String, String?>): Identity? {
+            if (identityKeys.any { !fields.containsKey(it) }) return null
+            val role = fields[Proto.EXPECT_ROLE] ?: return null
+            val label = fields[Proto.EXPECT_LABEL] ?: return null
+            return Identity(role, label, fields[Proto.EXPECT_VIEW_ID])
+        }
+
+        /** Full equality, null equals null. A shared label prefix or a blank label matches
+         *  nothing by itself: the identity must address this one node and only this node. */
+        internal fun identityMatches(expect: Identity, actual: Identity): Boolean =
+            expect.role == actual.role && expect.label == actual.label && expect.viewId == actual.viewId
+
+        /** More than one live node carries the same identity: the pair number+identity is
+         *  ambiguous and refusing is the only safe answer. */
+        internal fun identityAmbiguous(expect: Identity, identities: List<Identity>): Boolean =
+            identities.count { identityMatches(expect, it) } > 1
+
+        /** A write needs identity that survives a rebuilt screen: a blank label with no
+         *  view id cannot be re-verified, so it is refused before any text is sent. */
+        internal fun writeIdentitySufficient(identity: Identity): Boolean =
+            identity.label.isNotBlank() || identity.viewId != null
+
+        /** True only when [provided] names the one complete observation the core holds.
+         *  Absent, rotated or revoked tickets all read as stale: zero injection. */
+        internal fun ticketOk(stored: String?, provided: String?): Boolean =
+            stored != null && provided != null && stored.length == provided.length &&
+                java.security.MessageDigest.isEqual(stored.toByteArray(), provided.toByteArray())
+
+        /** rev-2 clients self-identify on every non-release request; anything else is a
+         *  version that predates the mandatory identity fields: refuse up front. */
+        internal fun revisionOk(clientRev: String?): Boolean = clientRev == Proto.REVISION
+
+        /** The release receipt rule. Only the live owner triggers the actual release;
+         *  an owner already released (tombstoned) is re-confirmed idempotently — a lost
+         *  ack converges instead of retrying forever. Anyone else never releases, and
+         *  [release] is not even invoked against a live owner's resources. */
+        internal fun releaseConfirmed(
+            liveOwner: String?, lastReleased: String?, requester: String, release: () -> Boolean,
+        ): Boolean = (liveOwner == requester && release()) || requester == lastReleased
+
+        /** One cleanup step: the reference is dropped only after its own release
+         *  succeeded. A throwing release keeps the reference so the next attempt by
+         *  the same owner retries a real cleanup instead of finding nothing and
+         *  faking success. */
+        internal fun cleanupStep(release: () -> Unit, clear: () -> Unit): Boolean =
+            try {
+                release(); clear(); true
+            } catch (_: Throwable) {
+                false
+            }
+
         private val PACKAGE = Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+")
         private val FLAG_NAMES = listOf(
             "PUBLIC", "OWN_CONTENT_ONLY", "SUPPORTS_TOUCH", "DESTROY_CONTENT_ON_REMOVAL",
