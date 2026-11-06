@@ -820,6 +820,28 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
     }
 
+    /** Reads the main profile's settings layer for root builds, on the runtime worker. */
+    fun readMainProfilePatch(onDone: (String?, Throwable?) -> Unit) {
+        worker.execute {
+            val outcome = runCatching {
+                if (!BuildConfig.ROOT_RUNTIME) throw IllegalStateException("not a root runtime")
+                RootProfileIo.readMainProfilePatch(app, installer.rootfs)
+            }
+            main.post { onDone(outcome.getOrNull(), outcome.exceptionOrNull()) }
+        }
+    }
+
+    /** Atomically replaces the main profile's settings layer for root builds, on the runtime worker. */
+    fun writeMainProfilePatch(content: String, onDone: (Boolean, Throwable?) -> Unit) {
+        worker.execute {
+            val outcome = runCatching {
+                if (!BuildConfig.ROOT_RUNTIME) throw IllegalStateException("not a root runtime")
+                openRootFileAccess(app).use { RootProfileIo.write(it, installer.rootfs, content) }
+            }
+            main.post { onDone(outcome.getOrDefault(false), outcome.exceptionOrNull()) }
+        }
+    }
+
     /** Home-level files that would also break the safe profile. */
     fun safePreflight(onDone: (List<Map<String, Any?>>) -> Unit) {
         worker.execute {

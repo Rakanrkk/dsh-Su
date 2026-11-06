@@ -713,6 +713,21 @@ class RuntimeBridge {
   /// timed out or disconnected; `root_setup_failed` details the missing items.
   Future<void> ensureRootAccess() => _methods.invokeMethod<void>('ensureRootAccess');
 
+  /// Reads the main profile's settings layer through the native runtime
+  /// (root builds only; the app account cannot open the mode-0600 file).
+  Future<String?> readMainProfilePatch() async {
+    final map = await _methods.invokeMapMethod<Object?, Object?>('mainProfilePatch');
+    return map == null ? null : map['content'] as String?;
+  }
+
+  /// Atomically replaces the main profile's settings layer through the native
+  /// runtime. False when the write failed and the original file is untouched.
+  Future<bool> writeMainProfilePatch(String content) async {
+    final map = await _methods.invokeMapMethod<Object?, Object?>('writeMainProfilePatch', {'content': content});
+    return map != null && map['written'] == true;
+  }
+
+
   Future<void> stop() => _methods.invokeMethod<void>('stop');
 
   /// Deletes the runtime with everything in /root except [keep].

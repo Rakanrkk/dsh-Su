@@ -155,7 +155,7 @@ internal interface RuntimeFileAccess : AutoCloseable {
     fun readText(file: File): String
 }
 
-private fun openRootFileAccess(context: Context): RuntimeFileAccess {
+internal fun openRootFileAccess(context: Context): RuntimeFileAccess {
     val selection = RootShellSelector.select(context) ?: throw IllegalStateException("no root shell")
     return object : RuntimeFileAccess {
         override fun file(file: File): File = SuFile(file.path).apply { setShell(selection.shell) }

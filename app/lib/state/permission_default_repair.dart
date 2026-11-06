@@ -6,7 +6,9 @@
 // and the plugin-config bridge only edit active plugins). The on-device
 // engine's settings layer is a file the app can reach, so the app takes the
 // value out of it and restarts DSH, which then starts the presets with its own
-// default. A remote host offers no method that could, and is left alone.
+// default. Root builds read and write it through the native runtime: the file
+// is owned by root with mode 0600, invisible to the app account. A remote host
+// offers no method that could, and is left alone.
 
 import 'dart:io';
 
@@ -26,19 +28,40 @@ const mainProfilePatch = '${GuestFs.dshHome}/profiles/web/cordis.patch.yml';
 /// happens, so this runs on every local connect and acts once.
 Future<void> clearAutoDefaultPreset(ProviderContainer container) async {
   try {
-    final file = (await container.read(guestFsProvider.future))?.file(mainProfilePatch);
-    if (file == null || !file.existsSync()) return;
-    final fixed = withoutAutoDefaultPreset(file.readAsStringSync());
+    final root = container.read(localRuntimeProvider).status.rootRuntime;
+    final String? patch;
+    if (root) {
+      patch = await container.read(runtimeBridgeProvider).readMainProfilePatch();
+    } else {
+      final fs = await container.read(guestFsProvider.future);
+      final file = fs?.file(mainProfilePatch);
+      patch = file == null || !file.existsSync() ? null : file.readAsStringSync();
+    }
+    if (patch == null) return;
+    final fixed = withoutAutoDefaultPreset(patch);
     if (fixed == null) return;
-    final tmp = File('${file.path}.dsh-go-tmp')..writeAsStringSync(fixed, flush: true);
-    tmp.renameSync(file.path);
+    final written = root
+        ? await container.read(runtimeBridgeProvider).writeMainProfilePatch(fixed)
+        : _writeNormalPatch(container, fixed);
+    if (!written) return;
     debugPrint('Permissions: cleared the stored Auto default for new chats');
     // Safe mode runs its own profile; leaving it starts the fixed one.
-    if (!container.read(localRuntimeProvider).status.inSafeMode) await EngineControl.restart(container);
+    if (!container.read(localRuntimeProvider).status.inSafeMode) {
+      await EngineControl.restart(container);
+    }
   } catch (error) {
     // The next connect tries again.
     debugPrint('Permissions: could not clear the stored Auto default: $error');
   }
+}
+
+bool _writeNormalPatch(ProviderContainer container, String fixed) {
+  final fs = container.read(guestFsProvider).value;
+  final file = fs?.file(mainProfilePatch);
+  if (file == null) return false;
+  final tmp = File('${file.path}.dsh-go-tmp')..writeAsStringSync(fixed, flush: true);
+  tmp.renameSync(file.path);
+  return true;
 }
 
 /// [patch] without `defaultPreset: auto` in its `permission` rows (the whole

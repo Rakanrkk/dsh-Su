@@ -113,6 +113,18 @@ class RuntimePlugin :
                     result.error("start_busy", "runtime cannot start in its current phase", null)
                 }
             }
+            "mainProfilePatch" -> controller.readMainProfilePatch { content, error ->
+                if (error == null) result.success(mapOf("content" to content))
+                else result.error("profile_io_failed", error.message, null)
+            }
+            "writeMainProfilePatch" -> {
+                val content = call.argument<String>("content")
+                if (content == null) result.error("profile_io_failed", "missing content", null)
+                else controller.writeMainProfilePatch(content) { written, error ->
+                    if (error == null) result.success(mapOf("written" to written))
+                    else result.error("profile_io_failed", error.message, null)
+                }
+            }
             "ensureRootAccess" -> {
                 controller.ensureRootAccess { code, reason, missing ->
                     if (code == null) result.success(null)
