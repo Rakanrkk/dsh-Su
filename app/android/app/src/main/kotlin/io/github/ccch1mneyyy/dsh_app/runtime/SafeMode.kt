@@ -213,7 +213,10 @@ object SafeMode {
             var target = File(file.parentFile, "${file.name}.off-$stamp")
             var n = 1
             while (target.exists()) target = File(file.parentFile, "${file.name}.off-$stamp-${n++}")
-            if (file.renameTo(target)) moved += path to (path.substringBeforeLast('/') + "/" + target.name)
+            // A rename that silently does nothing would leave the hazard in place while
+            // the briefing claims it was moved; report it instead.
+            if (!file.renameTo(target)) throw IOException("could not move $path aside")
+            moved += path to (path.substringBeforeLast('/') + "/" + target.name)
         }
         return moved
     }
@@ -258,8 +261,11 @@ object SafeMode {
         }
         val tool = File(bin, "dsh-app-plugins")
         writeAtomic(tool, PLUGINS_SCRIPT)
-        tool.setReadable(true, false)
-        tool.setExecutable(true, false)
+        // The repair tool is the safe profile's way out; if it cannot be made runnable,
+        // the briefing points at a tool that will not run — fail the preparation loudly.
+        if (!tool.setReadable(true, false) || !tool.setExecutable(true, false)) {
+            throw IOException("could not make ${tool.path} readable and executable")
+        }
     }
 
     fun renderBriefing(b: Briefing): String = buildString {
@@ -430,10 +436,16 @@ object SafeMode {
 
     fun guestFile(rootfs: File, guestPath: String): File = File(rootfs, guestPath.removePrefix("/"))
 
-    private fun readIfFile(file: File): String? = try {
-        if (file.isFile) file.readText() else null
-    } catch (_: Exception) {
-        null
+    private fun readIfFile(file: File): String? {
+        if (!file.isFile) return null
+        // A file that exists but cannot be read is a real problem, not "not there":
+        // treating it as absent would silently skip a hazard and the safe profile
+        // would still break on it.
+        return try {
+            file.readText()
+        } catch (e: Exception) {
+            throw IOException("could not read ${file.path}", e)
+        }
     }
 
     /** A real directory at [dir]: a symlink or file planted there is removed first (never followed). */

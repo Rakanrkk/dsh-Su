@@ -7,6 +7,7 @@ import java.io.FileOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.file.Files
 import java.util.zip.GZIPInputStream
 import org.tukaani.xz.XZInputStream
 
@@ -16,9 +17,22 @@ import org.tukaani.xz.XZInputStream
  * Handles ustar, GNU long names ('L'/'K') and pax headers ('x'); restores modes and
  * symlinks; turns hardlinks into copies (no hardlinks across app storage needed).
  * Device nodes and FIFOs are skipped: proot binds the host /dev instead.
+ * Numeric uid/gid are read from the ustar header (108/116) or pax keys and handed to
+ * [applyOwner]; the default is a no-op so plain (non-root) installs keep legacy behavior.
+ * Name strings (uname/gname) are ignored: the numeric fields are authoritative.
+ * Ownership is applied only after the whole archive is read and all modes are set:
+ * the app process must keep write access to the staging tree while it still creates
+ * children, reads hardlink sources and applies the final chmods.
+ * Each deferred record is re-checked against the filesystem right before its
+ * owner is applied: the canonical path of the record's parent directory must
+ * still be the staging root or inside it (the leaf itself is never followed),
+ * and the record's target must still exist. Anything else aborts the whole
+ * extraction loudly so an owner-incomplete candidate can never be activated.
+ * Leaf symlinks stay no-follow.
  */
 class TarExtractor(
     private val root: File,
+    private val applyOwner: (file: File, uid: Long, gid: Long) -> Unit = { _, _, _ -> },
     private val onProgress: (compressedRead: Long) -> Unit,
 ) {
     private class CountingStream(input: InputStream, private val onRead: (Long) -> Unit) : FilterInputStream(input) {
@@ -45,6 +59,7 @@ class TarExtractor(
 
     private val rootCanonical: String = root.canonicalPath
     private val deferredDirModes = ArrayList<Pair<File, Int>>()
+    private val deferredOwners = ArrayList<Triple<File, Long, Long>>()
     private val copyBuffer = ByteArray(1 shl 16)
 
     fun extract(raw: InputStream, fileName: String) {
@@ -66,6 +81,27 @@ class TarExtractor(
         }
         // Directory modes last, so read-only directories can still be populated.
         for ((dir, mode) in deferredDirModes.asReversed()) chmod(dir, mode)
+        // Numeric ownership last of all, children before parents: handing a
+        // directory to its archived owner earlier would lock the app UID out of
+        // the remaining writes and reads (e.g. a 0600 file used as a hardlink
+        // source, or the final chmods above).
+        val stagingRoot = rootCanonical
+        for ((file, uid, gid) in deferredOwners.asReversed()) {
+            // Re-validate against the filesystem now: an archive or outside actor
+            // may have redefined a parent since the record was enqueued (resolve()
+            // only saw enqueue-time state). Only the parent chain is canonicalised
+            // so a legal leaf symlink stays no-follow; a re-homed parent or a
+            // vanished target aborts the whole extraction.
+            val parent = file.parentFile?.canonicalPath
+            val contained =
+                parent != null &&
+                    (parent == stagingRoot || parent.startsWith(stagingRoot + File.separator))
+            val present = file.exists() || Files.isSymbolicLink(file.toPath())
+            if (!contained || !present) {
+                throw IOException("deferred ownership record no longer valid: ${file.path}")
+            }
+            applyOwner(file, uid, gid)
+        }
     }
 
     private fun readArchive(input: InputStream) {
@@ -75,6 +111,8 @@ class TarExtractor(
         var paxPath: String? = null
         var paxLink: String? = null
         var paxSize: Long? = null
+        var paxUid: Long? = null
+        var paxGid: Long? = null
         var zeroBlocks = 0
         while (true) {
             if (!readFully(input, header)) break
@@ -91,6 +129,7 @@ class TarExtractor(
                 'x' -> {
                     val pax = parsePax(readString(input, size))
                     paxPath = pax["path"]; paxLink = pax["linkpath"]; paxSize = pax["size"]?.toLongOrNull()
+                    paxUid = pax["uid"]?.toLongOrNull(); paxGid = pax["gid"]?.toLongOrNull()
                     continue
                 }
                 'g' -> { skip(input, padded(size)); continue }
@@ -99,6 +138,9 @@ class TarExtractor(
             val link = paxLink ?: longLink ?: cString(header, 157, 100)
             longName = null; longLink = null; paxPath = null; paxLink = null; paxSize = null
             val mode = parseNumber(header, 100, 8).toInt() and 0xFFF
+            val uid = paxUid ?: parseNumber(header, 108, 8)
+            val gid = paxGid ?: parseNumber(header, 116, 8)
+            paxUid = null; paxGid = null
             val target = resolve(name)
             if (target == null) {
                 skip(input, padded(size))
@@ -108,11 +150,13 @@ class TarExtractor(
                 '5' -> {
                     target.mkdirs()
                     deferredDirModes += target to (if (mode == 0) 0x1ED else mode) // 0755
+                    deferredOwners += Triple(target, uid, gid)
                 }
                 '2' -> {
                     target.parentFile?.mkdirs()
                     deleteIfExists(target)
                     Os.symlink(link, target.path)
+                    deferredOwners += Triple(target, uid, gid)
                 }
                 '1' -> {
                     val source = resolve(link)
@@ -121,6 +165,7 @@ class TarExtractor(
                     if (source != null && source.isFile) {
                         FileInputStream(source).use { src -> FileOutputStream(target).use { src.copyTo(it, 1 shl 16) } }
                         chmod(target, mode)
+                        deferredOwners += Triple(target, uid, gid)
                     }
                 }
                 '0', '\u0000', '7' -> {
@@ -129,6 +174,7 @@ class TarExtractor(
                     FileOutputStream(target).use { out -> copyExactly(input, out, size) }
                     skip(input, padded(size) - size)
                     chmod(target, if (mode == 0) 0x1A4 else mode) // 0644
+                    deferredOwners += Triple(target, uid, gid)
                     size = 0
                     continue
                 }

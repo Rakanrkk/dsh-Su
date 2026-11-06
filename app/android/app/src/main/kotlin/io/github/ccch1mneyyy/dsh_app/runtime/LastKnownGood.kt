@@ -16,6 +16,21 @@ data class ProfileSnapshot(
     val patch: String?,
 )
 
+/** One read of the main profile on disk, with the failure kept explicit for Root600. */
+sealed class LkgDisk {
+    /** The profile is there and parsed. */
+    data class Ok(val snapshot: ProfileSnapshot) : LkgDisk()
+
+    /** `package.json` does not exist yet — DSH has not created the profile. */
+    object Missing : LkgDisk()
+
+    /** `package.json` exists but does not parse. */
+    data class Corrupt(val cause: String) : LkgDisk()
+
+    /** `package.json` exists but cannot be read (for example permission denied under Root600). */
+    data class Unreadable(val cause: String) : LkgDisk()
+}
+
 /**
  * What restoring the last good snapshot changes in the current profile: the bundle list
  * goes back to the snapshot's, minus packages uninstalled or upgraded since (an upgraded package
@@ -77,18 +92,39 @@ data class LkgPlan(
 /**
  * The last good plugin set of profile `web`, kept outside the rootfs in
  * `filesDir/runtime/lkg/lkg.json` and recorded after each healthy two-minute normal run.
+ *
+ * Reads, restores and the settings-layer replacement all go through [RuntimeFileAccess]
+ * (the root shell under Root600, plain files under proot) and share the writer lock
+ * DSH itself takes on `package.json` (`ProfileLock`, mirroring `dsh-atomic-write`).
  */
 object LastKnownGood {
     class Record(val at: Long, val snapshot: ProfileSnapshot)
 
+    private const val PKG_NAME = "package.json"
+    private const val PATCH_NAME = "cordis.patch.yml"
+
     fun webDir(rootfs: File): File = File(rootfs, "root/.dsh/profiles/web")
 
-    /** The main profile as it is now; null before DSH has created it. */
-    fun read(rootfs: File): ProfileSnapshot? {
-        val dir = webDir(rootfs)
-        val pkg = File(dir, "package.json")
-        if (!pkg.isFile) return null
-        return parse(JSONObject(pkg.readText()), dir)
+    /**
+     * The main profile as it is now, with the outcome kept explicit: [LkgDisk.Missing]
+     * before DSH has created it, [LkgDisk.Corrupt] when `package.json` does not parse,
+     * [LkgDisk.Unreadable] when an existing file cannot be read (permission denied
+     * under Root600).
+     */
+    internal fun readDetailed(files: RuntimeFileAccess, rootfs: File): LkgDisk {
+        val pkg = files.file(File(webDir(rootfs), PKG_NAME))
+        if (!pkg.isFile) return LkgDisk.Missing
+        val text = try {
+            files.readText(pkg)
+        } catch (e: Exception) {
+            return LkgDisk.Unreadable(e.message ?: "package.json unreadable")
+        }
+        val json = try {
+            JSONObject(text)
+        } catch (e: Exception) {
+            return LkgDisk.Corrupt(e.message ?: "package.json unparsable")
+        }
+        return LkgDisk.Ok(parse(files, json, webDir(rootfs)))
     }
 
     /**
@@ -112,7 +148,7 @@ object LastKnownGood {
         return true
     }
 
-    private fun parse(json: JSONObject, dir: File): ProfileSnapshot {
+    private fun parse(files: RuntimeFileAccess, json: JSONObject, dir: File): ProfileSnapshot {
         val bundles = json.optJSONObject("dsh")?.optJSONObject("profile")?.optJSONArray("bundles").strings()
         val depsJson = json.optJSONObject("dependencies")
         val deps = LinkedHashSet<String>()
@@ -120,14 +156,14 @@ object LastKnownGood {
         val versions = LinkedHashMap<String, String>()
         for (name in deps) {
             val version = try {
-                JSONObject(File(dir, "node_modules/$name/package.json").readText()).optString("version")
+                JSONObject(files.readText(files.file(File(dir, "node_modules/$name/package.json")))).optString("version")
             } catch (_: Exception) {
                 null
             }
             if (!version.isNullOrEmpty()) versions[name] = version
         }
-        val patchFile = File(dir, "cordis.patch.yml")
-        val patch = if (patchFile.isFile) patchFile.readText() else null
+        val patchFile = files.file(File(dir, PATCH_NAME))
+        val patch = if (patchFile.isFile) files.readText(patchFile) else null
         return ProfileSnapshot(bundles, deps, versions, patch)
     }
 
@@ -166,65 +202,49 @@ object LastKnownGood {
     }
 
     /**
-     * Applies [LkgPlan.of] to the main profile under DSH's `package.json.lock`. The settings
-     * layer being replaced is kept as `cordis.patch.yml.bak-<stamp>`.
+     * Applies [LkgPlan.of] to the main profile under DSH's `package.json.lock`
+     * ([ProfileLock], the same file DSH's plugin manager locks before it touches this
+     * profile). The settings layer being replaced is kept as `cordis.patch.yml.bak-<stamp>`,
+     * written through the same root-aware seam; a held lock makes this throw [busyConfig]
+     * after [lockWaitMs] instead of writing.
      */
-    fun restore(
-        rootfs: File, lkg: ProfileSnapshot, stamp: String,
+    internal fun restore(
+        files: RuntimeFileAccess,
+        rootfs: File,
+        lkg: ProfileSnapshot,
+        stamp: String,
         missingConfig: String = "找不到主配置 profiles/web/package.json", // l10n:keep test default
         busyConfig: String = "插件配置正被别的程序修改，稍后再试", // l10n:keep test default
+        setPrivateMode: (File) -> Boolean = RootProfileIo::setPrivateMode,
+        lockWaitMs: Long = ProfileLock.DEFAULT_WAIT_MS,
+        pid: () -> Long = ProfileLock::currentPid,
+        alive: (Long) -> Boolean = { ProfileLock.isAlive(it) },
+        sleep: (Long) -> Unit = Thread::sleep,
     ): LkgPlan {
         val dir = webDir(rootfs)
-        val pkg = File(dir, "package.json")
+        val pkg = files.file(File(dir, PKG_NAME))
         if (!pkg.isFile) throw IllegalStateException(missingConfig)
-        return withLock(pkg, busyConfig) {
-            val json = JSONObject(pkg.readText())
-            val plan = LkgPlan.of(lkg, parse(json, dir))
+        return ProfileLock.withLock(files, pkg, busyConfig, waitMs = lockWaitMs, pid = pid, alive = alive, sleep = sleep) {
+            val json = JSONObject(files.readText(pkg))
+            val plan = LkgPlan.of(lkg, parse(files, json, dir))
             if (plan.bundlesChanged) {
                 val dsh = json.optJSONObject("dsh") ?: JSONObject().also { json.put("dsh", it) }
                 val profile = dsh.optJSONObject("profile") ?: JSONObject().also { dsh.put("profile", it) }
                 profile.put("bundles", JSONArray(plan.target))
                 // Android's org.json escapes every '/' as "\/"; undo that so the file stays as DSH writes it.
-                SafeMode.writeAtomic(pkg, json.toString(2).replace("\\/", "/") + "\n")
+                RootProfileIo.atomicReplace(files, pkg, json.toString(2).replace("\\/", "/") + "\n", setPrivateMode)
             }
             if (plan.patchChanged) {
-                val patchFile = File(dir, "cordis.patch.yml")
-                if (patchFile.isFile) patchFile.copyTo(File(dir, "cordis.patch.yml.bak-$stamp"), overwrite = true)
+                val patchFile = files.file(File(dir, PATCH_NAME))
+                if (patchFile.isFile) {
+                    val previous = files.readText(patchFile)
+                    RootProfileIo.atomicReplace(files, files.file(File(dir, "$PATCH_NAME.bak-$stamp")), previous, setPrivateMode)
+                }
                 val text = lkg.patch
-                if (text != null) SafeMode.writeAtomic(patchFile, text) else patchFile.delete()
+                if (text != null) RootProfileIo.atomicReplace(files, patchFile, text, setPrivateMode)
+                else files.delete(patchFile, recursive = false)
             }
             plan
-        }
-    }
-
-    /**
-     * DSH's writer lock (`dsh-atomic-write`): a sibling `<file>.lock` created exclusively,
-     * holding the writer's pid; a lock whose pid no longer exists is taken over.
-     */
-    private fun <T> withLock(file: File, busyConfig: String, block: () -> T): T {
-        val lock = File(file.path + ".lock")
-        val deadline = System.currentTimeMillis() + 3000
-        while (true) {
-            if (lock.createNewFile()) {
-                break
-            }
-            val holder = try {
-                lock.readText().trim().toIntOrNull()
-            } catch (_: Exception) {
-                null
-            }
-            if (holder != null && !File("/proc/$holder").exists()) {
-                lock.delete()
-                continue
-            }
-            if (System.currentTimeMillis() > deadline) throw IllegalStateException(busyConfig)
-            Thread.sleep(50)
-        }
-        try {
-            lock.writeText("${android.os.Process.myPid()}\n")
-            return block()
-        } finally {
-            lock.delete()
         }
     }
 

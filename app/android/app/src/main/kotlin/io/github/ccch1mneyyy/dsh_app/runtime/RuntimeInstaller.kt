@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.AssetManager
 import com.topjohnwu.superuser.io.SuFile
 import com.topjohnwu.superuser.io.SuFileInputStream
+import com.topjohnwu.superuser.io.SuFileOutputStream
 import io.github.ccch1mneyyy.dsh_app.R
 import io.github.ccch1mneyyy.dsh_app.i18n.AppStrings
 import java.io.File
@@ -90,7 +91,18 @@ class RuntimeInstaller(
                 }
             }
             timed("extract") {
-                val extractor = TarExtractor(staging, progress)
+                val extractor = TarExtractor(
+                    staging,
+                    applyOwner = { file, uid, gid ->
+                        // Root installs must land with the archive's numeric ownership; a failed
+                        // chown aborts the install so a bad candidate is never activated. Plain
+                        // installs have no [files] handle and keep the legacy no-op behavior.
+                        if (files != null && !files.chown(file, uid, gid)) {
+                            throw IllegalStateException("could not set numeric ownership on ${file.path}")
+                        }
+                    },
+                    onProgress = progress,
+                )
                 if (manifest.rootfsAsset.endsWith(".xz") && assetBytes > 0) {
                     val decoded = ParallelXZInputStream.open(
                         { AssetSeekableInputStream(context.assets.openFd(assetPath)) }, progress,
@@ -153,6 +165,60 @@ internal interface RuntimeFileAccess : AutoCloseable {
     fun isSymlink(file: File): Boolean
     fun delete(file: File, recursive: Boolean): Boolean
     fun readText(file: File): String
+
+    /** Writes UTF-8 content, creating or truncating [file]. */
+    fun writeText(file: File, content: String) {
+        file.writeText(content)
+    }
+
+    /**
+     * Creates [file] with [content] (UTF-8, mode 0600 where supported) in one exclusive
+     * step, returning false when it already exists — the app-side counterpart of DSH's
+     * `fs.writeFileSync(lock, …, {flag: "wx", mode: 0o600})`.
+     */
+    fun createExclusive(file: File, content: String): Boolean {
+        val options = java.util.LinkedHashSet<java.nio.file.StandardOpenOption>()
+        options.add(java.nio.file.StandardOpenOption.CREATE_NEW)
+        options.add(java.nio.file.StandardOpenOption.WRITE)
+        val bytes = java.nio.ByteBuffer.wrap(content.toByteArray(Charsets.UTF_8))
+        return try {
+            try {
+                java.nio.file.Files.newByteChannel(
+                    file.toPath(), options,
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                        java.util.HashSet(
+                            listOf(
+                                java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                                java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
+                            ),
+                        ),
+                    ),
+                ).use { it.write(bytes.duplicate()) }
+            } catch (_: UnsupportedOperationException) {
+                // Non-POSIX file store: create exclusively without the mode hint.
+                java.nio.file.Files.newByteChannel(file.toPath(), options).use { it.write(bytes.duplicate()) }
+            }
+            true
+        } catch (_: java.nio.file.FileAlreadyExistsException) {
+            false
+        }
+    }
+
+    /**
+     * Sets numeric ownership through this backend. The default is false: plain
+     * (proot) installs cannot chown and keep the extracted state, so legacy
+     * behavior is an explicit no-op rather than a silent failure.
+     */
+    fun chown(file: File, uid: Long, gid: Long): Boolean = false
+}
+
+/** Plain-file access for proot runtimes and tests: the identity mapping. */
+internal object PlainRuntimeFileAccess : RuntimeFileAccess {
+    override fun file(file: File): File = file
+    override fun isSymlink(file: File): Boolean = java.nio.file.Files.isSymbolicLink(file.toPath())
+    override fun delete(file: File, recursive: Boolean): Boolean = if (recursive) file.deleteRecursively() else file.delete()
+    override fun readText(file: File): String = file.readText()
+    override fun close() {}
 }
 
 internal fun openRootFileAccess(context: Context): RuntimeFileAccess {
@@ -169,6 +235,29 @@ internal fun openRootFileAccess(context: Context): RuntimeFileAccess {
 
         override fun readText(file: File): String =
             SuFileInputStream.open(this.file(file)).bufferedReader().use { it.readText() }
+
+        override fun writeText(file: File, content: String) {
+            SuFileOutputStream.open(this.file(file)).use { it.write(content.toByteArray(Charsets.UTF_8)) }
+        }
+
+        override fun createExclusive(file: File, content: String): Boolean {
+            val rootFile = this.file(file) as SuFile
+            // Real O_EXCL is not reachable through SuFile (each call is its own shell job);
+            // noclobber redirection refuses an existing target in one job and umask 077
+            // lands mode 0600. The record content is pid digits supplied by ProfileLock.
+            require(content.isNotBlank() && content.all { it.isDigit() || it == '\n' }) { "lock record must be pid digits" }
+            val path = "'" + rootFile.path.replace("'", "'\\''") + "'"
+            val result = selection.shell.newJob()
+                .add("( set -o noclobber; umask 077; printf '%s\\n' ${content.trim()} > $path )")
+                .exec()
+            return result.code == 0
+        }
+
+        override fun chown(file: File, uid: Long, gid: Long): Boolean {
+            if (uid < 0 || uid > Int.MAX_VALUE || gid < 0 || gid > Int.MAX_VALUE) return false
+            val quoted = "'" + file.path.replace("'", "'\\''") + "'"
+            return selection.shell.newJob().add("chown -h '$uid:$gid' $quoted").exec().code == 0
+        }
 
         override fun close() = selection.close()
     }

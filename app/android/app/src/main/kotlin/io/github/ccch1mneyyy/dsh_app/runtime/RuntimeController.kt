@@ -403,7 +403,8 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             val file = GuestSetup.writeDiagnostics(installer.rootfs, markdown)
             mapOf("path" to file.absolutePath, "bytes" to file.length())
         }
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        log("[dsh-app] could not write the diagnostics snapshot: ${e.message}", "system")
         null
     }
 
@@ -545,11 +546,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     bootProfile = null
                     log("[dsh-app] safe mode: booting profile ${SafeMode.PROFILE} rebuilt from the web template, plugins off", "system")
                 } else {
-                    bootProfile = try {
-                        LastKnownGood.read(installer.rootfs)
-                    } catch (_: Exception) {
-                        null
-                    }
+                    bootProfile = readLkgSnapshot()
                 }
                 // Stopped (or started again) while this was queued: launching now would leave an orphan.
                 if (stopGen >= gen || gen != runGen) {
@@ -563,7 +560,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 timeline.spawned()
                 val direct = directEngine()
                 p.start(env, if (storage) PhoneStorage.binds() else emptyList(), safe, phone, direct.requested, direct.failed) { actualDirect ->
-                    GuestSetup.writeAgentsMd(installer.rootfs, storage, phone, pendingVisualReplies, actualDirect, BuildConfig.ROOT_RUNTIME)
+                    if (!GuestSetup.writeAgentsMd(installer.rootfs, storage, phone, pendingVisualReplies, actualDirect, BuildConfig.ROOT_RUNTIME)) {
+                        log("[dsh-app] could not write the guest AGENTS.md; the engine keeps its previous instructions", "system")
+                    }
                 }
                 if (phone) PhoneControl.get(app).launched(p.phoneMounted)
             } catch (e: Throwable) {
@@ -784,11 +783,12 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         worker.execute {
             val result: Map<String, Any?> = try {
                 val lkg = LastKnownGood.load(lkgFile)
-                val current = LastKnownGood.read(installer.rootfs)
-                if (lkg == null || current == null) {
-                    mapOf("available" to false, "at" to lkg?.at)
+                val current = lkgDisk()
+                val failure = (current as? LkgDisk.Corrupt)?.cause ?: (current as? LkgDisk.Unreadable)?.cause
+                if (lkg == null || current !is LkgDisk.Ok) {
+                    mapOf("available" to false, "at" to lkg?.at) + if (failure != null) mapOf("error" to failure) else emptyMap()
                 } else {
-                    LkgPlan.of(lkg.snapshot, current).toMap() + mapOf("available" to true, "at" to lkg.at)
+                    LkgPlan.of(lkg.snapshot, current.snapshot).toMap() + mapOf("available" to true, "at" to lkg.at)
                 }
             } catch (e: Exception) {
                 mapOf("available" to false, "error" to e.message)
@@ -805,7 +805,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         worker.execute {
             try {
                 val lkg = LastKnownGood.load(lkgFile) ?: throw IllegalStateException(AppStrings.get(app, R.string.safe_no_good_config))
-                val plan = LastKnownGood.restore(installer.rootfs, lkg.snapshot, SafeMode.stamp(),
+                val plan = restoreLkg(lkg.snapshot, SafeMode.stamp(),
                     AppStrings.get(app, R.string.safe_config_missing), AppStrings.get(app, R.string.safe_config_busy))
                 log(
                     "[dsh-app] restored the last good plugin set from ${SafeMode.formatTime(lkg.at)}: " +
@@ -842,6 +842,29 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         }
     }
 
+    /** Main-profile file access: the root shell under Root600, plain files under proot. */
+    private fun <T> withProfileFiles(block: (RuntimeFileAccess) -> T): T =
+        if (BuildConfig.ROOT_RUNTIME) openRootFileAccess(app).use(block)
+        else PlainRuntimeFileAccess.use(block)
+
+    /** One main-profile read through [withProfileFiles], with the failure kept explicit. */
+    private fun lkgDisk(): LkgDisk = withProfileFiles { files ->
+        LastKnownGood.readDetailed(files, installer.rootfs)
+    }
+
+    /** The main profile as it is now; null when missing, corrupt or unreadable — the boot-time shape. */
+    private fun readLkgSnapshot(): ProfileSnapshot? = try {
+        (lkgDisk() as? LkgDisk.Ok)?.snapshot
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Applies the last good snapshot under the shared writer lock, through the same seam. */
+    private fun restoreLkg(snapshot: ProfileSnapshot, stamp: String, missingConfig: String, busyConfig: String): LkgPlan =
+        withProfileFiles { files ->
+            LastKnownGood.restore(files, installer.rootfs, snapshot, stamp, missingConfig, busyConfig)
+        }
+
     /** Home-level files that would also break the safe profile. */
     fun safePreflight(onDone: (List<Map<String, Any?>>) -> Unit) {
         worker.execute {
@@ -849,7 +872,8 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 SafeMode.preflight(installer.rootfs, AppStrings.get(app, R.string.safe_patch_hazard)) { names ->
                     AppStrings.get(app, R.string.safe_env_hazard, names.joinToString(if (AppStrings.isEnglish(app)) ", " else "、"))
                 }.map { it.toMap() }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                log("[dsh-app] safe-mode preflight could not inspect the guest: ${e.message}", "system")
                 emptyList()
             }
             main.post { onDone(hazards) }
@@ -934,7 +958,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     /** Bundles enabled or upgraded since the last good run: the first suspects of a new failure. */
     private fun recentChanges(): List<String> = try {
         val lkg = LastKnownGood.load(lkgFile)
-        val current = bootProfile ?: LastKnownGood.read(installer.rootfs)
+        val current = bootProfile ?: readLkgSnapshot()
         if (lkg == null || current == null) {
             emptyList()
         } else {
@@ -1029,7 +1053,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         if (!runSafe) {
             // First boot creates the profile after startProcess reads it. Capture it before
             // RUNNING lets the app change it; a later disk read would not describe this boot.
-            bootProfile = LastKnownGood.bootedAtReady(bootProfile) { LastKnownGood.read(installer.rootfs) }
+            bootProfile = LastKnownGood.bootedAtReady(bootProfile) { readLkgSnapshot() }
         }
         if (!runSafe) healthyAt = System.currentTimeMillis() + SafePolicy.HEALTHY_MS
         log("[dsh-app] DSH is listening at $baseUrl${if (runSafe) " (safe mode)" else ""}", "system")

@@ -93,7 +93,12 @@ object GuestSetup {
         return file
     }
 
-    /** Global DSH instructions ($DSH_HOME/AGENTS.md); left alone once the user removes the marker. */
+    /**
+     * Global DSH instructions ($DSH_HOME/AGENTS.md); left alone once the user removes the
+     * marker. Returns false when a real failure (unreadable existing file, missing
+     * directory, unwritable target) prevented the write, so callers can surface it instead
+     * of claiming the guest briefing is in place; a user-owned file still returns true.
+     */
     fun writeAgentsMd(
         rootfs: File,
         phoneStorage: Boolean,
@@ -101,10 +106,10 @@ object GuestSetup {
         visualReplies: Boolean = true,
         directEngine: Boolean = false,
         rootRuntime: Boolean = false,
-    ) {
-        try {
+    ): Boolean {
+        return try {
             val file = File(rootfs, "root/.dsh/AGENTS.md")
-            if (file.exists() && !file.readText().startsWith(AGENTS_MARKER)) return
+            if (file.exists() && !file.readText().startsWith(AGENTS_MARKER)) return true
             // The root runtime shares the upstream template; only the environment bullet changes.
             val environment = if (rootRuntime) {
                 AGENTS_MD
@@ -135,8 +140,12 @@ object GuestSetup {
                     else "\$DSH_HOME/dsh-app/diagnostics.md",
                 )
             file.parentFile?.mkdirs()
-            if (!file.exists() || file.readText() != text) file.writeText(text)
+            // Same content does not mean the file is still ours to manage: an owner or
+            // mode error must surface here, not hide behind the content-compare fast path.
+            if (!file.exists() || file.readText() != text || !file.canWrite()) file.writeText(text)
+            true
         } catch (_: Exception) {
+            false
         }
     }
 
