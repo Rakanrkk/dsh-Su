@@ -666,10 +666,13 @@ def cmd_deb_extract(args):
 # rootfs assembly
 # ---------------------------------------------------------------------------
 class Entry:
-    __slots__ = ("kind", "mode", "data", "path", "link", "origin")
+    # uid/gid carry the numeric source identity: None = no source identity, resolved
+    # to root (0/0) before the archive is written and counted in report["identity"].
+    __slots__ = ("kind", "mode", "data", "path", "link", "origin", "uid", "gid")
 
-    def __init__(self, kind, mode, data=None, path=None, link=None, origin=""):
+    def __init__(self, kind, mode, data=None, path=None, link=None, origin="", uid=None, gid=None):
         self.kind, self.mode, self.data, self.path, self.link, self.origin = kind, mode, data, path, link, origin
+        self.uid, self.gid = uid, gid
 
     def size(self):
         if self.kind != "file":
@@ -789,7 +792,9 @@ def add_plugin_files(entries, source_root, dest_root):
     for relative in production_files(source_root):
         path = os.path.join(source_root, relative)
         mode = 0o755 if os.access(path, os.X_OK) else 0o644
-        entries[posixpath.join(dest_root, relative)] = Entry("file", mode, path=path, origin="plugin")
+        st = os.lstat(path)
+        entries[posixpath.join(dest_root, relative)] = Entry("file", mode, path=path, origin="plugin",
+                                                             uid=st.st_uid, gid=st.st_gid)
     for peer in plugin_peer_links(source_root):
         entries[posixpath.join(dest_root, "node_modules", peer)] = Entry(
             "symlink", 0o777, link="/opt/dsh/node_modules/" + peer, origin="plugin")
@@ -1067,20 +1072,21 @@ def cmd_assemble(args):
                 drop("ubuntu-docs-caches", p, m.size)
                 continue
             if m.isdir():
-                entries[p] = Entry("dir", m.mode, origin="ubuntu")
+                entries[p] = Entry("dir", m.mode, origin="ubuntu", uid=m.uid, gid=m.gid)
             elif m.isreg():
-                entries[p] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="ubuntu")
+                entries[p] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="ubuntu",
+                                   uid=m.uid, gid=m.gid)
             elif m.issym():
-                entries[p] = Entry("symlink", 0o777, link=m.linkname, origin="ubuntu")
+                entries[p] = Entry("symlink", 0o777, link=m.linkname, origin="ubuntu", uid=m.uid, gid=m.gid)
             elif m.islnk():
-                hardlinks.append((p, norm_member(m.linkname), m.mode))
+                hardlinks.append((p, norm_member(m.linkname), m.mode, m.uid, m.gid))
             else:
                 drop("device-or-fifo", p, 0)
-    for p, target, mode in hardlinks:  # hard links become independent copies
+    for p, target, mode, uid, gid in hardlinks:  # hard links become independent copies
         src = entries.get(target)
         if src is None or src.kind != "file":
             raise SystemExit("hard link %s -> %s has no regular-file target" % (p, target))
-        entries[p] = Entry("file", mode, data=src.data, origin="ubuntu")
+        entries[p] = Entry("file", mode, data=src.data, origin="ubuntu", uid=uid, gid=gid)
         report["convertedHardlinks"].append("%s -> %s" % (p, target))
 
     # 1b. extra Architecture: all packages (e.g. tzdata), registered in the dpkg database
@@ -1100,16 +1106,17 @@ def cmd_assemble(args):
                     drop("deb-docs", p, m.size)
                     continue
                 if m.isdir():
-                    entries.setdefault(p, Entry("dir", m.mode, origin="deb"))
+                    entries.setdefault(p, Entry("dir", m.mode, origin="deb", uid=m.uid, gid=m.gid))
                 elif m.isreg():
-                    entries[p] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="deb")
+                    entries[p] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="deb",
+                                       uid=m.uid, gid=m.gid)
                 elif m.issym():
-                    entries[p] = Entry("symlink", 0o777, link=m.linkname, origin="deb")
+                    entries[p] = Entry("symlink", 0o777, link=m.linkname, origin="deb", uid=m.uid, gid=m.gid)
                 elif m.islnk():  # hard link -> independent copy (target precedes it in the tar)
                     src = entries.get(norm_member(m.linkname))
                     if src is None or src.kind != "file":
                         raise SystemExit("hard link %s -> %s without target in %s" % (m.name, m.linkname, deb))
-                    entries[p] = Entry("file", m.mode, data=src.data, origin="deb")
+                    entries[p] = Entry("file", m.mode, data=src.data, origin="deb", uid=m.uid, gid=m.gid)
                     report["convertedHardlinks"].append("%s -> %s" % (p, norm_member(m.linkname)))
                 else:
                     raise SystemExit("unsupported member %s in %s" % (m.name, deb))
@@ -1161,14 +1168,17 @@ def cmd_assemble(args):
                     continue
                 dest = "opt/python/" + rel
                 if m.isdir():
-                    entries[dest] = Entry("dir", m.mode, origin="python")
+                    entries[dest] = Entry("dir", m.mode, origin="python", uid=m.uid, gid=m.gid)
                 elif m.isreg():
-                    entries[dest] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="python")
+                    entries[dest] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="python",
+                                          uid=m.uid, gid=m.gid)
                 elif m.issym():
-                    entries[dest] = Entry("symlink", 0o777, link=m.linkname, origin="python")
+                    entries[dest] = Entry("symlink", 0o777, link=m.linkname, origin="python",
+                                          uid=m.uid, gid=m.gid)
                 elif m.islnk():
                     src = entries.get("opt/python/" + norm_member(m.linkname)[len("python/"):])
-                    entries[dest] = Entry("file", m.mode, data=src.data, origin="python")
+                    entries[dest] = Entry("file", m.mode, data=src.data, origin="python",
+                                          uid=m.uid, gid=m.gid)
         entries["opt/python"] = Entry("dir", 0o755, origin="python")
 
     # 2. Node.js
@@ -1186,11 +1196,12 @@ def cmd_assemble(args):
                 continue
             dest = "opt/node/" + rel
             if m.isdir():
-                entries[dest] = Entry("dir", m.mode, origin="node")
+                entries[dest] = Entry("dir", m.mode, origin="node", uid=m.uid, gid=m.gid)
             elif m.isreg():
-                entries[dest] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="node")
+                entries[dest] = Entry("file", m.mode, data=t.extractfile(m).read(), origin="node",
+                                      uid=m.uid, gid=m.gid)
             elif m.issym():
-                entries[dest] = Entry("symlink", 0o777, link=m.linkname, origin="node")
+                entries[dest] = Entry("symlink", 0o777, link=m.linkname, origin="node", uid=m.uid, gid=m.gid)
             elif m.islnk():
                 raise SystemExit("unexpected hard link in node tarball: " + m.name)
     entries["opt"] = Entry("dir", 0o755, origin="node")
@@ -1204,7 +1215,8 @@ def cmd_assemble(args):
             rel_dir = os.path.relpath(dirpath, src)
             rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
             dest_dir = dest_root + ("/" + rel_dir if rel_dir else "")
-            entries[dest_dir] = Entry("dir", 0o755, origin=origin)
+            dir_st = os.lstat(dirpath)
+            entries[dest_dir] = Entry("dir", 0o755, origin=origin, uid=dir_st.st_uid, gid=dir_st.st_gid)
             for name in list(dirnames):
                 full = os.path.join(dirpath, name)
                 if os.path.islink(full):  # symlinked dirs are recorded as symlinks, not walked
@@ -1218,7 +1230,9 @@ def cmd_assemble(args):
                     target = os.readlink(full)
                     if os.path.isabs(target):
                         target = os.path.relpath(target, os.path.dirname(full))
-                    entries[dest] = Entry("symlink", 0o777, link=target, origin=origin)
+                    link_st = os.lstat(full)
+                    entries[dest] = Entry("symlink", 0o777, link=target, origin=origin,
+                                          uid=link_st.st_uid, gid=link_st.st_gid)
                     continue
                 st = os.lstat(full)
                 if not stat.S_ISREG(st.st_mode):
@@ -1240,7 +1254,7 @@ def cmd_assemble(args):
                     except (ValueError, UnicodeDecodeError):
                         pass
                 mode = 0o755 if st.st_mode & 0o111 else 0o644
-                entries[dest] = Entry("file", mode, path=full, origin=origin)
+                entries[dest] = Entry("file", mode, path=full, origin=origin, uid=st.st_uid, gid=st.st_gid)
 
     add_tree(args.dsh_prefix, "opt/dsh", "dsh", dsh_drop_reason)
     if args.pnpm_prefix:
@@ -1351,7 +1365,25 @@ def cmd_assemble(args):
         elif e.kind == "file":
             e.mode = (e.mode & 0o777) | 0o600
 
-    # 7. Write the tar (GNU format, sorted, root-owned, fixed mtime) through the compressor
+    # 6b. Numeric identity: entries without a source uid/gid (generated dpkg state,
+    # overlay rows, implicit parents) resolve to root 0/0 here; the resolved count
+    # goes into the report so a missing source identity is visible, never silent.
+    resolved_identity = 0
+    for e in entries.values():
+        if e.uid is None or e.gid is None:
+            if e.uid is None:
+                e.uid = 0
+            if e.gid is None:
+                e.gid = 0
+            resolved_identity += 1
+    distinct_identity = {}
+    for e in entries.values():
+        key = "%d:%d" % (e.uid, e.gid)
+        distinct_identity[key] = distinct_identity.get(key, 0) + 1
+    report["identity"] = {"resolvedToRoot": resolved_identity,
+                          "distinctUidGid": dict(sorted(distinct_identity.items()))}
+
+    # 7. Write the tar (GNU format, sorted, numeric uid/gid per member, fixed mtime)
     def sort_key(p):
         return p.split("/")
 
@@ -1371,8 +1403,10 @@ def cmd_assemble(args):
         for p in sorted(entries, key=sort_key):
             e = entries[p]
             ti = tarfile.TarInfo(p)
-            ti.uid = ti.gid = 0
-            ti.uname = ti.gname = "root"
+            ti.uid = e.uid
+            ti.gid = e.gid
+            ti.uname = "root" if e.uid == 0 else ""
+            ti.gname = "root" if e.gid == 0 else ""
             ti.mtime = args.epoch
             ti.mode = e.mode
             counts[e.kind] += 1
@@ -1528,10 +1562,13 @@ def cmd_manifest(args):
         "tarSha256": report["tarSha256"],
         "uncompressedBytes": report["uncompressedBytes"],
         "entries": report["counts"],
+        "identity": report["identity"],
         "archiveNotes": "GNU tar; names relative (no ./); only dirs, regular files and symlinks; "
                         "hard links already converted to copies; every symlink is relative and stays "
-                        "inside the rootfs; no member lies under a symlink; setuid/setgid cleared; "
-                        "uid/gid 0; sorted parent-before-child",
+                        "inside the rootfs; no member lies under a symlink; setuid/setgid cleared "
+                        "(dirs keep the sticky bit); numeric uid/gid preserved per member as built "
+                        "(0 = root; identity.resolvedToRoot counts members generated without a source "
+                        "identity); uname/gname root only for uid/gid 0; sorted parent-before-child",
         "dshVersion": v["dshVersion"],
         "nodeVersion": v["nodeVersion"],
         "pnpmVersion": v["pnpmVersion"],
