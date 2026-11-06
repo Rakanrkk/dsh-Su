@@ -101,6 +101,12 @@ object Proto {
     const val POOR = "poorTree"
     const val PORTRAIT = "portrait"
     const val KEYBOARD_UP = "keyboardUp"
+    /**
+     * Present when the IME state could not be observed (no window scan happened): the
+     * receiver must show "键盘状态未知", never a silent "键盘收起". When absent,
+     * [KEYBOARD_UP] is a real observation from the same window scan the tree came from.
+     */
+    const val KEYBOARD_UNKNOWN = "keyboardUnknown"
     const val IMAGE_OMITTED = "imageOmitted"
     const val APP_LABEL = "appLabel"
     const val FG_PKG = "foregroundPkg"
@@ -135,6 +141,13 @@ object Proto {
      * a pending cleanup instead of assuming the display is gone.
      */
     const val RELEASED = "released"
+    /**
+     * With OP_LAUNCH/OP_CREATE: the IME-hide policy could not be applied, so the
+     * background display may pop a keyboard onto the main screen. The display stays
+     * owner-scoped and is cleaned up through the normal release path; the caller
+     * surfaces the note instead of silently assuming the keyboard stayed hidden.
+     */
+    const val IME_HIDE_FAILED = "imeHideFailed"
     // parallel element arrays (index i ↔ element id i+1)
     const val A_ROLE = "role"
     const val A_LABEL = "label"

@@ -87,6 +87,8 @@ class PrivilegedDisplayCore(private val context: Context) {
      * it never re-releases or claims the live owner's resources.
      */
     @Volatile private var lastReleasedOwner: String? = null
+    /** Whether the IME-hide policy applied for the current display; reported, not swallowed. */
+    @Volatile private var imeHidden = true
 
     /** [dispatched]: the write reached the app or the input pipeline before failing. */
     private class Fault(val code: String, val dispatched: Boolean = false) : Exception()
@@ -191,6 +193,7 @@ class PrivilegedDisplayCore(private val context: Context) {
                 if (owner != null && owner != ownerId) throw Fault("identityChanged")
                 owner = ownerId
                 if (display == null) createDisplay(request)
+                if (!imeHidden) response.putBoolean(Proto.IME_HIDE_FAILED, true)
                 response.putInt(Proto.DISPLAY_ID, displayId())
                 launchPackage(pkg)
                 sleepChecked(300)
@@ -285,7 +288,9 @@ class PrivilegedDisplayCore(private val context: Context) {
             if (vd.display.displayId <= Display.DEFAULT_DISPLAY) { vd.release(); throw Fault("displayUnsupported") }
             width = w; height = h; reader = ir; display = vd
             // Keep the virtual display's keyboard off the main screen: IME policy HIDE.
-            runCatching { setImePolicyHide(vd.display.displayId) }
+            // A failure is reported (IME_HIDE_FAILED), never swallowed: the display stays
+            // owner-scoped and is cleaned up through the normal release path either way.
+            imeHidden = try { setImePolicyHide(vd.display.displayId); true } catch (_: Throwable) { false }
         } catch (e: Throwable) { ir.close(); if (e is Fault) throw e else throw Fault("displayUnsupported") }
     }
 
@@ -448,6 +453,9 @@ class PrivilegedDisplayCore(private val context: Context) {
             observationTicket = ticket
             response.putString(Proto.OBS_TICKET, ticket)
         }
+        // IME 状态来自同一次窗口扫描：读到树才有真值；没有树=未知，不假报收起。
+        response.putBoolean(Proto.KEYBOARD_UNKNOWN, tree == null || tree.keyboardUp == null)
+        response.putBoolean(Proto.KEYBOARD_UP, tree?.keyboardUp == true)
         // The screenshot contains the whole viewport, including nodes beyond the 120-line
         // text limit. Never attach it when secrets were found or the scan was incomplete.
         // The typing unlock changes permission to write, never permission to reveal a secret.
@@ -569,6 +577,8 @@ class PrivilegedDisplayCore(private val context: Context) {
         var target: AccessibilityNodeInfo? = null
         /** Accessibility id of the application window the elements were read from. */
         var windowId = 0
+        /** Real IME visibility from the same window scan; null only when no scan happened. */
+        var keyboardUp: Boolean? = null
     }
 
     private fun readTree(displayId: Int, pkg: String): TreeRead {
@@ -596,6 +606,12 @@ class PrivilegedDisplayCore(private val context: Context) {
             val tree = TreeRead(targetId)
             tree.complete = selected.complete
             tree.windowId = windows[selected.index].id
+            // Real IME observation from the same window scan: an input-method window on
+            // this display means the keyboard is up. Unknown is impossible here — the
+            // scan only exists when the window list itself was read successfully.
+            tree.keyboardUp = all.get(displayId).orEmpty().any {
+                it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+            }
             try {
                 walk(roots[selected.index]!!, tree, 0, 600)
                 assignRegions(tree.elements)

@@ -477,6 +477,16 @@ class BackgroundTargetIdentityTest {
         assertFalse("no candidate adopts nothing", BackgroundControl.publishRefusesRetiring(retiring, null))
     }
 
+    @Test fun theKeyboardStateIsARealTriStateNeverAFakeDown() {
+        val up = BackgroundTree.render("b1", null, true, true, emptyList(), background = true, poorTree = false)
+        val down = BackgroundTree.render("b1", null, true, false, emptyList(), background = true, poorTree = false)
+        val unknown = BackgroundTree.render("b1", null, true, null, emptyList(), background = true, poorTree = false)
+        assertTrue("a real observation renders 键盘弹出", up.contains("键盘弹出"))
+        assertTrue("a real observation renders 键盘收起", down.contains("键盘收起"))
+        assertTrue("an unobservable IME renders 键盘状态未知", unknown.contains("键盘状态未知"))
+        assertFalse("unknown must not claim 键盘收起", unknown.contains("键盘收起"))
+    }
+
     private class ProbeChannel : PrivilegedChannel {
         override fun execute(request: android.os.Bundle): android.os.Bundle =
             throw IllegalStateException("the identity probes never touch a channel")

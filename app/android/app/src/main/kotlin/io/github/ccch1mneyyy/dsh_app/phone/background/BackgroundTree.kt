@@ -98,7 +98,7 @@ object BackgroundTree {
         screenId: String,
         appLabel: String?,
         portrait: Boolean,
-        keyboardUp: Boolean,
+        keyboardUp: Boolean?,
         elements: List<Element>,
         background: Boolean,
         poorTree: Boolean,
@@ -113,7 +113,11 @@ object BackgroundTree {
             // l10n:keep model screen format and matchers
             append(" · ").append(if (portrait) "竖屏" else "横屏")
             // l10n:keep model screen format and matchers
-            append(" · ").append(if (keyboardUp) "键盘弹出" else "键盘收起")
+            append(" · ").append(when (keyboardUp) {
+                true -> "键盘弹出"
+                false -> "键盘收起"
+                null -> "键盘状态未知"
+            })
             // l10n:keep model screen format and matchers
             append(" · 共 ").append(elements.size).append(" 项")
         }

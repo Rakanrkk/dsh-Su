@@ -71,7 +71,9 @@ class BackgroundDisplay(
         currentPackage = packageName
         val response = channel().execute(request)
         // l10n:keep agent screen protocol
-        return toResult(response, "已在后台屏打开")
+        val note = if (response.getBoolean(Proto.IME_HIDE_FAILED))
+            "（键盘隐藏失败：后台屏可能弹出输入法，请重新观察确认）" else ""
+        return toResult(response, "已在后台屏打开$note")
     }
 
     override fun observe(detail: Boolean, image: Boolean): ScreenSnapshot {
@@ -314,7 +316,8 @@ class BackgroundDisplay(
             pkg = pkg,
             poor = response.getBoolean(Proto.POOR),
             portrait = response.getBoolean(Proto.PORTRAIT, true),
-            keyboardUp = response.getBoolean(Proto.KEYBOARD_UP, false),
+            keyboardUp = if (response.getBoolean(Proto.KEYBOARD_UNKNOWN)) null
+                else response.getBoolean(Proto.KEYBOARD_UP, false),
             imageOmitted = imageOmitted,
             image = if (imageOmitted) null else response.getByteArray("imageBytes"),
             imageMime = response.getString("imageMime"),
@@ -340,7 +343,7 @@ class BackgroundDisplay(
         pkg: String?,
         poor: Boolean,
         portrait: Boolean,
-        keyboardUp: Boolean,
+        keyboardUp: Boolean?,
         imageOmitted: Boolean,
         image: ByteArray?,
         imageMime: String?,
