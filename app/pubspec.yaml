@@ -136,6 +136,7 @@ flutter:
     # Engine-side auth bridge (ChatGPT / Claude sign-in), copied into the guest at
     # every engine start by runtime/AppAuthGuest.kt; tests in tool/engine_auth/.
     - assets/engine/auth/
+    - assets/engine/suenv/
     # 社区 hub content shipped with the app (lib/state/community_state.dart),
     # shown until a newer community.json is fetched.
     - assets/community/

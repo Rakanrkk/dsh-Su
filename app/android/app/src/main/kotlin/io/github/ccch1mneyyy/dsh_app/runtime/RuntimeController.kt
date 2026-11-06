@@ -535,6 +535,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 if (!safe && !SpeechGuest.writeFiles(installer.rootfs)) {
                     log("[dsh-app] voice input overlay not written; the voice model keeps DSH's defaults", "system")
                 }
+                if (BuildConfig.ROOT_RUNTIME && !safe && !SuEnvGuest.writeFiles(app, installer.rootfs)) {
+                    log("[dsh-app] local environment briefing overlay not written; the engine keeps its base instructions", "system")
+                }
                 if (pendingPhoneStorage && !storage) log("[dsh-app] phone storage requested but permission not granted", "system")
                 val env = LinkedHashMap<String, String>()
                 env["TZ"] = java.util.TimeZone.getDefault().id

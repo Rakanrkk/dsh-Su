@@ -257,6 +257,8 @@ class DshProcess(
         var searchPending = !safe && SessionSearchGuest.file(rootfs).isFile
         var authPending = !safe && AppAuthGuest.file(rootfs).isFile
         var speechPending = !safe && SpeechGuest.file(rootfs).isFile
+        // Local environment briefing: same rule as the overlays above (only Root launches reach this branch).
+        var suenvPending = !safe && SuEnvGuest.file(rootfs).isFile
         check(manifest.launchArgv.isNotEmpty()) { "runtime manifest has no launch.argv" }
         for (rawArg in manifest.launchArgv) {
             if (rawArg == GUEST_ENV) {
@@ -274,7 +276,9 @@ class DshProcess(
             if (withAuth != null) authPending = false
             val withSpeech = if (speechPending) SpeechGuest.launchArg(withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg) else null
             if (withSpeech != null) speechPending = false
-            argv += expand(withSpeech ?: withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg)
+            val withSuenv = if (suenvPending) SuEnvGuest.launchArg(withSpeech ?: withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg) else null
+            if (withSuenv != null) suenvPending = false
+            argv += expand(withSuenv ?: withSpeech ?: withAuth ?: withSearch ?: withPhone ?: selected ?: rawArg)
         }
         check(!safe || profileSelected) { "safe mode: this runtime launch command has no dsh web to replace" }
         check(guestEnvPlaced) { "guest env marker missing from manifest launch argv" }
