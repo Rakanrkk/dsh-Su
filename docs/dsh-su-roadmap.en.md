@@ -10,8 +10,7 @@ dsh-Su targets Root Android users: deliver a usable Root AI workbench first, the
 
 | Version | Status |
 | --- | --- |
-| 1.2.0-dev.1 | Target for this public development trial: ARM64 APK built, core-use validation in progress, not yet published |
-| [v1.0.9-internal.9](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.0.9-internal.9) | Current public GitHub prerelease |
+| [`v1.2.0-dev.1`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) | Current public development trial: initial **arm64-v8a** release; core-use paths validated on the same build |
 
 Actual download scope and known issues ship with each Release.
 
@@ -28,7 +27,7 @@ Ship on these core paths alone; complex background execution, schedule reliabili
 
 | Milestone | Goal | Status |
 | --- | --- | --- |
-| M1 Usable core product | Publish 1.2.0-dev.1 as a public development trial, converge feedback through 1.2.0-rc.N, release 1.2.0 | Top priority; dev.1 APK built, core-use validation in progress |
+| M1 Usable core product | Publish 1.2.0-dev.1 as a public development trial, converge feedback through 1.2.0-rc.N, release 1.2.0 | Top priority; dev.1 is published as a development trial, with rc and final release pending feedback |
 | 1.2.x maintenance | Fix real feedback, startup and upgrade issues, and compatibility; no new release-gating scope | Starts with public feedback |
 | M2 Complete phone execution | Target 1.3.0: direct system operations, reliable main-screen actions, non-intrusive background execution with clear status, errors, abort and user handoff | Advanced in parallel on feature branches |
 | M3 Automation workspace | Target 1.4.0: status, results, cancellation and controlled failure handling for existing schedules and long jobs; reuse plugins for tools, skills and workflows; never auto-repeat interrupted tasks | Independent parts start early without blocking M1 |
@@ -80,9 +79,9 @@ flowchart TB
 
 | Item | Status |
 | --- | --- |
-| 1.2.0-dev.1 ARM64 ordinary APK | Built |
-| Same-build model chat, tools, phone actions, stop and reopen acceptance | In progress |
-| Public release preparation | In progress |
+| 1.2.0-dev.1 ARM64 ordinary APK | Published |
+| Same-build model chat, tools, phone actions, stop and reopen acceptance | Passed |
+| 1.2.0-rc.N feedback convergence | Awaiting public feedback |
 | 1.2.x feedback fixes | Starts with public feedback |
 | 1.3.0 phone-execution expansion | Planned target, some groundwork exists |
 | 1.4.0 jobs and plugins | Planned target, some groundwork exists |
