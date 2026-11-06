@@ -148,7 +148,7 @@ class ArchiveMetadataRoundtrip(unittest.TestCase):
             base.append(tar_member("bin", "dir", 0o755))
             base.append(tar_member("bin/dash", "file", 0o755, b"#!/bin/sh\n"))
             base.append(tar_member("bin/sh", "symlink", 0o777, link="dash"))
-            base.append(tar_member("bin/sh2", "hardlink", 0o755, link="bin/dash", uid=1000, gid=1000))
+            base.append(tar_member("bin/sh2", "hardlink", 0o755, link="bin/dash", uid=os.getuid(), gid=os.getgid()))
             base.append(tar_member("etc", "dir", 0o755))
             base.append(tar_member("srv", "dir", 0o755))
             base.append(tar_member("srv/data", "dir", 0o750, uid=1000, gid=1001))
@@ -224,7 +224,7 @@ class ArchiveMetadataRoundtrip(unittest.TestCase):
             # ubuntu intake: numeric identity and normalised modes
             expect("bin/dash", 0, 0, 0o755)
             expect("bin/sh", 0, 0, 0o777, "symlink", link="dash")
-            expect("bin/sh2", 1000, 1000, 0o755)          # hardlink -> own copy, own identity
+            expect("bin/sh2", os.getuid(), os.getgid(), 0o755)          # hardlink -> own copy, own identity
             expect("srv/data", 1000, 1001, 0o750, "dir")
             expect("srv/data/owned", 1000, 1001, 0o640)
             expect("usr/bin/su", 0, 0, 0o755)             # setuid cleared
