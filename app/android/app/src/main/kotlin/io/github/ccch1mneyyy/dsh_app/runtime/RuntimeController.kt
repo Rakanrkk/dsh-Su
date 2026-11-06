@@ -524,6 +524,17 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 if (!PhoneStorage.syncShortcut(installer.rootfs, storage)) {
                     log("[dsh-app] could not ${if (storage) "create" else "remove"} the phone storage shortcut in the guest home; the directory may be root-owned", "system")
                 }
+                // Root installs give /opt to the archive identity (0755), so the app
+                // can no longer create its own overlay directory; prepare exactly that
+                // one directory (phone / session-search / sign-in / voice / suenv all
+                // live under it). Plain runtimes are untouched: app owns everything.
+                if (BuildConfig.ROOT_RUNTIME &&
+                    !withProfileFiles {
+                        it.ensureAppOwnedDir(File(installer.rootfs, "opt/dsh-app"), appUid().toLong(), appGid().toLong())
+                    }
+                ) {
+                    log("[dsh-app] could not prepare the guest overlay directory; app overlays may be unavailable", "system")
+                }
                 // Phone control: bridge up and guest files written before DSH starts; off in safe mode.
                 val phone = PhoneControl.get(app).prepareLaunch(installer.rootfs, safe) { log(it, "system") }
                 if (!safe && !SessionSearchGuest.writeFiles(installer.rootfs)) {

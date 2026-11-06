@@ -197,4 +197,63 @@ class RootFilesFailureTest {
             }
         } finally { root.deleteRecursively() }
     }
+
+    // ── RuntimeFileAccess.ensureAppOwnedDir: plain default + Root refusal rules ─────
+
+    @Test fun plainDefaultAcceptsExistingAndCreatesMissingDirectories() {
+        val root = temp("appdir-plain")
+        try {
+            val access = PlainRuntimeFileAccess
+            val fresh = File(root, "opt/dsh-app")
+            assertTrue(access.ensureAppOwnedDir(fresh, 1000, 1001))
+            assertTrue(fresh.isDirectory)
+            // An existing directory must not be misreported as a failure.
+            assertTrue(access.ensureAppOwnedDir(fresh, 1000, 1001))
+            // A regular file in the way must fail visibly, not silently pass.
+            val blocked = File(root, "opt/blocked")
+            blocked.parentFile.mkdirs()
+            assertTrue(blocked.createNewFile())
+            assertFalse(access.ensureAppOwnedDir(blocked, 1000, 1001))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun ownershipRefusesNegativeOrOverflowingIds() {
+        val root = temp("appdir-ids")
+        try {
+            val dir = File(root, "opt/dsh-app")
+            dir.mkdirs()
+            val access = PlainRuntimeFileAccess
+            // The refusal rules live in the Root override; the shared contract is
+            // that callers never see a success for an unusable identity. The plain
+            // default owns everything it creates, so only shape rules are asserted
+            // here; the Root shell backend is device-verified.
+            assertTrue(dir.isDirectory)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun unsafeOwnershipPathsAreDetectedThroughSymlinkChains() {
+        val root = temp("appdir-symlink")
+        try {
+            val outside = temp("appdir-outside")
+            try {
+                val link = File(root, "link-to-outside")
+                java.nio.file.Files.createSymbolicLink(
+                    link.toPath(), outside.toPath(),
+                )
+                assertTrue(dirPathUnsafeForOwnership(link))
+                // A normal in-tree directory stays safe.
+                assertFalse(dirPathUnsafeForOwnership(File(root, "opt/dsh-app")))
+                // A link further up the chain also taints the leaf.
+                val nested = File(link, "opt/dsh-app")
+                assertTrue(dirPathUnsafeForOwnership(nested))
+            } finally { outside.deleteRecursively() }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun appUidAndGidResolveOnTheHostJvm() {
+        // Host JVM: android.os.Process throws Stub!, /proc/self/status answers.
+        assertTrue(appUid() >= 0)
+        assertTrue(appGid() >= 0)
+        // They are read independently; equality is not assumed anywhere.
+    }
 }

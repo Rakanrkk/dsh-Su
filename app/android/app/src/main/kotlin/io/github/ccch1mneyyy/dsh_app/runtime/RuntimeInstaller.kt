@@ -210,6 +210,17 @@ internal interface RuntimeFileAccess : AutoCloseable {
      * behavior is an explicit no-op rather than a silent failure.
      */
     fun chown(file: File, uid: Long, gid: Long): Boolean = false
+
+    /**
+     * Prepares [file] as a directory the app itself can write into (mode 0755,
+     * owned by [uid]/[gid]) through this backend. The plain backend already owns
+     * everything it creates, so the default is a plain mkdir that also accepts a
+     * pre-existing directory; a false return means the app's overlay writers will
+     * visibly degrade (title-only search, no sign-in, no voice, no phone tools).
+     */
+    fun ensureAppOwnedDir(file: File, uid: Long, gid: Long): Boolean {
+        return file.isDirectory || file.mkdirs()
+    }
 }
 
 /** Plain-file access for proot runtimes and tests: the identity mapping. */
@@ -259,8 +270,58 @@ internal fun openRootFileAccess(context: Context): RuntimeFileAccess {
             return selection.shell.newJob().add("chown -h '$uid:$gid' $quoted").exec().code == 0
         }
 
+        override fun ensureAppOwnedDir(file: File, uid: Long, gid: Long): Boolean {
+            if (uid < 0 || uid > Int.MAX_VALUE || gid < 0 || gid > Int.MAX_VALUE) return false
+            // A symlink here or anywhere up the chain would make the shell follow
+            // it: refuse instead of chowning through a link to a tree-external path.
+            if (dirPathUnsafeForOwnership(file)) return false
+            val quoted = "'" + file.path.replace("'", "'\\''") + "'"
+            return selection.shell.newJob()
+                .add("mkdir -p $quoted && chown '$uid:$gid' $quoted && chmod 0755 $quoted")
+                .exec()
+                .code == 0
+        }
+
         override fun close() = selection.close()
     }
+}
+
+/**
+ * True when [file] itself or any of its ancestors is a symlink: ownership work
+ * through such a chain would follow the link and touch a resource outside the
+ * runtime tree, so callers must refuse instead.
+ */
+internal fun dirPathUnsafeForOwnership(file: File): Boolean {
+    var current: File = file
+    while (true) {
+        if (Files.isSymbolicLink(current.toPath())) return true
+        current = current.parentFile ?: return false
+    }
+}
+
+/** The app's numeric uid for ownership transfers; -1 when nothing resolves. */
+internal fun appUid(): Int = try {
+    android.os.Process.myUid()
+} catch (_: Throwable) {
+    procIdField("Uid")
+}
+
+/**
+ * The app's numeric gid, read independently of the uid (they are not assumed
+ * equal); -1 when nothing resolves.
+ */
+internal fun appGid(): Int = try {
+    android.system.Os.getgid()
+} catch (_: Throwable) {
+    procIdField("Gid")
+}
+
+private fun procIdField(field: String): Int = try {
+    java.io.File("/proc/self/status").readLines()
+        .firstOrNull { it.startsWith(field) }
+        ?.trim()?.split(Regex("\\s+"))?.getOrNull(1)?.toInt() ?: -1
+} catch (_: Throwable) {
+    -1
 }
 
 private fun File.asRuntimeFile(files: RuntimeFileAccess?): File = files?.file(this) ?: this
