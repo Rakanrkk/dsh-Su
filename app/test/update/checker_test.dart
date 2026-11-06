@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dsh_app/update/checker.dart';
 import 'package:dsh_app/update/update_config.dart';
 import 'package:dsh_app/update/version.dart';
@@ -197,5 +198,73 @@ void main() {
       final result = await UpdateChecker(http: http, sources: const UpdateSources()).check();
       expect((result as CheckFailed).failure, CheckFailure.badResponse);
     });
+  group('fork prerelease discovery', () {
+    const sources = UpdateSources(mirrors: _mirrors, releasesList: true);
+    const listApi = 'https://api.github.com/repos/ccch1mneyyy/dsh-go/releases';
+    String sha(String c) => 'sha256:${c * 64}';
+    Map<String, Object> entry(String tag, {bool draft = false, required String digest, required String file}) => {
+      'tag_name': tag,
+      'draft': draft,
+      'assets': [
+        {
+          'name': file,
+          'browser_download_url': 'https://github.com/ccch1mneyyy/dsh-go/releases/download/$tag/$file',
+          'size': 14,
+          'digest': digest,
+        },
+      ],
+    };
+    final releases = [
+      entry('v1.2.1', digest: sha('1'), file: 'dsh-go-1.2.1-arm64.apk'),
+      entry('v1.2.2-dev.1', digest: sha('2'), file: 'dsh-go-1.2.2-dev.1-arm64.apk'),
+      entry('v1.2.3', draft: true, digest: sha('3'), file: 'dsh-go-1.2.3-arm64.apk'),
+    ];
+
+    test('the releases list is asked first, before update.json and the API', () {
+      expect(sources.metadataEndpoints().map((e) => e.id), [
+        'api:releases',
+        'manifest:github',
+        'manifest:m1',
+        'manifest:m2',
+        'api',
+      ]);
+    });
+
+    test('a prerelease newer than stable is found through the list; drafts do not shadow it', () async {
+      final http = FakeHttp({
+        listApi: (_, _) => textResponse(jsonEncode([...releases, {'tag_name': 'roadmap', 'draft': false, 'assets': []}])),
+        _api: (_, _) => throw StateError('must not get this far'),
+        _manifest: (_, _) => throw StateError('must not get this far'),
+      });
+      final result = await UpdateChecker(http: http, sources: sources).check(installed: AppVersion.tryParse('1.2.0+7'));
+      expect(result, isA<CheckFound>());
+      expect((result as CheckFound).release.version.toString(), '1.2.2-dev.1');
+      expect(http.urls, [listApi]);
+      expect(http.requests.single.$2['accept'], 'application/vnd.github+json');
+    });
+
+    test('a stable release newer than the newest prerelease wins the list', () async {
+      final stableLast = [
+        releases[1],
+        entry('v1.2.2', digest: sha('4'), file: 'dsh-go-1.2.2-arm64.apk'),
+        {'tag_name': 'roadmap', 'draft': false, 'assets': []},
+      ];
+      final http = FakeHttp({listApi: (_, _) => textResponse(jsonEncode(stableLast))});
+      final result = await UpdateChecker(http: http, sources: sources).check(installed: AppVersion.tryParse('1.2.1'));
+      expect((result as CheckFound).release.version.toString(), '1.2.2');
+    });
+
+    test('a stale list does not hide a newer release from the manifest', () async {
+      final oldList = [entry('v1.0.9', digest: sha('9'), file: 'dsh-go-1.0.9-arm64.apk')];
+      final http = FakeHttp({
+        listApi: (_, _) => textResponse(jsonEncode(oldList)),
+        _manifest: (_, _) => textResponse(fixture('update.json')),
+      });
+      final result = await UpdateChecker(http: http, sources: sources).check(installed: AppVersion.tryParse('1.1.0'));
+      expect(result, isA<CheckFound>());
+      expect((result as CheckFound).release.version.toString(), '1.2.0+7');
+      expect(http.urls, [listApi, _manifest]);
+    });
+  });
   });
 }

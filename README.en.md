@@ -5,7 +5,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-en-dark.webp">
-    <img src="docs/assets/hero-en-light.webp" alt="DSH Go: DeepSeek Harness, in your pocket" width="100%">
+    <img src="docs/assets/hero-en-light.webp" alt="DeepSeek Harness, in your pocket" width="100%">
   </picture>
 </p>
 
@@ -190,12 +190,12 @@ flowchart LR
 
 ## Features
 
-DSH Go combines a chat interface, an on-device runtime and remote connections. It is a third-party project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The DSH engine runs on your phone; model requests are still handled by the model provider you configure.
+dsh-Su combines a chat interface, an on-device runtime and remote connections. It is a third-party project built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The DSH engine runs on your phone; model requests are still handled by the model provider you configure.
 
 - **On-device runtime:** with Root granted, the app installs Ubuntu, Node.js and DSH itself, with no separate Termux installation.
 - **Remote connections:** use DSH on a computer or server through SSH or [DSHarness Remote](https://github.com/liguobao/ds-harness-remote).
 - **Chat and tools:** switch models, send images, use voice input, and respond to tool approvals and questions. Chat and web interfaces are available.
-- **Plugin interfaces:** use native tool cards, forms and panels from plugins adapted for DSH Go. This repository includes an SDK, guides and examples.
+- **Plugin interfaces:** use native tool cards, forms and panels from plugins adapted for DSH. This repository includes an SDK, guides and examples.
 - **Phone control:** after you enable the required permissions, let the local engine read the screen, tap and type. You can stop it at any time.
 - **Sharing and appearance:** share, export and replay conversations, and customize themes, icons and pets.
 
@@ -225,7 +225,7 @@ Model requests go to the provider you configure. During phone-control tasks, rel
 <summary><b>Is this an official DeepSeek app?</b></summary>
 <br>
 
-No. DSH Go is an unofficial client made by the community, built on the open-source [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). DSH itself runs on your phone; model requests go to the provider you configure, so it needs a connection and bills your account with that provider.
+No. dsh-Su is an unofficial client made by the community, built on the open-source [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). DSH itself runs on your phone; model requests go to the provider you configure, so it needs a connection and bills your account with that provider.
 
 </details>
 
@@ -241,7 +241,7 @@ The local web interface only answers to the app itself. Shared links are end-to-
 <summary><b>Will the system kill it in the background?</b></summary>
 <br>
 
-Some battery savers hold apps back. When that happens, DSH Go tells you and opens the right setting, on vivo, Xiaomi, Huawei, Honor and OPPO.
+Some battery savers hold apps back. When that happens, the app tells you and opens the right setting, on vivo, Xiaomi, Huawei, Honor and OPPO.
 
 </details>
 
@@ -347,7 +347,7 @@ Report security issues through [SECURITY.en.md](SECURITY.en.md). Keep vulnerabil
 
 ## Friends' Links
 
-- **[DSH-TUI](https://dshtui.com/)**: the interactive terminal UI for DeepSeek Harness by the same author — the desktop counterpart to DSH Go, with a pixel whale, live status and time travel ([GitHub](https://github.com/ccch1mneyyy/dsh-TUI)).
+- **[DSH-TUI](https://dshtui.com/)**: the interactive terminal UI for DeepSeek Harness by the same author — the desktop counterpart to dsh-Su, with a pixel whale, live status and time travel ([GitHub](https://github.com/ccch1mneyyy/dsh-TUI)).
 
 ## License and acknowledgments
 
@@ -365,4 +365,4 @@ The DSH Go name, logo and mascots (Deepy and Whale girl) are not covered by the 
 
 <br>
 
-<p align="center"><sub>DSH Go is an unofficial client made by the community. It is not affiliated with or endorsed by DeepSeek. DeepSeek names and marks belong to their owners.</sub></p>
+<p align="center"><sub>dsh-Su is an unofficial client made by the community. It is not affiliated with or endorsed by DeepSeek. DeepSeek names and marks belong to their owners.</sub></p>

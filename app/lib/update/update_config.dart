@@ -25,9 +25,21 @@ library;
 /// GitHub repository the releases live in.
 const updateRepo = String.fromEnvironment('DSH_UPDATE_REPO', defaultValue: 'ccch1mneyyy/dsh-go');
 
+/// True when the release repository was overridden at build time (the root
+/// fork): the GitHub `releases` list is then asked before everything else, so
+/// dev/rc prereleases are discoverable alongside stable ones. The default
+/// build keeps the stable-only `releases/latest` behaviour.
+const forkRepo = String.fromEnvironment('DSH_UPDATE_REPO') != '' &&
+    String.fromEnvironment('DSH_UPDATE_REPO') != 'ccch1mneyyy/dsh-go';
+
 /// `releases/latest` of the REST API: tag, notes, assets with sizes and
 /// SHA-256 digests. Unauthenticated: 60 requests per hour per IP.
 final githubLatestApi = Uri.parse('https://api.github.com/repos/$updateRepo/releases/latest');
+
+/// The `releases` list of the REST API: every release, stable and prerelease
+/// alike (drafts included). Fork builds ([forkRepo]) ask it before everything
+/// else — `releases/latest` never serves a prerelease.
+final githubReleasesApi = Uri.parse('https://api.github.com/repos/$updateRepo/releases');
 
 /// The latest release's page, for "open in browser".
 final githubReleasesPage = Uri.parse('https://github.com/$updateRepo/releases/latest');
@@ -195,6 +207,9 @@ enum EndpointKind {
   /// GitHub REST `releases/latest` JSON.
   githubApi,
 
+/// GitHub REST `releases` list JSON (fork builds: prerelease discovery).
+githubReleasesList,
+
   /// An `update.json` manifest (release asset or self-hosted feed).
   manifest,
 }
@@ -235,12 +250,28 @@ class UpdateEndpoint {
 /// a phone that can't reach one source stops waiting on it every time. The
 /// API stays last even then: anonymous calls get 60 an hour per IP, shared
 /// IPs often find them spent, and its answer carries no delta patches.
+/// A fork build (a non-default `DSH_UPDATE_REPO`) asks the GitHub `releases`
+/// list first — before the channel, the manifests and the `latest` API —
+/// because `releases/latest` serves stable releases only and would hide
+/// dev/rc prereleases; the list returns the newest usable release, stable
+/// or prerelease alike (drafts and unusable entries are skipped).
 class UpdateSources {
-  const UpdateSources({this.channel, this.feed, this.useGithubApi = true, this.mirrors = const [UpdateMirror.github]});
+  const UpdateSources({
+    this.channel,
+    this.feed,
+    this.useGithubApi = true,
+    this.releasesList = forkRepo,
+    this.mirrors = const [UpdateMirror.github],
+  });
 
   final UpdateChannel? channel;
   final Uri? feed;
   final bool useGithubApi;
+
+/// Fork builds ([forkRepo]): ask the GitHub `releases` list first, so dev/rc
+/// prereleases are discoverable next to stable ones.
+final bool releasesList;
+
   final List<UpdateMirror> mirrors;
 
   List<UpdateEndpoint> metadataEndpoints({String? preferred}) {
@@ -258,6 +289,13 @@ class UpdateSources {
           url: channel.manifest,
           mirrorId: null,
           headers: channel.headers,
+        ),
+      if (releasesList && useGithubApi)
+        UpdateEndpoint(
+          id: 'api:releases',
+          kind: EndpointKind.githubReleasesList,
+          url: githubReleasesApi,
+          mirrorId: UpdateMirror.github.id,
         ),
       ..._preferFirst(manifests, (e) => e.id == preferred),
       if (useGithubApi)

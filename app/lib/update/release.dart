@@ -231,6 +231,27 @@ ReleaseInfo parseGithubRelease(Object? json) {
   );
 }
 
+/// Parses a GitHub `releases` list body into the best candidate: entries are
+/// parsed like `releases/latest` (draft releases, unparsable tags and non-object
+/// entries are skipped — they never shadow a usable one) and the newest version
+/// wins, stable or prerelease alike. Throws [FormatException] when the body
+/// isn't a list or nothing in it is usable.
+ReleaseInfo parseGithubReleasesList(Object? json) {
+  if (json is! List) throw const FormatException('release list is not a list');
+  ReleaseInfo? best;
+  for (final entry in json) {
+    final ReleaseInfo release;
+    try {
+      release = parseGithubRelease(entry);
+    } on Object {
+      continue;
+    }
+    if (best == null || release.version.isNewerThan(best.version)) best = release;
+  }
+  if (best == null) throw const FormatException('no usable release in list');
+  return best;
+}
+
 /// Parses an `update.json` manifest ([ReleaseInfo.toManifestJson]). Relative
 /// asset URLs resolve against [base] (the manifest's own URL); a missing URL
 /// means the GitHub release asset for the tag. Files named anything but a

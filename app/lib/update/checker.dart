@@ -103,7 +103,7 @@ class UpdateChecker {
       response = await http.get(
         endpoint.url,
         headers: {
-          ...endpoint.kind == EndpointKind.githubApi
+          ...endpoint.kind == EndpointKind.githubApi || endpoint.kind == EndpointKind.githubReleasesList
               ? const {'accept': 'application/vnd.github+json', 'x-github-api-version': '2022-11-28'}
               : const {'accept': 'application/json'},
           ...endpoint.headers,
@@ -135,6 +135,7 @@ class UpdateChecker {
       final json = jsonDecode(body);
       return switch (endpoint.kind) {
         EndpointKind.githubApi => parseGithubRelease(json),
+        EndpointKind.githubReleasesList => parseGithubReleasesList(json),
         EndpointKind.manifest => parseUpdateManifest(json, base: endpoint.url),
       };
     } on Object {

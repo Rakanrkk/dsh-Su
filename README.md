@@ -5,7 +5,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-zh-dark.webp">
-    <img src="docs/assets/hero-zh-light.webp" alt="DSH Go：把 DeepSeek Harness 装进口袋" width="100%">
+    <img src="docs/assets/hero-zh-light.webp" alt="把 DeepSeek Harness 装进口袋" width="100%">
   </picture>
 </p>
 
@@ -190,12 +190,12 @@ flowchart LR
 
 ## 可以做什么
 
-DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的第三方项目。运行在手机上的是 DSH 引擎；模型请求仍由你配置的模型提供方处理。
+dsh-Su 提供聊天界面、本机运行环境和远程连接，是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的第三方项目。运行在手机上的是 DSH 引擎；模型请求仍由你配置的模型提供方处理。
 
 - **本机运行**：授予 Root 后，App 自动安装 Ubuntu、Node.js 与 DSH 运行环境，无需另装 Termux。
 - **远程连接**：通过 SSH 或 [DSHarness Remote](https://github.com/liguobao/ds-harness-remote) 使用电脑、服务器上的 DSH。
 - **聊天与工具**：切换模型，发送图片、使用语音输入，处理工具审批和提问；支持聊天界面与网页模式。
-- **插件界面**：使用适配 DSH Go 的原生工具卡、表单和面板；仓库提供 SDK、教程和示例。
+- **插件界面**：使用适配 DSH 的原生工具卡、表单和面板；仓库提供 SDK、教程和示例。
 - **手机操控**：在你开启权限后，让本机引擎读取屏幕、点按和输入，并可随时停止。
 - **分享与外观**：分享、导出和回放对话，调整主题、图标和桌宠。
 
@@ -225,7 +225,7 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 <summary><b>和 DeepSeek 官方是什么关系？</b></summary>
 <br>
 
-没有关系。DSH Go 是社区开发的非官方客户端，基于开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 构建。手机上运行的是 DSH 本身；模型请求发给你配置的模型提供方，需要联网，按你在提供方的账户计费。
+没有关系。dsh-Su 是社区开发的非官方客户端，基于开源的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 构建。手机上运行的是 DSH 本身；模型请求发给你配置的模型提供方，需要联网，按你在提供方的账户计费。
 
 </details>
 
@@ -241,7 +241,7 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 <summary><b>切到后台会被杀吗？</b></summary>
 <br>
 
-部分系统的省电策略会拦住后台。DSH Go 发现后会提醒你，并直达对应的放行设置，vivo、小米、华为、荣耀、OPPO 都有。
+部分系统的省电策略会拦住后台。App 发现后会提醒你，并直达对应的放行设置，vivo、小米、华为、荣耀、OPPO 都有。
 
 </details>
 
@@ -347,7 +347,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 ## 友情链接
 
-- **[DSH-TUI](https://dshtui.com/)**：同一作者的作品，面向 DeepSeek Harness 的交互式终端界面。手机上用 DSH Go，电脑上就用它——像素鲸鱼、实时状态、时间回溯，装上即开工（[GitHub](https://github.com/ccch1mneyyy/dsh-TUI)）。
+- **[DSH-TUI](https://dshtui.com/)**：同一作者的作品，面向 DeepSeek Harness 的交互式终端界面。手机上用 dsh-Su，电脑上就用它——像素鲸鱼、实时状态、时间回溯，装上即开工（[GitHub](https://github.com/ccch1mneyyy/dsh-TUI)）。
 
 ## 许可证与致谢
 
@@ -365,4 +365,4 @@ DSH Go 的名称、标识、Deepy 小鲸鱼和鲸娘等形象不在 AGPL 授权�
 
 <br>
 
-<p align="center"><sub>DSH Go 是社区开发的非官方客户端，与 DeepSeek 没有关联，也不代表 DeepSeek。DeepSeek 名称与标识归其所有者所有。</sub></p>
+<p align="center"><sub>dsh-Su 是社区开发的非官方客户端，与 DeepSeek 没有关联，也不代表 DeepSeek。DeepSeek 名称与标识归其所有者所有。</sub></p>
