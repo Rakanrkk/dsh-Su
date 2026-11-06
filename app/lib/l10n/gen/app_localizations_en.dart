@@ -9054,6 +9054,10 @@ class L10nEn extends L10n {
   String get phoneEngineResetTitle => 'Reset the runtime?';
 
   @override
+  String get phoneResetAlsoDeletes =>
+      'Anything else in the home folder (/root) goes too, including files in your workspaces, AGENTS.md and data that plugins store themselves, such as memories.';
+
+  @override
   String get phoneEngineKeepUiSkills => 'Keep interface settings and skills';
 
   @override

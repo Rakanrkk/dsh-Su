@@ -15812,6 +15812,12 @@ abstract class L10n {
   /// **'重置运行环境？'**
   String get phoneEngineResetTitle;
 
+  /// No description provided for @phoneResetAlsoDeletes.
+  ///
+  /// In zh, this message translates to:
+  /// **'家目录（/root）里没有保留的内容也会一起删除，包括工作区里的文件、AGENTS.md，以及插件自己存的数据（比如记忆）。'**
+  String get phoneResetAlsoDeletes;
+
   /// No description provided for @phoneEngineKeepUiSkills.
   ///
   /// In zh, this message translates to:

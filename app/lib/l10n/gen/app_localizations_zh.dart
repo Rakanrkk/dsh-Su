@@ -8595,6 +8595,9 @@ class L10nZh extends L10n {
   String get phoneEngineResetTitle => '重置运行环境？';
 
   @override
+  String get phoneResetAlsoDeletes => '家目录（/root）里没有保留的内容也会一起删除，包括工作区里的文件、AGENTS.md，以及插件自己存的数据（比如记忆）。';
+
+  @override
   String get phoneEngineKeepUiSkills => '保留界面配置和技能';
 
   @override
