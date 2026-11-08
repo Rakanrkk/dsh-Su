@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1"><img alt="dsh-Su v1.2.0-dev.1 development trial" src="https://img.shields.io/badge/dsh--Su-v1.2.0--dev.1-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2"><img alt="dsh-Su v1.2.0-dev.2 development trial" src="https://img.shields.io/badge/dsh--Su-v1.2.0--dev.2-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/upstream-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
   <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -24,7 +24,7 @@
 
 ## Roadmap and progress
 
-The current priority is a usable Root AI workbench: development trial [`v1.2.0-dev.1`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) is published and initially provides an **arm64-v8a** APK. See the [full roadmap](docs/dsh-su-roadmap.en.md) for the launch scope and milestone goals.
+The current priority is a usable Root AI workbench: the current development trial is [`v1.2.0-dev.2`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2) (prerelease, not validated on real hardware), providing an **arm64-v8a** APK; the earlier v1.2.0-dev.1 remains in the Release history. See the [full roadmap](docs/dsh-su-roadmap.en.md) for the launch scope and milestone goals.
 
 | Milestone | Goal |
 | --- | --- |
@@ -34,7 +34,7 @@ The current priority is a usable Root AI workbench: development trial [`v1.2.0-d
 
 ## About dsh-Su (Root Branch)
 
-This repository is **`dsh-Su`** ([`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)), maintained as a minimal patch set in long-term parallel development with upstream [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) for enthusiasts, phone modders, and developers. It preserves the original UI, chat, tools, plugins, remote host connectivity, author credits, and [AGPL-3.0](LICENSE) license attribution. See [docs/dsh-su.md](docs/dsh-su.md) for architecture and current verification status.
+This repository is **`dsh-Su`** ([`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)), maintained as a minimal patch set in long-term parallel development with upstream [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) — ongoing maintenance focuses on the Root patch layer while general features and fixes follow upstream — for enthusiasts, phone modders, and developers. It preserves the original UI, chat, tools, plugins, remote host connectivity, author credits, and [AGPL-3.0](LICENSE) license attribution. See [docs/dsh-su.md](docs/dsh-su.md) for architecture and current verification status.
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ flowchart LR
 
 - **Architecture**: `RootService` acts purely as a UID 0 process bridge rather than reimplementing DSH. It uses a `libsu` `6.0.0` non-daemon `RootService` and official `runc` `1.4.3` over the embedded Ubuntu 24.04 rootfs in a mount-only private namespace (no PID namespace, running as `UID/GID 0` with inherited capabilities preserved).
 - **Identity and Build Isolation**: Built via `tooling/build-root-apk.sh` (which fetches and verifies official `runc` 1.4.3 binaries through `tooling/fetch-runc-assets.sh`), with package name `io.github.rakanrkk.dsh_su` and launcher label `DSH SU` for side-by-side installation with upstream `DSH Go`. Update sources are isolated to `Rakanrkk/dsh-Su`.
-- **Compatibility Targets & Verified Scope**: Development trial `v1.2.0-dev.1` provides an arm64-v8a APK and has completed core-use validation on an Android 14 ARM64 emulator; legacy x86_64 and ARM checks apply to their historical versions only. See [docs/dsh-su.md](docs/dsh-su.md) for results by version, ABI, and root framework.
+- **Compatibility Targets & Verified Scope**: Development trials provide an arm64-v8a APK; the Android 14 ARM64 emulator core-use validation is a v1.2.0-dev.1 historical record and does not stand in for current-version acceptance. Legacy x86_64 and ARM checks apply to their historical versions only. See [docs/dsh-su.md](docs/dsh-su.md) for results by version, ABI, and root framework.
 
 <br>
 
@@ -177,7 +177,7 @@ flowchart LR
 
 <h3 align="center">Phone control</h3>
 
-<p align="center">DSH reads the screen and taps for you. Payments, passwords and codes always stay with you.</p>
+<p align="center">DSH reads the screen and taps for you, with three confirmation levels you choose. Sensitive actions ask for confirmation per your chosen mode and tasks stop at any time; Root commands and model suggestions still need your own careful authorization (see [security policy](SECURITY.en.md)).</p>
 
 <p align="center">
   <picture>
@@ -235,7 +235,7 @@ No. dsh-Su is an unofficial client made by the community, built on the open-sour
 <summary><b>Is it safe?</b></summary>
 <br>
 
-The local web interface only answers to the app itself. Shared links are end-to-end encrypted: the key lives only in the link, and the server never sees the content. Phone control always hands payments, passwords, codes and system settings back to you.
+The local web interface only answers to the app itself. Shared links are end-to-end encrypted: the key lives only in the link, and the server never sees the content. Phone control does not bypass confirmations: sensitive actions ask per your chosen confirmation mode and tasks stop at any time; Root commands and model suggestions still need your own careful authorization (see the [security policy](SECURITY.en.md)).
 
 </details>
 

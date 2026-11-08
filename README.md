@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1"><img alt="dsh-Su v1.2.0-dev.1 development trial" src="https://img.shields.io/badge/dsh--Su-v1.2.0--dev.1-D97706?style=flat-square&labelColor=2B3245"></a>
+  <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2"><img alt="dsh-Su v1.2.0-dev.2 development trial" src="https://img.shields.io/badge/dsh--Su-v1.2.0--dev.2-D97706?style=flat-square&labelColor=2B3245"></a>
   <a href="https://github.com/ccch1mneyyy/dsh-Go"><img alt="Upstream DSH Go" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8-ccch1mneyyy%2Fdsh--Go-4B67B4?style=flat-square&logo=github&logoColor=white&labelColor=2B3245"></a>
   <a href="#build-from-source"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="许可证 AGPL-3.0" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -24,7 +24,7 @@
 
 ## 开发计划与进度
 
-当前优先交付可实际使用的 Root AI 工作台：开发试用版 [`v1.2.0-dev.1`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) 已公开发布，首发提供 **arm64-v8a** APK。首发范围与里程碑目标见[完整路线图](docs/dsh-su-roadmap.md)。
+当前优先交付可实际使用的 Root AI 工作台：当前开发试用版为 [`v1.2.0-dev.2`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2)（prerelease，未经真机验收），提供 **arm64-v8a** APK，先前的 v1.2.0-dev.1 见 Release 历史。首发范围与里程碑目标见[完整路线图](docs/dsh-su-roadmap.md)。
 
 | 里程碑 | 目标 |
 | --- | --- |
@@ -34,7 +34,7 @@
 
 ## 关于 dsh-Su（Root 分支说明）
 
-本仓库是 **`dsh-Su`**（[`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)），面向极客、玩机者与开发者，以最小上游补丁集方式与 [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) 长期平行开发，完整保留原版主界面、聊天、工具、插件、远程主机能力以及原作者版权与 [AGPL-3.0](LICENSE) 许可证归属。详细架构与验证进展见 [docs/dsh-su.md](docs/dsh-su.md)。
+本仓库是 **`dsh-Su`**（[`Rakanrkk/dsh-Su`](https://github.com/Rakanrkk/dsh-Su)），面向极客、玩机者与开发者，以最小上游补丁集方式与 [`ccch1mneyyy/dsh-Go`](https://github.com/ccch1mneyyy/dsh-Go) 长期平行开发，现行维护聚焦 Root 补丁层，通用功能与修复沿上游，完整保留原版主界面、聊天、工具、插件、远程主机能力以及原作者版权与 [AGPL-3.0](LICENSE) 许可证归属。详细架构与验证进展见 [docs/dsh-su.md](docs/dsh-su.md)。
 
 ```mermaid
 flowchart LR
@@ -46,7 +46,7 @@ flowchart LR
 
 - **架构定位**：`RootService` 仅作为 UID 0 进程桥，不重新实现 DSH。通过 `libsu` `6.0.0` 普通非 daemon `RootService` 驱动官方 `runc` `1.4.3`，在原版 Ubuntu rootfs 上开启独立 `mount` 私有命名空间（无 PID namespace，以 `UID/GID 0` 运行并保留继承的 capabilities）。
 - **身份与构建隔离**：构建入口为 `tooling/build-root-apk.sh`（自动通过 `tooling/fetch-runc-assets.sh` 拉取并校验官方 `runc` 1.4.3 双架构二进制），应用包名为 `io.github.rakanrkk.dsh_su`、桌面名称为 `DSH SU`，可与原版 `DSH Go` 并存安装；更新源隔离至 `Rakanrkk/dsh-Su`。
-- **兼容目标与当前验证范围**：开发试用版 `v1.2.0-dev.1` 提供 arm64-v8a APK，已在 Android 14 ARM64 模拟器完成核心使用验证；旧 x86_64 与历史 ARM 验证仅适用于对应历史版本。各版本、ABI 与 Root 框架的验证范围见 [docs/dsh-su.md](docs/dsh-su.md)。
+- **兼容目标与当前验证范围**：开发试用版提供 arm64-v8a APK；Android 14 ARM64 模拟器上的核心使用验证为 v1.2.0-dev.1 的历史记录，不代表当前版本的完整验收。旧 x86_64 与历史 ARM 验证仅适用于对应历史版本。各版本、ABI 与 Root 框架的验证范围见 [docs/dsh-su.md](docs/dsh-su.md)。
 
 <br>
 
@@ -177,7 +177,7 @@ flowchart LR
 
 <h3 align="center">手机操控</h3>
 
-<p align="center">看屏幕、帮你点，三档确认随你选。付款、密码和验证码，永远交还给你。</p>
+<p align="center">看屏幕、帮你点，三档确认随你选。敏感操作按你选的确认模式请求确认，任务可随时停止；Root 命令和模型建议仍需你审慎授权（见[安全声明](SECURITY.md)）。</p>
 
 <p align="center">
   <picture>
@@ -235,7 +235,7 @@ dsh-Su 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 <summary><b>安全吗？</b></summary>
 <br>
 
-本机网页版只接受 App 自己的访问。分享链接端到端加密，密钥只在链接里，服务器看不到内容。手机操控遇到付款、密码、验证码和系统设置，一律交还给你。
+本机网页版只接受 App 自己的访问。分享链接端到端加密，密钥只在链接里，服务器看不到内容。手机操控不会绕过确认机制：敏感操作按你选的确认模式请求确认，任务可随时停止；Root 命令和模型建议仍需你自行审慎授权（详见[安全声明](SECURITY.md)）。
 
 </details>
 
