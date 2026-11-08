@@ -68,8 +68,19 @@ class BackgroundDisplay(
             putInt(Proto.SHORT_SIDE, 720)
             putInt(Proto.WANT_IMAGE, 0)
         }
-        currentPackage = packageName
-        val response = channel().execute(request)
+        val response = try {
+            channel().execute(request)
+        } catch (e: Exception) {
+            // The wire died mid-open: the cached observation for the previous app is
+            // no longer trustworthy — drop it (the confirmed package stays), and let
+            // the caller see the real failure. The open itself is never replayed.
+            onOpenSendFailed(e)
+        }
+        // The target app is claimed only once the launch is confirmed. A failed or
+        // thrown-away open keeps the previously confirmed package (or none), so no
+        // later action ever addresses a package that never opened; the observation
+        // cache still dies through toResult's existing failure path.
+        currentPackage = targetAfterOpen(response.getBoolean(Proto.OK), currentPackage, packageName)
         // l10n:keep agent screen protocol
         val note = if (response.getBoolean(Proto.IME_HIDE_FAILED))
             "（键盘隐藏失败：后台屏可能弹出输入法，请重新观察确认）" else ""
@@ -107,6 +118,16 @@ class BackgroundDisplay(
         previousLabels = emptySet()
         lastWindowId = null
         observationTicket = null
+    }
+
+    /** The exception path behind [open]: a request that never got an answer means the
+     *  cached observation may outlive the screen it was read from, so it dies here —
+     *  through the same [invalidateObservation] path as every other failure — before
+     *  the real error surfaces. The confirmed package is untouched and the caller
+     *  decides whether to retry; the driver never replays the open itself. */
+    internal fun onOpenSendFailed(e: Exception): Nothing {
+        invalidateObservation()
+        throw e
     }
 
     override fun collect(screenId: String, listElementId: Int, maxPages: Int, until: String?): CollectResult {
@@ -457,6 +478,13 @@ class BackgroundDisplay(
          *  before any request was built keep the cache untouched. */
         internal fun invalidatesCache(ok: Boolean, dispatched: Boolean, errorCode: String?): Boolean =
             !ok
+
+        /** Production decision behind [open]; kept pure so the wire rules stay testable.
+         *  The target package is published only on a confirmed launch. A failed open
+         *  keeps whatever was confirmed before — a first failure keeps none — so the
+         *  next action never addresses a package that never opened. */
+        internal fun targetAfterOpen(ok: Boolean, confirmed: String?, requested: String): String? =
+            if (ok) requested else confirmed
 
         /** A complete read (COUNT present, not partial) must carry a fresh ticket; anything
          *  else answering with elements is not a rev-2 core and must not be acted on. */

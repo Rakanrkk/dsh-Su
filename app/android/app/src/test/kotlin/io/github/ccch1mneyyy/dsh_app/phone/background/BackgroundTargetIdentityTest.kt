@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -485,6 +486,57 @@ class BackgroundTargetIdentityTest {
         assertTrue("a real observation renders 键盘收起", down.contains("键盘收起"))
         assertTrue("an unobservable IME renders 键盘状态未知", unknown.contains("键盘状态未知"))
         assertFalse("unknown must not claim 键盘收起", unknown.contains("键盘收起"))
+    }
+
+    @Test fun aFailedOpenNeverClaimsTheTargetItNeverOpened() {
+        // First failure: there is no confirmed target yet — the failed package must not
+        // become current, or the next action would address a package that never opened.
+        assertEquals(
+            null,
+            BackgroundDisplay.targetAfterOpen(ok = false, confirmed = null, requested = "com.b"),
+        )
+        // A previously confirmed app stays the target: its display is untouched by the
+        // failed switch, and the observation cache dies through toResult's existing path.
+        assertEquals(
+            "com.a",
+            BackgroundDisplay.targetAfterOpen(ok = false, confirmed = "com.a", requested = "com.b"),
+        )
+    }
+
+    @Test fun anOpenPublishesItsTargetOnlyOnceConfirmed() {
+        assertEquals("com.b", BackgroundDisplay.targetAfterOpen(ok = true, confirmed = "com.a", requested = "com.b"))
+        assertEquals("com.c", BackgroundDisplay.targetAfterOpen(ok = true, confirmed = null, requested = "com.c"))
+    }
+
+    @Test fun anOpenWhoseSendThrowsDropsTheCachedObservationButKeepsTheConfirmedApp() {
+        val display = BackgroundDisplay(
+            owner = "task:test:7",
+            channelProvider = { error("the send failure is surfaced directly") },
+            releaseChannelProvider = { error("a failed open must not release the display") },
+        )
+        // App A is confirmed with a live cached observation, then the open of B dies
+        // on the wire (no answer at all). The stale ticket/elements/window must die
+        // with it — the next write needs a fresh observation — while the confirmed
+        // package stays A and the real error surfaces untouched (no replay, no fake
+        // unknown-failure message).
+        setField(display, "currentPackage", "com.a")
+        setField(display, "lastScreenId", "b7")
+        setField(display, "lastElements", listOf(Element(1, "按钮", "确定", Region.MIDDLE)))
+        setField(display, "lastDisplayId", 7)
+        setField(display, "lastWindowId", 33)
+        setField(display, "observationTicket", "c0ffee")
+        assertNotNull(display.target("b7", 1))
+        assertNotNull(display.expectFor(1))
+
+        val failure = assertThrows("the real send error surfaces", IllegalStateException::class.java) {
+            display.onOpenSendFailed(IllegalStateException("channel died mid-open"))
+        }
+        assertEquals("channel died mid-open", failure.message)
+
+        assertNull("no stale ticket survives a dead send", fieldOf(display, "observationTicket"))
+        assertNull(display.target("b7", 1))
+        assertNull("the next write must need a fresh observation", display.expectFor(1))
+        assertEquals("the confirmed app stays the target", "com.a", fieldOf(display, "currentPackage"))
     }
 
     private class ProbeChannel : PrivilegedChannel {
