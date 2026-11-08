@@ -125,6 +125,8 @@ class ProcessLaunchGuardTest {
         "app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/runtime/DshRuncClient.kt"
     private val privilegedDisplayCore =
         "app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/phone/background/PrivilegedDisplayCore.kt"
+    private val runtimeFileAccess =
+        "app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/runtime/RuntimeInstaller.kt"
     private val localHelper = "app/lib/remote/ssh/remote_shell.dart"
 
     private fun nativeCalls(source: String, language: String): List<Token> {
@@ -203,6 +205,61 @@ class ProcessLaunchGuardTest {
         }
         val reviewed = calls.filter { it.text == "exec" && it.offset in section.start until section.end }
         check(reviewed.size == 1) { "Review the root metadata exec call location" }
+        return reviewed.toSet()
+    }
+
+    private fun reviewedRuntimeShellJobs(path: String, source: String, calls: List<Token>): Set<Token> {
+        if (path != runtimeFileAccess) return emptySet()
+        // The root file backend runs three fixed-argv libsu shell jobs; each is
+        // one `su -c` child like the reviewed owners and must keep shell path
+        // escaping. A new exec or command change in this file fails the guard
+        // instead of passing silently.
+        val create = sourceSection(
+            source,
+            "override fun createExclusive(file: File, content: String): Boolean {",
+            "\n        override fun chown(",
+        )
+        check("require(content.isNotBlank() && content.all { it.isDigit() || it == " in create.text) {
+            "Review the exclusive-create lock record validation"
+        }
+        check("rootFile.path.replace(\"'\", \"'\\\\''\")" in create.text) {
+            "Root file commands must keep shell path escaping"
+        }
+        check(".add(\"( set -o noclobber; umask 077; printf '%s\\\\n' \${content.trim()} > \$path )\")" in create.text) {
+            "Review the exact exclusive-create shell job"
+        }
+        val chown = sourceSection(
+            source,
+            "override fun chown(file: File, uid: Long, gid: Long): Boolean {",
+            "\n        override fun ensureAppOwnedDir(",
+        )
+        check("uid < 0 || uid > Int.MAX_VALUE || gid < 0 || gid > Int.MAX_VALUE" in chown.text) {
+            "Review the ownership id range guard"
+        }
+        check("file.path.replace(\"'\", \"'\\\\''\")" in chown.text) {
+            "Root file commands must keep shell path escaping"
+        }
+        check(".add(\"chown -h '\$uid:\$gid' \$quoted\").exec().code == 0" in chown.text) {
+            "Review the exact ownership shell job"
+        }
+        val ensure = sourceSection(
+            source,
+            "override fun ensureAppOwnedDir(file: File, uid: Long, gid: Long): Boolean {",
+            "\n        override fun close()",
+        )
+        check("uid < 0 || uid > Int.MAX_VALUE || gid < 0 || gid > Int.MAX_VALUE" in ensure.text) {
+            "Review the overlay directory id range guard"
+        }
+        check("dirPathUnsafeForOwnership(file)" in ensure.text) {
+            "Review the overlay directory symlink refusal"
+        }
+        check(".add(\"mkdir -p \$quoted && chown '\$uid:\$gid' \$quoted && chmod 0755 \$quoted\")" in ensure.text) {
+            "Review the exact overlay directory shell job"
+        }
+        val execs = calls.filter { it.text == "exec" }
+        check(execs.size == 3) { "Review all RuntimeInstaller shell executions" }
+        val reviewed = execs.filter { it.offset in create.start until ensure.end }
+        check(reviewed.size == 3) { "Review the RuntimeInstaller exec call locations" }
         return reviewed.toSet()
     }
 
@@ -425,7 +482,8 @@ class ProcessLaunchGuardTest {
             val calls = nativeCalls(source, file.extension)
             val reviewed = reviewedRootMetadataCalls(path, source, calls) +
                 reviewedRootProbeCalls(root, path, source, calls) +
-                reviewedSpecialAppOpCall(path, source, calls)
+                reviewedSpecialAppOpCall(path, source, calls) +
+                reviewedRuntimeShellJobs(path, source, calls)
             calls.filter { path !in allowedNative && it !in reviewed }.map { location(path, source, it) }
         }
         assertEquals("New launch sites may inherit API 26 configuration fds; use a reviewed Java owner.\n" +
