@@ -67,7 +67,7 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">Downloads & Builds</h3>
 
-<p align="center">The current public development trial of <code>dsh-Su</code> is <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1"><code>v1.2.0-dev.1</code></a>. Releases provides an <code>arm64-v8a</code> APK, public metadata and SHA-256 checksum files; see <a href="docs/dsh-su.md">Architecture &amp; Status</a> for per-framework test scope. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
+<p align="center">The current public development trial of <code>dsh-Su</code> is <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2"><code>v1.2.0-dev.2</code></a> (prerelease). Releases provides an <code>arm64-v8a</code> APK, public metadata and SHA-256 checksum files; see <a href="docs/dsh-su.md">Architecture &amp; Status</a> for per-framework test scope. For a stable rootless (PRoot) client, download upstream <b>DSH Go</b>.</p>
 
 <p align="center">
   <a href="#build-from-source"><img alt="Build dsh-Su from Source" src="https://img.shields.io/badge/dsh--Su-Build%20from%20Source-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="Upstream DSH Go Releases" src="https://img.shields.io/badge/Upstream%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Upstream%20Site-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
@@ -203,15 +203,17 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 ## Install
 
-Installation requires Android 8.0 (API 26) or later. The current `v1.2.0-dev.1` development trial provides an **arm64-v8a** APK with a SHA-256 checksum and public metadata JSON file. This repository has no 32-bit ARM build.
+Installation requires Android 8.0 (API 26) or later. The current `v1.2.0-dev.2` development trial (prerelease, not yet verified on a real device) provides an **arm64-v8a** APK with a SHA-256 checksum and public metadata JSON file. This repository has no 32-bit ARM build.
 
-1. Download the arm64-v8a APK from [dsh-Su `v1.2.0-dev.1` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1). When you first start the on-device engine, allow `DSH SU` in your root manager. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
+1. Download the arm64-v8a APK from [dsh-Su `v1.2.0-dev.2` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2). When you first start the on-device engine, allow `DSH SU` in your root manager. Upstream rootless PRoot builds are available at [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) and the [download page](https://go.dshtui.com/download).
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
 A remote-only setup does not need a local runtime on the phone. Phone control works with the local engine outside safe mode and requires permissions such as Accessibility, as explained in the app. Non-disruptive mode additionally requires Android 14 or later and Shizuku or self-ADB. Follow the [user guide](docs/guide/README.md) for setup.
 
 Upstream builds use PRoot startup by default; `dsh-Su` (`BuildConfig.ROOT_RUNTIME = true`) launches the local container runtime through `libsu` `RootService` + `runc` (see [docs/dsh-su.md](docs/dsh-su.md)). The current Android build targets APK sideloading, not Google Play distribution.
+
+After downloading, verify `SHA256SUMS` from the Release page: run `sha256sum -c SHA256SUMS` in the download folder (the list covers this APK only). Older builds cannot reliably discover this repository's development prereleases: for the first upgrade, download the new APK from this repository's Release page and install it over the top; later versions check this repository for updates. v1.2.0-dev.2 replaces the bundled runtime: after upgrading, the Linux environment is rebuilt from the new archive, and anything installed inside it via apt or similar must be reinstalled; chats and settings are unaffected.
 
 ## Data and permissions
 
@@ -260,6 +262,10 @@ Android 8 or later. On a phone, download the package on the Releases page; the c
 Yes. The code is in this repository under [AGPL-3.0](LICENSE); `sdk/` and `examples/` are MIT. The DSH Go name and logo, and the mascots Deepy and Whale girl, are not covered by the open-source license; see [ASSETS.md](ASSETS.md).
 
 </details>
+
+## Feedback
+
+For usage questions and bugs, open an [issue](https://github.com/Rakanrkk/dsh-Su/issues) with the app version and reproduction steps. Do not post security details publicly — report them privately per [SECURITY.en.md](SECURITY.en.md).
 
 <a id="build-from-source"></a>
 ## Build from source

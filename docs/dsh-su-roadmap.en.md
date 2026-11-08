@@ -2,7 +2,7 @@
 
 [简体中文](dsh-su-roadmap.md) · [Repository home](../README.en.md) · [Public releases](https://github.com/Rakanrkk/dsh-Su/releases)
 
-Updated: 2026-11-06.
+Updated: 2026-11-08.
 
 dsh-Su targets Root Android users: deliver a usable Root AI workbench first, then expand from real-world feedback. After granting Root, the app prepares the required system permissions and runtime automatically; model access uses the provider you choose, with sign-in or credentials.
 
@@ -10,9 +10,12 @@ dsh-Su targets Root Android users: deliver a usable Root AI workbench first, the
 
 | Version | Status |
 | --- | --- |
-| [`v1.2.0-dev.1`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) | Current public development trial: initial **arm64-v8a** release; core-use paths validated on the same build |
+| [`v1.2.0-dev.2`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2) | Current public development trial (prerelease): initial **arm64-v8a**; this build has not been verified on a real device — known limitations and update notes are in the Release |
+| [`v1.2.0-dev.1`](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) | Earlier development trial (prerelease); cannot reliably discover this repository's later development prereleases — upgrade by downloading from the Release page |
 
 Actual download scope and known issues ship with each Release.
+
+main keeps advancing past dev.2 (such as privacy-scan fixes); those changes are not part of any release yet. Root-environment maintenance — runtime rebuilds, archive and extraction fidelity, background hardening — rolls forward on main and ships with the next development release.
 
 ## 1.2.0-dev.1 launch scope
 
@@ -27,16 +30,16 @@ Ship on these core paths alone; complex background execution, schedule reliabili
 
 | Milestone | Goal | Status |
 | --- | --- | --- |
-| M1 Usable core product | Publish 1.2.0-dev.1 as a public development trial, converge feedback through 1.2.0-rc.N, release 1.2.0 | Top priority; dev.1 is published as a development trial, with rc and final release pending feedback |
+| M1 Usable core product | Publish 1.2.0-dev.1 as a public development trial, converge feedback through 1.2.0-rc.N, release 1.2.0 | Development trials are published (v1.2.0-dev.1, v1.2.0-dev.2), with rc and final release pending feedback |
 | 1.2.x maintenance | Fix real feedback, startup and upgrade issues, and compatibility; no new release-gating scope | Starts with public feedback |
 | M2 Complete phone execution | Target 1.3.0: direct system operations, reliable main-screen actions, non-intrusive background execution with clear status, errors, abort and user handoff | Advanced in parallel on feature branches |
-| M3 Automation workspace | Target 1.4.0: status, results, cancellation and controlled failure handling for existing schedules and long jobs; reuse plugins for tools, skills and workflows; never auto-repeat interrupted tasks | Independent parts start early without blocking M1 |
+| M3 Automation workspace | Target 1.4.0: status, results, cancellation and controlled failure handling for existing schedules and long jobs; reuse plugins for tools, skills and workflows; never auto-repeat interrupted tasks | Advances only as needed to support the mainlines; does not block releases |
 
 The app, engine and plugins are numbered independently.
 
 ## Parallel roadmap
 
-Features develop in parallel and converge per milestone; independent M2 and M3 work can start early, with upstream syncing and compatibility across branches.
+Features develop in parallel and converge per milestone; independent M2 work can start early and M3 advances only as needed to support the mainlines, with upstream syncing and compatibility across branches.
 
 ```mermaid
 flowchart TB
@@ -56,8 +59,8 @@ flowchart TB
   S -.parallel early.-> E["Reliable main-screen actions · non-intrusive background"]
   D -.converge.-> M2
   E -.converge.-> M2
-  S -.parallel early.-> T["Job scheduling and status"]
-  S -.parallel early.-> P["Plugins · skills · workflows"]
+  S -.on demand.-> T["Job scheduling and status"]
+  S -.on demand.-> P["Plugins · skills · workflows"]
   T -.converge.-> M3
   P -.converge.-> M3
   MX -.upstream sync and compatibility.-> M2
@@ -79,8 +82,9 @@ flowchart TB
 
 | Item | Status |
 | --- | --- |
-| 1.2.0-dev.1 ARM64 ordinary APK | Published |
-| Same-build model chat, tools, phone actions, stop and reopen acceptance | Passed |
+| 1.2.0-dev.1 ARM64 ordinary APK | Published (prerelease) |
+| 1.2.0-dev.2 ARM64 ordinary APK | Published (prerelease, not verified on a real device) |
+| Same-build model chat, tools, phone actions, stop and reopen acceptance | Planned, no completion record yet; publication and integrity checks do not substitute for this acceptance |
 | 1.2.0-rc.N feedback convergence | Awaiting public feedback |
 | 1.2.x feedback fixes | Starts with public feedback |
 | 1.3.0 phone-execution expansion | Planned target, some groundwork exists |

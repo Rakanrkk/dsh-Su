@@ -4,6 +4,8 @@ DSH Go 的源码以 AGPL-3.0 发布（见 [LICENSE](LICENSE)），但下面这�
 
 你可以为了构建、测试和运行本仓库而使用它们。如果你以修改版或衍生作品的身份再发布，请换成自己的名称和素材。
 
+本仓库是上游的 Root 分支：名称「dsh-Su / DSH SU」、包名 `io.github.rakanrkk.dsh_su` 与本仓新增的启动图标（`app/android/app/src/main/res/mipmap-*/`、`drawable/ic_launcher_*`）用于区分分支，不构成商标声明；上表所列 DSH Go 品牌标识、Deepy 小鲸鱼、鲸娘及 DeepSeek 图标的归属与条款保持不变。
+
 | 素材 | 位置 | 来源 |
 |---|---|---|
 | DSH Go 品牌标识（鱼尾与气泡） | `app/assets/brand/`；由它生成的 `app/lib/ui/shell/brand_glyph.g.dart`、启动图标 `app/android/app/src/main/res/mipmap-*/`、`drawable/ic_launcher_*` | DSH Go 自己的品牌图形 |

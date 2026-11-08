@@ -67,7 +67,7 @@ flowchart LR
 <a id="download"></a>
 <h3 align="center">下载与构建</h3>
 
-<p align="center"><code>dsh-Su</code> 当前公开开发试用版为 <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1"><code>v1.2.0-dev.1</code></a>，Releases 提供 <code>arm64-v8a</code> APK、公开元数据及 SHA-256 校验文件；各框架实测范围见<a href="docs/dsh-su.md">架构与状态说明</a>。如需稳定的免 Root（PRoot）客户端，请从上游下载原版 <b>DSH Go</b>。</p>
+<p align="center"><code>dsh-Su</code> 当前公开开发试用版为 <a href="https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2"><code>v1.2.0-dev.2</code></a>（prerelease），Releases 提供 <code>arm64-v8a</code> APK、公开元数据及 SHA-256 校验文件；各框架实测范围见<a href="docs/dsh-su.md">架构与状态说明</a>。如需稳定的免 Root（PRoot）客户端，请从上游下载原版 <b>DSH Go</b>。</p>
 
 <p align="center">
   <a href="#build-from-source"><img alt="从源码构建 dsh-Su" src="https://img.shields.io/badge/dsh--Su-%E4%BB%8E%E6%BA%90%E7%A0%81%E6%9E%84%E5%BB%BA-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-Go/releases/latest"><img alt="上游 DSH Go Releases" src="https://img.shields.io/badge/%E4%B8%8A%E6%B8%B8%20DSH%20Go-Releases-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="从官网下载页下载" src="https://img.shields.io/badge/go.dshtui.com-%E4%B8%8A%E6%B8%B8%E5%AE%98%E7%BD%91-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
@@ -203,15 +203,17 @@ dsh-Su 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 
 ## 安装
 
-安装要求为 Android 8.0（API 26）及以上。当前 `v1.2.0-dev.1` 开发试用版提供 **arm64-v8a** APK，附 SHA-256 校验文件与公开元数据 JSON。仓库没有 32 位 ARM 构建。
+安装要求为 Android 8.0（API 26）及以上。当前 `v1.2.0-dev.2` 开发试用版（prerelease，未经真机验收）提供 **arm64-v8a** APK，附 SHA-256 校验文件与公开元数据 JSON。仓库没有 32 位 ARM 构建。
 
-1. 从 [dsh-Su `v1.2.0-dev.1` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.1) 下载 arm64-v8a APK；首次启动本机引擎时，在 Root 管理器允许 `DSH SU`。上游原版免 Root 安装包见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)。
+1. 从 [dsh-Su `v1.2.0-dev.2` Releases](https://github.com/Rakanrkk/dsh-Su/releases/tag/v1.2.0-dev.2) 下载 arm64-v8a APK；首次启动本机引擎时，在 Root 管理器允许 `DSH SU`。上游原版免 Root 安装包见 [ccch1mneyyy/dsh-Go Releases](https://github.com/ccch1mneyyy/dsh-Go/releases/latest) 与[官网下载页](https://go.dshtui.com/download)。
 2. 首次启动时，选择在本机安装运行环境，或连接远程主机。
 3. 为所选主机配置模型和所需凭据，再开始对话；部分远程渠道需要在主机侧配置。
 
 仅连接远程主机时，不必在手机上安装本机运行环境。手机操控只对正常模式下的本机引擎开放，需要按界面说明开启无障碍等权限；不打扰模式另外要求 Android 14 及以上，以及 Shizuku 或自连 ADB。首次使用可按[使用指南](docs/guide/README.md)逐项配置。
 
 上游原版默认使用 PRoot 兼容启动；`dsh-Su`（`BuildConfig.ROOT_RUNTIME = true`）使用 `libsu` `RootService` + `runc` 启动本地容器环境，详见 [docs/dsh-su.md](docs/dsh-su.md)。当前 Android 构建以 APK 侧载为目标，不是 Google Play 发布配置。
+
+下载后可在 Release 页核对 `SHA256SUMS`：在下载目录执行 `sha256sum -c SHA256SUMS`（清单只含该 APK）。旧版无法可靠发现本仓的开发预发行版：首次升级请从本仓 Release 页手动下载覆盖安装；之后的版本沿本仓通道检查更新。v1.2.0-dev.2 更换了内置运行时，升级后 Linux 环境按新归档重建，环境里用 apt 等安装的内容需要重装，对话和设置不受影响。
 
 ## 数据与权限
 
@@ -260,6 +262,10 @@ Android 8 及以上。手机直接下载 Release 页面上的安装包即可；�
 开源，代码就在这个仓库，以 [AGPL-3.0](LICENSE) 发布，`sdk/` 和 `examples/` 为 MIT。DSH Go 的名称和标识，以及 Deepy、鲸娘两位吉祥物，不在开源授权范围内，见 [ASSETS.md](ASSETS.md)。
 
 </details>
+
+## 问题反馈
+
+使用问题和缺陷请到 [Issues](https://github.com/Rakanrkk/dsh-Su/issues) 提交，附上 App 版本与复现步骤。安全问题不要在公开 Issue 描述细节，按 [SECURITY.md](SECURITY.md) 的私密渠道报告。
 
 <a id="build-from-source"></a>
 ## 从源码构建
